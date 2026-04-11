@@ -1,12 +1,17 @@
 # Benchmark Manifest
 
-Initial benchmark coverage is not populated yet.
+Current benchmark files:
 
-The first benchmark batch should cover:
+1. `benchmarks/cypher/case-01-optional-match.md`
+2. `benchmarks/cypher/case-02-merge-and-timestamps.md`
+3. `benchmarks/cypher/case-03-unwind-delete-and-null.md`
+4. `benchmarks/cypher/case-04-case-collect-and-multihop.md`
+5. `benchmarks/gremlin/case-01-basic-traversal.md`
+6. `benchmarks/gremlin/case-02-repeat-and-range.md`
 
-1. writing a new stored read query in the Rust DSL
-2. writing a new stored write query in the Rust DSL
-3. adding tenant-scoped BM25 search
-4. adding tenant-scoped vector search
-5. reviewing a query for anchor and index quality
-6. building a dynamic `POST /v1/query` request with typed parameters
+Benchmark groups still to add:
+
+1. authoring
+2. dynamic
+3. optimize
+4. sql

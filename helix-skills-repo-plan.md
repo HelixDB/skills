@@ -73,6 +73,18 @@ Out of scope for v1:
 
 These are the primary references the skills should cite and draw examples from.
 
+### Repo-Local Canonical References
+
+- `docs/source-canon.md`
+- `docs/dsl-cheatsheet.md`
+- `docs/cypher-rosetta.md`
+- `docs/gremlin-rosetta.md`
+- `docs/dynamic-query-examples.md`
+- `docs/optimization-checklist.md`
+- `examples/authoring-patterns.md`
+- `examples/search-patterns.md`
+- `examples/optimization-patterns.md`
+
 ### Helix Docs
 
 - `https://skills.sh/docs`
@@ -85,21 +97,12 @@ These are the primary references the skills should cite and draw examples from.
 - `https://docs.helix-db.com/documentation/hql/vectors`
 - `https://docs.helix-db.com/documentation/hql/keyword_search`
 
-### Repo-Local Canonical References
-
-- `docs/source-canon.md`
-- `docs/dsl-cheatsheet.md`
-- `docs/dynamic-query-examples.md`
-- `docs/optimization-checklist.md`
-- `examples/authoring-patterns.md`
-- `examples/search-patterns.md`
-- `examples/optimization-patterns.md`
-
 ### Publication Rule
 
 - do not publish machine-local filesystem paths as source pointers
 - do not treat app-specific implementations as canonical Helix references
 - convert any implementation-derived idea into a generic documented pattern before publishing it here
+- prefer the repo-local canon over public docs when this repo is intentionally teaching a newer supported Helix capability
 
 ## Critical Helix Facts The Skills Must Teach
 
@@ -538,14 +541,14 @@ Recommended build order:
 
 ### Phase 8: `helix-query-from-gremlin`
 
-- [ ] Create `skills/helix-query-from-gremlin/SKILL.md`
-- [ ] Add trigger phrases for “Gremlin”, “TinkerPop”, `g.V()`, and `repeat`
-- [ ] Write `docs/gremlin-rosetta.md`
-- [ ] Add a translation workflow that collapses step chains into Helix traversal builders
-- [ ] Add a mapping table for `g.V`, `g.E`, `hasLabel`, `has`, `out`, `in`, `both`, `outE`, `inE`, `valueMap`, `repeat`, `emit`, `dedup`, `limit`, and `count`
-- [ ] Add canonical translation examples
-- [ ] Add caveats where Gremlin step semantics do not map exactly
-- [ ] Link to `docs/gremlin-rosetta.md`
+- [x] Create `skills/helix-query-from-gremlin/SKILL.md`
+- [x] Add trigger phrases for “Gremlin”, “TinkerPop”, `g.V()`, and `repeat`
+- [x] Write `docs/gremlin-rosetta.md`
+- [x] Add a translation workflow that collapses step chains into Helix traversal builders
+- [x] Add a mapping table for `g.V`, `g.E`, `hasLabel`, `has`, `out`, `in`, `both`, `outE`, `inE`, `valueMap`, `repeat`, `emit`, `dedup`, `limit`, and `count`
+- [x] Add canonical translation examples
+- [x] Add caveats where Gremlin step semantics do not map exactly
+- [x] Link to `docs/gremlin-rosetta.md`
 
 ### Phase 9: `helix-query-from-sql`
 
@@ -560,16 +563,16 @@ Recommended build order:
 
 ### Phase 10: Benchmarks
 
-- [ ] Add `benchmarks/README.md`
-- [ ] Add `benchmarks/manifest.md`
+- [x] Add `benchmarks/README.md`
+- [x] Add `benchmarks/manifest.md`
 - [ ] Add benchmark prompts for authoring
-- [ ] Add benchmark prompts for Cypher migration
-- [ ] Add benchmark prompts for Gremlin migration
+- [x] Add benchmark prompts for Cypher migration
+- [x] Add benchmark prompts for Gremlin migration
 - [ ] Add benchmark prompts for SQL migration
 - [ ] Add benchmark prompts for optimization
 - [ ] Add benchmark prompts for dynamic JSON execution
-- [ ] Add at least one gold answer per benchmark case
-- [ ] Add a scoring checklist per benchmark case
+- [x] Add at least one gold answer per benchmark case
+- [x] Add a scoring checklist per benchmark case
 - [ ] Run a first benchmark pass with OpenCode
 - [ ] Record failures and update the relevant skills
 

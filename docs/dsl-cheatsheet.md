@@ -71,8 +71,13 @@ Useful predicates:
 - `Predicate::gt`, `gte`, `lt`, `lte`
 - `Predicate::is_in_param`
 - `Predicate::is_null`
+- `Predicate::has_key`
 - `Predicate::and(vec![...])`
 - `Predicate::or(vec![...])`
+
+Use `Predicate::is_null` for null-style checks.
+
+Use `Predicate::has_key` when you specifically need property-existence semantics.
 
 ## Traversal
 
@@ -96,6 +101,19 @@ Incoming traversal:
 g().n(NodeRef::param("node_id")).in_(Some("FOLLOWS"))
 g().n(NodeRef::param("node_id")).in_e(Some("FOLLOWS"))
 ```
+
+Optional traversal:
+
+```rust
+g().n(NodeRef::var("user"))
+    .optional(sub().out(Some("WORKS_AT")))
+```
+
+Use `optional(sub(...))` when the route should attempt a traversal without dropping the root when the optional branch has no match.
+
+Traversal branching:
+
+Use `.choose(...)` for traversal-level if/then/else logic when a Cypher-style `CASE WHEN` or branch-dependent traversal should stay inside the query.
 
 ## Projection And Return Shape
 
@@ -136,6 +154,15 @@ Common operators:
 .limit(Expr::param("limit"))
 .range(Expr::param("start"), Expr::param("end"))
 ```
+
+When you only need the best element by a property, prefer ordering plus `limit(1)`.
+
+```rust
+.order_by("score", Order::Desc)
+.limit(1)
+```
+
+If the route truly needs to collect values into an array first, use the fold or collect support available in your current Helix build rather than forcing array semantics through unrelated operators.
 
 ## Mutations
 
@@ -206,6 +233,14 @@ write_batch()
     .returning(["updated", "created"])
 ```
 
+Use this pattern for Cypher-style `MERGE ... ON CREATE SET ... ON MATCH SET` flows.
+
+## Array Expansion And Per-Item Writes
+
+Use `for_each_param(...)` when a write route needs to iterate an array parameter and perform per-item graph work such as `add_e(...)`, `add_n(...)`, or property updates.
+
+This is the main route-level mapping for Cypher patterns like `UNWIND ... FOREACH`.
+
 ## Text Search
 
 BM25 text search is property-scoped.
@@ -269,6 +304,34 @@ g().n(NodeRef::var("seed"))
             .emit_all(),
     )
 ```
+
+For Cypher-style multi-hop traversal where you want emitted results after each hop, use `emit_after()`.
+
+```rust
+g().n(NodeRef::var("seed"))
+    .repeat(
+        RepeatConfig::new(sub().out(Some("RELATED_TO")))
+            .times(2)
+            .emit_after(),
+    )
+```
+
+## Null, Existence, And Conditional Traversal Notes
+
+- use `Predicate::is_null` for null-oriented filtering
+- use `Predicate::has_key` when property existence is the actual question
+- use `.optional(sub(...))` for optional traversals
+- use `.choose(...)` for traversal-level if/then/else logic
+
+## Server-Side Time
+
+When a route needs database-generated time values, use the server-side timestamp helper provided by your current Helix build instead of a client-supplied clock value.
+
+Use this for cases like:
+
+- `createdAt`
+- `updatedAt`
+- Cypher `timestamp()` migrations
 
 ## Authoring Heuristics
 

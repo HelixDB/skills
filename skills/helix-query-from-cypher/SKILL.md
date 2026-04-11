@@ -1,6 +1,6 @@
 ---
 name: helix-query-from-cypher
-description: Translate Cypher and Neo4j-style queries into HelixDB Rust DSL stored queries. Use when the input contains Cypher, Neo4j, MATCH, OPTIONAL MATCH, WHERE, RETURN, ORDER BY, LIMIT, DISTINCT, or MERGE and the goal is to produce an equivalent Helix Rust query.
+description: Translate Cypher and Neo4j-style queries into HelixDB Rust DSL stored queries. Use when the input contains Cypher, Neo4j, MATCH, OPTIONAL MATCH, WHERE, RETURN, ORDER BY, LIMIT, DISTINCT, MERGE, CASE, UNWIND, FOREACH, DETACH DELETE, IS NULL, or variable-length path patterns and the goal is to produce an equivalent Helix Rust query.
 license: MIT
 metadata:
   author: HelixDB
@@ -17,7 +17,7 @@ Use this skill when the task is to:
 
 - translate a Cypher query into Helix Rust DSL
 - port a Neo4j query into a stored Helix route
-- replace `MATCH`, `WHERE`, `RETURN`, `DISTINCT`, `ORDER BY`, `LIMIT`, or `MERGE` with Helix DSL equivalents
+- replace `MATCH`, `OPTIONAL MATCH`, `WHERE`, `RETURN`, `DISTINCT`, `ORDER BY`, `LIMIT`, `MERGE`, `CASE`, `UNWIND`, `FOREACH`, or `DETACH DELETE` with Helix DSL equivalents
 - explain how a Cypher graph pattern should be expressed in Helix Rust
 
 Do not use this skill as the main guide for Gremlin, SQL, or dynamic inline-query JSON.
@@ -27,9 +27,10 @@ Do not use this skill as the main guide for Gremlin, SQL, or dynamic inline-quer
 Before translating:
 
 1. Inspect the local repo for real labels, edge labels, property names, and route style.
-2. Parse the Cypher into anchors, edge directions, filters, return shape, ordering, and pagination.
+2. Parse the Cypher into anchors, edge directions, hop depth, filters, return shape, ordering, and pagination.
 3. Decide whether the target route is read or write.
-4. Identify any Cypher constructs that are not a direct one-to-one translation.
+4. Identify optional branches, per-element writes, null or existence checks, and timestamp usage.
+5. Identify any Cypher constructs that need semantic rather than literal translation.
 
 If the local repo does not already contain an obvious Helix pattern, use:
 
@@ -68,6 +69,8 @@ Typical mappings:
 - equality to `Predicate::eq_param`
 - numeric comparisons to `Predicate::gt_param`, `gte_param`, `lt_param`, `lte_param`
 - membership to `Predicate::is_in_param`
+- null checks to `Predicate::is_null`
+- property-existence checks to `Predicate::has_key`
 - compound logic to `Predicate::and(vec![...])` and `Predicate::or(vec![...])`
 
 ### 4. Translate RETURN Into Explicit Output Shaping
@@ -84,9 +87,7 @@ Use:
 
 Do not force literal translations for:
 
-- `OPTIONAL MATCH`
 - `MERGE`
-- variable-length relationship patterns
 - path-returning queries
 - `RETURN *`
 
@@ -116,7 +117,27 @@ There is no single drop-in `MERGE` translation pattern in this skill. Use explic
 
 ### OPTIONAL MATCH
 
-There is no guaranteed row-preserving null-extension equivalent in the same style as Cypher. Usually bind the optional traversal separately and assemble the response shape explicitly.
+Use `.optional(sub(...))` when a related traversal should not eliminate the root path just because the optional branch has no match.
+
+### CASE WHEN
+
+Use `.choose(...)` for traversal-level if/then/else logic.
+
+### UNWIND And FOREACH
+
+Use `for_each_param(...)` when a write route needs to iterate an array parameter and perform graph work per element.
+
+### Multi-Hop Patterns
+
+Use bounded `repeat(RepeatConfig::new(...).times(N).emit_after())` for Cypher patterns like `[:REL*1..N]`.
+
+### IS NULL And Property Existence
+
+Use `Predicate::is_null` for null-style checks and `Predicate::has_key` when the query is really testing whether the property exists.
+
+### Server-Side Timestamps
+
+Use the server-side timestamp helper from your current Helix build when translating Cypher `timestamp()` usage.
 
 ## Canonical Example
 
@@ -164,7 +185,7 @@ Do not:
 - translate Cypher by string substitution alone
 - ignore edge direction
 - preserve Cypher variable names if they conflict with the local Helix route style and make the translation worse
-- assume `OPTIONAL MATCH` or `MERGE` has a direct single-step Helix equivalent
+- assume every Cypher clause is a single-token replacement in Helix
 - return every property by default just because the Cypher query returned a node variable
 - invent labels, properties, or edge names instead of reading the target schema
 
@@ -175,9 +196,12 @@ Before finishing:
 - verify the first anchor is correct and narrow enough
 - verify edge directions are translated correctly
 - verify `WHERE` clauses became explicit `Predicate` logic
+- verify optional traversals use `optional(sub(...))` when required
+- verify multi-hop traversal uses bounded `repeat(...)` with explicit emission behavior
 - verify `RETURN` became an intentional Helix output shape
 - verify `DISTINCT`, `ORDER BY`, `SKIP`, and `LIMIT` were mapped deliberately
-- verify `MERGE` and `OPTIONAL MATCH` were translated semantically, not literally
+- verify `CASE`, `UNWIND`, `FOREACH`, delete, and timestamp logic were translated to Helix-native constructs when present
+- verify `MERGE` was translated semantically, not literally
 - verify labels, edge labels, and properties match the local repo exactly
 
 ## Repo References

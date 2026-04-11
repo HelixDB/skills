@@ -7,10 +7,12 @@ This repository should use public Helix documentation and repo-local canonical e
 When an agent is writing or reviewing Helix query code, it should use sources in this order:
 
 1. the user's local repo and schema
-2. public Helix documentation for semantics and supported behavior
-3. this repository's canonical docs in `docs/`
-4. this repository's generic examples in `examples/`
+2. this repository's canonical docs in `docs/`
+3. this repository's generic examples in `examples/`
+4. public Helix documentation for product semantics and public behavior
 5. public skill-format docs for packaging and discovery behavior
+
+This ordering is intentional. The skills in this repo may document supported Helix patterns that are newer or more task-specific than the currently published public docs. Public docs are still important, but the repo-local canon should be the first fallback after the user's actual codebase.
 
 ## Public Helix References
 
@@ -35,6 +37,7 @@ Use these as the main references inside this published skills repo:
 
 - `docs/dsl-cheatsheet.md`
 - `docs/cypher-rosetta.md`
+- `docs/gremlin-rosetta.md`
 - `docs/dynamic-query-examples.md`
 - `docs/optimization-checklist.md`
 - `examples/authoring-patterns.md`
@@ -48,6 +51,7 @@ These files should be self-contained enough that public skills can point to them
 - Do not use machine-local filesystem paths as published source pointers.
 - Do not treat application-specific implementations as canonical Helix references.
 - If a useful idea is learned from an implementation, convert it into a generic documented pattern before publishing it here.
+- If public docs lag a supported Helix capability that this repo is intentionally teaching, prefer the repo-local canonical doc until the public docs catch up.
 - Prefer generic labels, properties, and edge names in published examples unless a public Helix doc requires a more specific term.
 - Use the user's local repo as the authority for their actual schema, naming, and route style.
 

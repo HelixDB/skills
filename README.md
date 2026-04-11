@@ -15,12 +15,12 @@ Available now:
 
 - `helix-query-authoring`
 - `helix-query-from-cypher`
+- `helix-query-from-gremlin`
 - `helix-query-json-dynamic`
 - `helix-query-optimize`
 
 Planned next:
 
-- `helix-query-from-gremlin`
 - `helix-query-from-sql`
 
 ## Install
@@ -72,7 +72,18 @@ It teaches agents to:
 - translate `MATCH` into explicit anchors and traversals
 - map `WHERE` to `Predicate` logic
 - map `RETURN`, `DISTINCT`, ordering, and limits into explicit output shaping
-- handle `OPTIONAL MATCH` and `MERGE` as semantic translations rather than literal rewrites
+- handle `OPTIONAL MATCH`, `MERGE`, `CASE`, `UNWIND`, `FOREACH`, multi-hop traversal, null checks, and timestamps as Helix-native translations rather than literal rewrites
+
+### `helix-query-from-gremlin`
+
+Use this skill when an agent needs to port Gremlin or TinkerPop traversals into Helix Rust DSL.
+
+It teaches agents to:
+
+- translate `g.V`, `hasLabel`, and `has` into anchors and predicates
+- map `out`, `in`, `both`, `outE`, and `inE` into explicit Helix traversal steps
+- map `dedup`, `count`, `range`, ordering, and `valueMap` into deliberate result shaping
+- handle `repeat`, `path`, `select`, and side-effect-heavy traversals as semantic translations rather than literal rewrites
 
 ### `helix-query-optimize`
 
@@ -93,6 +104,7 @@ Start here when working on the next skills:
 - `docs/source-canon.md`
 - `docs/dsl-cheatsheet.md`
 - `docs/cypher-rosetta.md`
+- `docs/gremlin-rosetta.md`
 - `docs/dynamic-query-examples.md`
 - `docs/optimization-checklist.md`
 - `examples/authoring-patterns.md`
