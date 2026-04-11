@@ -34,6 +34,7 @@ Use these for skill packaging and discovery behavior:
 Use these as the main references inside this published skills repo:
 
 - `docs/dsl-cheatsheet.md`
+- `docs/cypher-rosetta.md`
 - `docs/dynamic-query-examples.md`
 - `docs/optimization-checklist.md`
 - `examples/authoring-patterns.md`

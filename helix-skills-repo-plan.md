@@ -527,14 +527,14 @@ Recommended build order:
 
 ### Phase 7: `helix-query-from-cypher`
 
-- [ ] Create `skills/helix-query-from-cypher/SKILL.md`
-- [ ] Add trigger phrases for “Cypher”, “Neo4j”, `MATCH`, and `MERGE`
-- [ ] Write `docs/cypher-rosetta.md`
-- [ ] Add a translation workflow that first identifies anchors, traversal directions, filters, and outputs
-- [ ] Add a mapping table for `MATCH`, `WHERE`, `RETURN`, `ORDER BY`, `LIMIT`, `COUNT`, and `MERGE`
-- [ ] Add a section on what does not translate directly
-- [ ] Add canonical translation examples
-- [ ] Link to `docs/cypher-rosetta.md`
+- [x] Create `skills/helix-query-from-cypher/SKILL.md`
+- [x] Add trigger phrases for “Cypher”, “Neo4j”, `MATCH`, and `MERGE`
+- [x] Write `docs/cypher-rosetta.md`
+- [x] Add a translation workflow that first identifies anchors, traversal directions, filters, and outputs
+- [x] Add a mapping table for `MATCH`, `WHERE`, `RETURN`, `ORDER BY`, `LIMIT`, `COUNT`, and `MERGE`
+- [x] Add a section on what does not translate directly
+- [x] Add canonical translation examples
+- [x] Link to `docs/cypher-rosetta.md`
 
 ### Phase 8: `helix-query-from-gremlin`
 

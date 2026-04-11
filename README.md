@@ -14,12 +14,12 @@ These skills are for agents that need to:
 Available now:
 
 - `helix-query-authoring`
+- `helix-query-from-cypher`
 - `helix-query-json-dynamic`
 - `helix-query-optimize`
 
 Planned next:
 
-- `helix-query-from-cypher`
 - `helix-query-from-gremlin`
 - `helix-query-from-sql`
 
@@ -63,6 +63,17 @@ It teaches agents to:
 - send `DateTime` values correctly
 - avoid malformed bundle-shaped payloads
 
+### `helix-query-from-cypher`
+
+Use this skill when an agent needs to port Neo4j or Cypher queries into Helix Rust DSL.
+
+It teaches agents to:
+
+- translate `MATCH` into explicit anchors and traversals
+- map `WHERE` to `Predicate` logic
+- map `RETURN`, `DISTINCT`, ordering, and limits into explicit output shaping
+- handle `OPTIONAL MATCH` and `MERGE` as semantic translations rather than literal rewrites
+
 ### `helix-query-optimize`
 
 Use this skill when an agent needs to review or improve Helix query performance.
@@ -81,6 +92,7 @@ Start here when working on the next skills:
 
 - `docs/source-canon.md`
 - `docs/dsl-cheatsheet.md`
+- `docs/cypher-rosetta.md`
 - `docs/dynamic-query-examples.md`
 - `docs/optimization-checklist.md`
 - `examples/authoring-patterns.md`
