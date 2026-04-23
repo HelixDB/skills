@@ -71,6 +71,60 @@ If the request is part of steady-state application traffic, prefer a stored rout
 }
 ```
 
+## Inline AST Variant Rules
+
+Helix parses inline query JSON strictly. Enum and step variant names must match the parser exactly.
+
+For node selector steps like `"N": {...}`:
+
+- use accepted variants such as `Ids`, `Var`, or `Param`
+- if selecting one literal node id, still encode it under `Ids`
+- do not invent singular variants from memory
+
+Good fragments:
+
+```json
+{
+  "N": {
+    "Ids": [644]
+  }
+}
+```
+
+```json
+{
+  "N": {
+    "Param": "entity_ids"
+  }
+}
+```
+
+```json
+{
+  "N": {
+    "Var": "seed_nodes"
+  }
+}
+```
+
+Bad fragment:
+
+```json
+{
+  "N": {
+    "Id": 644
+  }
+}
+```
+
+That bad form is rejected by the dynamic parser with an error like:
+
+```text
+unknown variant `Id`, expected one of `Ids`, `Var`, `Param`
+```
+
+When the inline AST is large or unfamiliar, prefer copying a known-good serialized payload from code, tests, or logs instead of hand-authoring variant names from memory.
+
 ## Parameter Typing Rules
 
 Use `parameter_types` when you need Helix to coerce JSON into a specific parameter type.
@@ -155,6 +209,7 @@ Do not:
 - use `mcp` as the dynamic request type
 - rely on implicit `DateTime` parsing without `parameter_types`
 - send `Bytes` parameters
+- invent inline AST variant names such as `N.Id` when the parser expects `N.Ids`, `N.Var`, or `N.Param`
 - hand-wave typed array encoding if you have not verified it locally
 - default to dynamic queries for stable production traffic
 
@@ -166,6 +221,7 @@ Before finishing:
 - verify `request_type` is `read` or `write`
 - verify `query` is a single inline route object
 - verify the request is not sending the full route bundle
+- verify strict inline AST variant names are used, especially for node selector steps like `N.Ids`, `N.Var`, and `N.Param`
 - verify `parameter_types` covers every parameter that needs typed coercion
 - verify `DateTime` parameters are RFC3339 strings or epoch millis
 - verify the request does not use unsupported `Bytes`
