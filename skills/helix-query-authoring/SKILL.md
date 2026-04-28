@@ -1,10 +1,10 @@
 ---
 name: helix-query-authoring
-description: Write and revise HelixDB Rust DSL stored queries from scratch. Use when the task is to add, update, or review a Helix query built with read_batch, write_batch, traversal builders, projections, indexes, BM25 text search, or vector search. Inspect local labels, edges, properties, and existing query patterns before inventing new code.
+description: Write and revise HelixDB Rust DSL stored queries from scratch. Use when the task is to add, update, or review a Helix query built with read_batch, write_batch, traversal builders, projections, indexes, BM25 text search, or vector search. Inspect local labels, edges, properties, and existing query patterns before inventing new code. See REFERENCE.md for the full builder catalog and EXAMPLES.md for end-to-end patterns.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.0
+  version: 0.2.0
 ---
 
 # Helix Query Authoring
@@ -32,12 +32,12 @@ Before writing any query code:
 3. Decide whether the route is a read or a write.
 4. Identify the narrowest indexed anchor before planning the traversal.
 
-If the local repo is thin on Helix examples, use this repository's canonical references in this order:
+If the local repo is thin on Helix examples, use the companion files in this skill:
 
-1. `docs/dsl-cheatsheet.md`
-2. `examples/authoring-patterns.md`
-3. `examples/search-patterns.md`
-4. `docs/source-canon.md`
+1. `EXAMPLES.md` — working end-to-end Rust queries (reads, writes, search, repeat, branching, upsert, `for_each_param`).
+2. `REFERENCE.md` — full builder catalog organized by category, with typestate notes.
+
+Open `REFERENCE.md` whenever you need a builder beyond the common surface (`add_e`, `drop_edge_by_id`, `create_vector_index_nodes`, `repeat`, `choose`, `coalesce`, `optional`, `aggregate_by`, `group_count`, `inject`, `order_by_multiple`, expression `case`, etc.) — do not invent method names from memory.
 
 ## Core Authoring Rules
 
@@ -110,6 +110,29 @@ When you need create-or-update behavior, follow this pattern:
 2. branch with `var_as_if`
 3. update when found
 4. create when missing
+
+### 9. Know The Full Builder Surface
+
+The DSL is larger than the canonical examples below suggest. Before reaching for a workaround, check `REFERENCE.md` — there is likely a direct builder.
+
+| Category | Primary builders | Notes |
+|---|---|---|
+| Sources | `g().n(...)`, `n_where`, `n_with_label`, `n_with_label_where`, `e`, `e_where`, `e_with_label`, `e_with_label_where`, `vector_search_nodes_with`, `text_search_nodes_with`, `vector_search_edges_with`, `text_search_edges_with` | Anchor narrowly — indexed ID first, then label scope. |
+| Traversal | `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`, `out_n`, `in_n`, `other_n` | Edge-valued forms (`*_e`) switch the stream type. |
+| Filters | `has`, `has_label`, `has_key`, `where_`, `dedup`, `within`, `without`, `edge_has`, `edge_has_label` | `Predicate::*` + `Predicate::*_param` for parameterized comparisons. |
+| Limits | `limit`, `skip`, `range` | All accept `usize` or `Expr`. |
+| Variables | `as_` / `store`, `select`, `inject` | Cross-query refs via `NodeRef::var`, `EdgeRef::var`, `NodeRef::param`, `EdgeRef::param`. |
+| Ordering | `order_by`, `order_by_multiple` | Use `Order::Desc` for descending. |
+| Aggregation | `count`, `exists`, `group`, `group_count`, `aggregate_by` | `AggregateFunction::{Count,Sum,Min,Max,Mean}`. |
+| Branching | `union`, `choose`, `coalesce`, `optional` | Each arm is a `sub()` sub-traversal. |
+| Repeat | `repeat(RepeatConfig::new(sub).times(n).until(pred).emit_all().max_depth(100))` | Always bound with `times` or `until`; default `max_depth` is 100. |
+| Projection | `values`, `value_map`, `project`, `edge_properties` | `project` mixes `PropertyProjection` (incl. renames) and `ExprProjection`. |
+| Expressions | `Expr::prop`, `Expr::val`, `Expr::id`, `Expr::timestamp`, `Expr::datetime`, `Expr::param`, `.add/.sub/.mul/.div/.modulo/.neg`, `Expr::case` | `Expr::Timestamp` writes server UTC millis; `Expr::DateTimeNow` writes typed datetime. |
+| Mutations | `add_n`, `add_e`, `set_property`, `remove_property`, `drop`, `drop_edge`, `drop_edge_labeled`, `drop_edge_by_id` | `drop_edge_by_id` is multigraph-safe. |
+| Indexes | `IndexSpec::node_equality / node_range / edge_equality / edge_range / node_vector / node_text / edge_vector / edge_text` plus `create_index` / `drop_index`; convenience: `create_vector_index_nodes`, `create_text_index_nodes`, edge variants | Use `.create_index(spec)` from a write batch. |
+| Transport | `DynamicQueryRequest::{read,write}(batch).with_parameter_value(...).with_parameter_type(...).to_json_string()` | Bridge from Rust DSL to the JSON payload (`helix-query-json-dynamic`). |
+
+See `REFERENCE.md` for signatures and typestate constraints.
 
 ## Canonical Examples
 
@@ -206,11 +229,7 @@ Before finishing:
 - verify large properties are omitted unless needed
 - verify the query matches surrounding local style more than any generic example
 
-## Repo References
+## Reference Files
 
-For shared references in this repo, see:
-
-- `docs/source-canon.md`
-- `docs/dsl-cheatsheet.md`
-- `examples/authoring-patterns.md`
-- `examples/search-patterns.md`
+- `REFERENCE.md` — full builder catalog (sources, traversal, predicates, expressions, projections, branching, repeat, mutations, indexes, dynamic-request transport).
+- `EXAMPLES.md` — end-to-end Rust queries mirroring the scenarios in `helix-query-json-dynamic/EXAMPLES.md`, so you can move fluently between Rust DSL and JSON forms.

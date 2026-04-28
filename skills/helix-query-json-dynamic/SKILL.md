@@ -1,15 +1,22 @@
 ---
 name: helix-query-json-dynamic
-description: Build and validate HelixDB dynamic inline-query requests for POST /v1/query. Use when the task involves dynamic queries, inline query JSON, parameter_types, DateTime coercion, query warming, or debugging a request body sent directly to the Helix gateway.
+description: Build and validate HelixDB dynamic inline-query requests for POST /v1/query. Use when the task involves dynamic queries, inline query JSON, the inline AST (steps, predicates, expressions, projections), parameter_types, DateTime coercion, query warming, or debugging a request body sent directly to the Helix gateway. See REFERENCE.md for every AST variant and EXAMPLES.md for copy-pasteable payloads.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.0
+  version: 0.2.0
 ---
 
 # Helix Dynamic Query JSON
 
 Use this skill for inline dynamic query requests sent directly to `POST /v1/query`.
+
+The inline `query` body is a JSON serialization of the Rust DSL AST. Every variant an agent can send is documented in the companion files. **If you are writing anything beyond a trivial read, open `REFERENCE.md` first** — do not guess variant names or field shapes.
+
+## Reference Files
+
+- `REFERENCE.md` — complete AST variant catalog (every `Step`, `Predicate`, `Expr`, `PropertyValue`, `IndexSpec`, `RepeatConfig`, `BatchCondition`, envelope field). Use when writing a non-trivial request.
+- `EXAMPLES.md` — working end-to-end JSON bodies: reads, writes, vector/text search, `Repeat`, `Choose`, `Coalesce`, `Union`, aggregations, upserts, `ForEach`, index management, warming. Copy the closest scenario as a starting point.
 
 ## When To Use
 
@@ -18,32 +25,30 @@ Use this skill when the task is to:
 - build a dynamic Helix request body
 - debug a failing `POST /v1/query` call
 - add `parameter_types` to a dynamic request
-- send `DateTime` parameters correctly
+- send `DateTime` or typed-array parameters correctly
 - understand read versus write behavior on the dynamic route
 - use query warming on a dynamic read
+- translate a Rust DSL query you already have into its JSON form
 
-Do not use this skill as the main guide for writing stored Rust DSL query functions. Use the authoring skill for that.
+Do not use this skill as the main guide for writing stored Rust DSL query functions. Use `helix-query-authoring` for that.
 
 ## First Steps
 
 Before writing the payload:
 
-1. Decide whether this should really be a stored route instead of a dynamic route.
-2. Confirm whether the request is a read or a write.
-3. Confirm whether the inline `query` object already exists in code, a test, or a serialized payload.
-4. Identify any parameters that need explicit typing, especially `DateTime`.
-
-If the request is part of steady-state application traffic, prefer a stored route when possible. Dynamic queries are more flexible but less optimized than stored procedures.
+1. Decide whether this should really be a stored route instead of a dynamic route. If the request is part of steady-state application traffic, prefer a stored route.
+2. Confirm whether the request is a read or a write. A query that contains any mutation step (`AddN`, `AddE`, `SetProperty`, `RemoveProperty`, `Drop`, `DropEdge`, `DropEdgeLabeled`, `DropEdgeById`, or any `Create*Index` / `DropIndex`) must use `request_type: "write"`.
+3. Confirm whether the inline `query` object already exists in code, a test, or a serialized payload — prefer copying a known-good shape.
+4. Identify any parameters that need explicit typing, especially `DateTime` and typed arrays.
 
 ## Required Envelope Rules
 
 - send requests to `POST /v1/query`
-- `request_type` must be `read` or `write`
-- `query` must be a single inline route object
-- do not send the entire `queries.json` bundle
+- `request_type` must be `"read"` or `"write"` (**lowercase** — the enum uses `#[serde(rename_all = "lowercase")]`)
+- `query` must be a single inline route object (a `ReadBatch` or `WriteBatch`), **not** the full `queries.json` bundle
 - `parameters` is optional
-- `parameter_types` is optional until you need schema-aware coercion
-- `embeddings` is optional and should only be included when the route expects it
+- `parameter_types` is optional until you need schema-aware coercion (see Parameter Typing)
+- `X-Helix-Warm: true` is an optional request header, valid only for reads
 
 ## Canonical Request Shape
 
@@ -53,9 +58,11 @@ If the request is part of steady-state application traffic, prefer a stored rout
   "query": {
     "queries": [
       {
-        "name": "node_exists",
-        "steps": ["Count"],
-        "condition": null
+        "Query": {
+          "name": "node_exists",
+          "steps": ["Count"],
+          "condition": null
+        }
       }
     ],
     "returns": ["node_exists"]
@@ -71,116 +78,199 @@ If the request is part of steady-state application traffic, prefer a stored rout
 }
 ```
 
-## Inline AST Variant Rules
+Notes on the shape:
 
-Helix parses inline query JSON strictly. Enum and step variant names must match the parser exactly.
+- `query` contains a `ReadBatch` (or `WriteBatch`); both have `{ "queries": [...], "returns": [...] }`.
+- Each element of `queries` is a `BatchEntry` — either `{"Query": {...}}` or `{"ForEach": {...}}`.
+- `"steps": ["Count"]` is a valid step list: `Count` is a unit variant so it serializes as a bare string. Data-carrying variants are wrapped: `{"Limit": 10}`, `{"Has": ["name", {"String": "Alice"}]}`, etc.
 
-For node selector steps like `"N": {...}`:
+## Serde Encoding Rules
 
-- use accepted variants such as `Ids`, `Var`, or `Param`
-- if selecting one literal node id, still encode it under `Ids`
-- do not invent singular variants from memory
+Every encoding in `REFERENCE.md` follows these rules. Internalize them or the request will fail with `unknown variant` / `invalid type` errors.
 
-Good fragments:
+1. **Default encoding is externally tagged.** Given a Rust enum `E::Var(..)` without a `#[serde(...)]` attribute:
+   - **Unit variant** (no data): bare string. `Step::Count` → `"Count"`. `Predicate::HasKey` is a tuple-with-data variant, not unit — see rule 2.
+   - **Tuple variant with 1 field**: `{"Var": <inner>}`. `Step::N(NodeRef::Ids(vec![644]))` → `{"N": {"Ids": [644]}}`.
+   - **Tuple variant with 2+ fields**: `{"Var": [a, b, ...]}`. `Predicate::Eq("status", PropertyValue::String("active"))` → `{"Eq": ["status", {"String": "active"}]}`. `Predicate::Between("score", 60, 100)` → `{"Between": ["score", {"I64": 60}, {"I64": 100}]}`.
+   - **Struct variant**: `{"Var": {"field": ...}}`. `Step::VectorSearchNodes { label, property, ... }` → `{"VectorSearchNodes": {"label": "...", "property": "...", ...}}`.
 
-```json
-{
-  "N": {
-    "Ids": [644]
-  }
-}
-```
+2. **Three enums are `#[serde(untagged)]` — no variant wrapper:**
+   - `BatchQuery` (the value of the envelope's `query` field): write the `ReadBatch` / `WriteBatch` object inline. There is no `{"Read": ...}` wrapper.
+   - `Projection` (element of a `Project` step's list): write the inner struct directly. `PropertyProjection` → `{"source": "name", "alias": "name"}`. `ExprProjection` → `{"alias": "age_plus_one", "expr": {...}}`. **Do not** write `{"Property": {...}}` or `{"Expr": {...}}` wrappers.
+   - `DynamicQueryValue` (values inside the top-level `parameters` map): bare JSON. `"limit": 25`, `"tags": ["a","b"]`, `"user": {"name": "Alice"}`. No `{"I64": 25}` wrapping here — that form is `PropertyValue`, which is *inside the AST*, not at parameter-value position.
 
-```json
-{
-  "N": {
-    "Param": "entity_ids"
-  }
-}
-```
+3. **`DynamicQueryRequestType` is `rename_all = "lowercase"`**: use `"read"` / `"write"`, never `"Read"` / `"Write"`.
 
-```json
-{
-  "N": {
-    "Var": "seed_nodes"
-  }
-}
-```
+4. **Optional fields may be omitted or set to `null`.** `tenant_value`, `condition`, `else_traversal`, `emit_predicate`, and similar all serialize via `skip_serializing_if = "Option::is_none"` when unset, but the server accepts explicit `null`.
 
-Bad fragment:
+5. **`PropertyValue` is distinct from `DynamicQueryValue`.** Inside the AST (literals in `Has`, `Eq`, `AddN` properties wrapped in `PropertyInput::Value`, etc.) values are *tagged*: `{"String": "..."}`, `{"I64": 42}`, `{"Bool": true}`, `{"F64": 3.14}`, `{"F64Array": [0.1, 0.2]}`, `{"Null": null}` is wrong — use the bare string `"Null"` for the unit variant. At *parameter-value position* (top-level `parameters` map) values are untagged bare JSON.
 
-```json
-{
-  "N": {
-    "Id": 644
-  }
-}
-```
+6. **`DateTime` over JSON:** supply an RFC3339 string *or* epoch-millis integer as the parameter value, and declare `parameter_types: {"p": "DateTime"}`. No implicit coercion — a plain string parameter without the type declaration is just a string.
 
-That bad form is rejected by the dynamic parser with an error like:
+7. **`Bytes` is not round-trippable.** The builder raises `UnsupportedBytesParameter`. Do not send `Bytes` parameters through the JSON dynamic route.
 
-```text
-unknown variant `Id`, expected one of `Ids`, `Var`, `Param`
-```
+## Envelope Decision Table
 
-When the inline AST is large or unfamiliar, prefer copying a known-good serialized payload from code, tests, or logs instead of hand-authoring variant names from memory.
+| Goal | `request_type` | `query.queries[*]` shape | Notes |
+|---|---|---|---|
+| Simple read | `"read"` | `{"Query": {"name": "...", "steps": [...], "condition": null}}` | |
+| Conditional step after prior step | `"read"` or `"write"` | `{"Query": {..., "condition": {"VarNotEmpty": "prev"}}}` | Conditions: `VarNotEmpty`, `VarEmpty`, `VarMinSize`, `PrevNotEmpty` |
+| Single mutation | `"write"` | `{"Query": {...}}` with a mutation step | See EXAMPLES.md §Write |
+| Upsert | `"write"` | Multi-entry: load → `VarNotEmpty` update → `VarEmpty` create | See EXAMPLES.md §Upsert |
+| Per-row iteration over a param | `"read"` or `"write"` | `{"ForEach": {"param": "items", "body": [...]}}` | `param` must be typed `["Array", "Object"]` |
+| Warm a read | `"read"` | normal body + header `X-Helix-Warm: true` | Returns `204 No Content` on success |
+
+## AST Quick-Map
+
+Step categories and their JSON form (one-liners). Full signatures in `REFERENCE.md`.
+
+**Sources** (start a traversal):
+- `{"N": {"Ids": [1,2]}}` / `{"N": {"Var": "x"}}` / `{"N": {"Param": "ids"}}` — nodes by id / variable / parameter
+- `{"NWhere": <SourcePredicate>}` — nodes matching a source-safe predicate
+- `{"E": {...}}` / `{"EWhere": <SourcePredicate>}` — edges
+- `{"VectorSearchNodes": {"label":"...","property":"...","query_vector":{...},"k":{...},"tenant_value":{...}}}`
+- `{"TextSearchNodes": {...}}` — BM25 on nodes
+- `{"VectorSearchEdges": {...}}`, `{"TextSearchEdges": {...}}`
+
+**Traversal** (navigate):
+- `{"Out": "LABEL"}` / `{"Out": null}` — also `In`, `Both`, `OutE`, `InE`, `BothE` (same shape)
+- `"OutN"` / `"InN"` / `"OtherN"` — unit variants, from an edge stream back to a node
+
+**Filters:**
+- `{"Has": ["prop", {"String": "v"}]}` — property equals
+- `{"HasLabel": "User"}`, `{"HasKey": "email"}`
+- `{"Where": <Predicate>}` — full predicate
+- `"Dedup"` — unit variant
+- `{"Within": "var"}`, `{"Without": "var"}` — set ops against a stored variable
+- `{"EdgeHas": ["weight", {"Value": {"I64": 1}}]}`, `{"EdgeHasLabel": "KNOWS"}`
+
+**Limits:**
+- `{"Limit": 10}`, `{"Skip": 5}`, `{"Range": [0, 25]}` — literal
+- `{"LimitBy": {"Param": "n"}}`, `{"SkipBy": ...}`, `{"RangeBy": [<StreamBound>, <StreamBound>]}` — runtime
+
+**Variables:**
+- `{"As": "x"}` / `{"Store": "x"}` — name the current stream
+- `{"Select": "x"}` — replace stream with a stored var
+- `{"Inject": "x"}` — inject var into stream (source or mid-traversal)
+
+**Ordering:**
+- `{"OrderBy": ["created_at", "Desc"]}` — single property
+- `{"OrderByMultiple": [["priority", "Desc"], ["name", "Asc"]]}`
+
+**Aggregation:**
+- `{"Group": "status"}`, `{"GroupCount": "status"}`
+- `{"AggregateBy": ["Sum", "price"]}` — functions: `Count`, `Sum`, `Min`, `Max`, `Mean`
+
+**Branching** (each branch is a `SubTraversal` = `{"steps": [...]}`):
+- `{"Union": [{"steps":[...]}, {"steps":[...]}]}`
+- `{"Choose": {"condition": <Predicate>, "then_traversal": {"steps":[...]}, "else_traversal": null}}`
+- `{"Coalesce": [{"steps":[...]}, ...]}`
+- `{"Optional": {"steps":[...]}}`
+
+**Repeat:**
+- `{"Repeat": {"traversal": {"steps":[{"Out":null}]}, "times": 3, "until": null, "emit": "After", "emit_predicate": null, "max_depth": 100}}`
+- `emit` is one of `"None"`, `"Before"`, `"After"`, `"All"`
+
+**Projections (terminal):**
+- `{"Values": ["name", "email"]}`
+- `{"ValueMap": ["$id", "name"]}` or `{"ValueMap": null}` for all
+- `{"Project": [{"source":"name","alias":"name"}, {"alias":"age_plus_one","expr":{"Add":[{"Property":"age"},{"Constant":{"I64":1}}]}}]}` — **no `{"Property":...}` / `{"Expr":...}` wrapper** (untagged)
+- `"EdgeProperties"` — unit variant
+
+**Terminals (scalar result):**
+- `"Count"`, `"Exists"`, `"Id"`, `"Label"`
+
+**Mutations** (write-only):
+- `{"AddN": {"label": "User", "properties": [["name", {"Value": {"String": "Alice"}}]]}}`
+- `{"AddE": {"label": "FOLLOWS", "to": {"Ids":[42]}, "properties": []}}`
+- `{"SetProperty": ["name", {"Value": {"String": "Bob"}}]}`, `{"RemoveProperty": "temp"}`
+- `"Drop"` — delete current nodes & their edges
+- `{"DropEdge": {"Ids": [42]}}`, `{"DropEdgeLabeled": {"to": {...}, "label": "X"}}`, `{"DropEdgeById": {"Ids": [7]}}`
+
+**Indexes** (write-only):
+- `{"CreateIndex": {"spec": <IndexSpec>, "if_not_exists": true}}`, `{"DropIndex": {"spec": <IndexSpec>}}`
+- Legacy vector/text convenience steps: `{"CreateVectorIndexNodes": {...}}`, `CreateVectorIndexEdges`, `CreateTextIndexNodes`, `CreateTextIndexEdges`
+
+**Reserved (currently no-ops — safe to include but have no effect):** `"Fold"`, `"Unfold"`, `"Path"`, `"SimplePath"`, `{"WithSack": <PropertyValue>}`, `{"SackSet": "prop"}`, `{"SackAdd": "prop"}`, `"SackGet"`.
+
+## Virtual Fields
+
+Available in projections, `value_map`, and `Has` predicates without being declared in your schema:
+
+- `$id` — node or edge id
+- `$label` — node or edge label
+- `$distance` — on vector / text search hits; order is ascending (smaller = closer)
+- `$from`, `$to` — on edge streams (including `edge_properties`) and edge vector/text hits
+
+**Distance lifecycle:** `$distance` is present on the direct hit stream produced by `VectorSearchNodes` / `VectorSearchEdges` / `TextSearchNodes` / `TextSearchEdges`. It is *lost* once traversal steps off the hit stream (`Out`, `In`, `Both`, `OutN`, `InN`, `OtherN`). Project the distance before navigating if you need to keep it.
 
 ## Parameter Typing Rules
 
-Use `parameter_types` when you need Helix to coerce JSON into a specific parameter type.
+Use `parameter_types` when Helix must coerce JSON into a specific parameter type. Every type string is a `QueryParamType`.
 
-Most important cases:
+### Type string encoding
 
-- `DateTime`
-- arrays whose element type matters
-- objects whose shape needs to be preserved intentionally
+Unit scalars serialize as bare strings:
+
+```text
+"Bool" | "I64" | "F64" | "F32" | "String" | "DateTime" | "Bytes" | "Value" | "Object"
+```
+
+`Array` is a single-field tuple variant — it wraps its element type:
+
+```json
+{"Array": "String"}                     // array of strings
+{"Array": {"Array": "F64"}}             // array of arrays of F64
+{"Array": "Object"}                     // array of objects
+```
+
+Required any time the value needs a non-default interpretation: `DateTime`, typed scalar coercion, or arrays whose element shape the runtime must know.
 
 ### DateTime
 
-If a parameter should be treated as `DateTime`, declare it explicitly:
-
 ```json
 {
-  "parameters": {
-    "created_after": "2026-04-05T10:00:00Z"
-  },
-  "parameter_types": {
-    "created_after": "DateTime"
-  }
+  "parameters":      {"created_after": "2026-04-05T10:00:00Z"},
+  "parameter_types": {"created_after": "DateTime"}
 }
 ```
 
-Helix accepts:
+Accepted value forms: RFC3339 string, epoch-millis integer. **No implicit coercion** — a plain string parameter without the type declaration is just a string.
 
-- RFC3339 strings
-- epoch-millis integers
+### Typed array example
 
-Do not assume a plain JSON string will be interpreted as `DateTime` without the matching type declaration.
+```json
+{
+  "parameters":      {"statuses": ["active", "pending"]},
+  "parameter_types": {"statuses": {"Array": "String"}}
+}
+```
 
-### Typed Arrays
+### Vector array example
 
-If an array parameter needs an explicit inner type, declare it intentionally and verify the exact encoded form in your environment before shipping.
-
-Do not guess nested type encoding in production requests.
+```json
+{
+  "parameters":      {"query_vector": [0.12, 0.44, 0.91]},
+  "parameter_types": {"query_vector": {"Array": "F64"}}
+}
+```
 
 ### Unsupported Bytes
 
-Do not send `Bytes` parameters through the JSON dynamic route.
+Do not send `Bytes` parameters through the JSON dynamic route. The builder raises `UnsupportedBytesParameter` and the gateway cannot round-trip the shape.
 
 ## Read Versus Write Rules
 
-Use:
+- `request_type: "read"` — no mutation / index step may appear anywhere in the AST.
+- `request_type: "write"` — allowed to mix read steps and mutation / index steps in the same batch.
 
-- `request_type: "read"` for read queries
-- `request_type: "write"` for writes
+Dynamic requests do not support a `"mcp"` request type. That's only for the stored-route / MCP tool surface.
 
-Dynamic requests do not support `mcp`.
-
-If the inline AST is a write query, the request must also be marked as `write` so the gateway can route it correctly.
+If the inline AST contains a write step, the request must also be marked `"write"` — the gateway uses `request_type` to pick the transaction kind.
 
 ## Query Warming
 
-Dynamic query warming uses the same request body plus:
+Dynamic query warming uses the same request body plus the header:
 
 ```text
 X-Helix-Warm: true
@@ -195,9 +285,9 @@ Rules:
 ## Practical Workflow
 
 1. Prefer a stored route if the query is stable and production-facing.
-2. If using the dynamic route, locate or generate the exact inline `query` AST first.
+2. If using the dynamic route, locate or generate the exact inline `query` AST first — either serialize from a Rust `DynamicQueryRequest::read(...).to_json_string()` or copy from a test fixture.
 3. Add `parameters` only for the names the AST expects.
-4. Add `parameter_types` for `DateTime` and any other parameters that require schema-aware coercion.
+4. Add `parameter_types` for `DateTime`, typed arrays, and any other parameters needing schema-aware coercion.
 5. Validate that the body contains one inline route object, not a full query bundle.
 6. If warming, ensure the request is read-only and add `X-Helix-Warm: true`.
 
@@ -205,32 +295,50 @@ Rules:
 
 Do not:
 
-- send the full `queries.json` file under `query`
-- use `mcp` as the dynamic request type
+- send the full `queries.json` file under `query` — send a single route (the `ReadBatch` / `WriteBatch` inline)
+- use `"mcp"` as the dynamic request type
+- capitalize `"Read"` / `"Write"` in `request_type` — the enum is lowercase
 - rely on implicit `DateTime` parsing without `parameter_types`
 - send `Bytes` parameters
-- invent inline AST variant names such as `N.Id` when the parser expects `N.Ids`, `N.Var`, or `N.Param`
-- hand-wave typed array encoding if you have not verified it locally
+- invent inline AST variant names such as `N.Id` when the parser expects `N.Ids`, `N.Var`, or `N.Param`. The parser rejects with `unknown variant 'Id', expected one of 'Ids', 'Var', 'Param'`. Same foot-gun for `Has` (single vs array), `OrderBy` ordering (always `[prop, Order]`, not `{prop: Order}`), and `Project` entries (no `{"Property": ...}` / `{"Expr": ...}` wrapper — the enum is untagged).
+- hand-wave typed array encoding if you have not verified it locally — copy from `tests/register_metadata_tests.rs` or a recorded request
+- wrap `Projection` entries with a variant tag — `Projection` is `#[serde(untagged)]`
+- wrap top-level parameter values with variant tags — `DynamicQueryValue` is untagged (bare JSON)
 - default to dynamic queries for stable production traffic
 
 ## Validation Checklist
 
 Before finishing:
 
-- verify the target endpoint is `POST /v1/query`
-- verify `request_type` is `read` or `write`
-- verify `query` is a single inline route object
-- verify the request is not sending the full route bundle
-- verify strict inline AST variant names are used, especially for node selector steps like `N.Ids`, `N.Var`, and `N.Param`
-- verify `parameter_types` covers every parameter that needs typed coercion
-- verify `DateTime` parameters are RFC3339 strings or epoch millis
-- verify the request does not use unsupported `Bytes`
-- verify warming is only applied to reads
+- [ ] target endpoint is `POST /v1/query`
+- [ ] `request_type` is `"read"` or `"write"` (lowercase)
+- [ ] `query` is a single inline route object (a `ReadBatch` or `WriteBatch`), not a bundle
+- [ ] `queries[*]` entries are `{"Query": {...}}` or `{"ForEach": {...}}`, each `Query` has `name`, `steps`, `condition`
+- [ ] unit-variant steps are encoded as bare strings (`"Count"`, `"Dedup"`, `"Exists"`, `"Id"`, `"Label"`, `"OutN"`, `"InN"`, `"OtherN"`, `"EdgeProperties"`, `"Drop"`)
+- [ ] tuple-variant steps with 2+ fields use arrays (`{"Has": ["name", {"String": "v"}]}`)
+- [ ] struct-variant steps use objects (`{"VectorSearchNodes": {"label": ...}}`)
+- [ ] `Project` entries have no variant wrapper (untagged enum)
+- [ ] inner AST values use tagged `PropertyValue` (`{"I64": 1}`); top-level `parameters` values are bare JSON (`1`)
+- [ ] `parameter_types` covers every parameter that needs typed coercion (`DateTime`, typed arrays)
+- [ ] `DateTime` parameters are RFC3339 strings or epoch-millis integers **and** declared in `parameter_types`
+- [ ] no `Bytes` parameters
+- [ ] warming is only applied to reads
+- [ ] if the AST contains any mutation or index step, `request_type` is `"write"`
 
-## Repo References
+## Source References
 
-For shared references in this repo, see:
+Authoritative source files (for when the reference answer is ambiguous):
 
-- `docs/dynamic-query-examples.md`
-- `docs/source-canon.md`
-- `helix-skills-repo-plan.md`
+- `src/lib.rs:2506-2962` — `Step` enum (every variant)
+- `src/lib.rs:1548-1596` — `Predicate`; `src/lib.rs:1603-1626` — `SourcePredicate`
+- `src/lib.rs:1352-1384` — `Expr`
+- `src/lib.rs:972-1002` — `PropertyValue`; `src/lib.rs:1197-1202` — `PropertyInput`
+- `src/lib.rs:1232-1339` — `NodeRef` / `EdgeRef`
+- `src/lib.rs:1888-1965` — `PropertyProjection` / `ExprProjection` / `Projection` (untagged)
+- `src/lib.rs:2250-2323` — `RepeatConfig`; `src/lib.rs:1984-1993` — `EmitBehavior`
+- `src/lib.rs:2327-2398` — `IndexSpec`
+- `src/lib.rs:4041-4078` — `BatchCondition`, `BatchEntry`, `NamedQuery`
+- `src/lib.rs:4089-4270` — `ReadBatch` / `WriteBatch` / `BatchQuery` (untagged)
+- `src/lib.rs:4346-4452` — `DynamicQueryRequestType` (lowercase), `DynamicQueryValue` (untagged), `DynamicQueryRequest`
+- `src/query_generator.rs:9-31` — `QueryParamType`
+- `tests/register_metadata_tests.rs:182-186, 243-245, 274-275` — ground-truth serialized examples
