@@ -176,3 +176,9 @@ For shared references in this repo, see:
 - `docs/dsl-cheatsheet.md`
 - `examples/authoring-patterns.md`
 - `examples/search-patterns.md`
+
+## Related Skills
+
+- `helix-query-rust` — full Rust DSL builder catalog and authoring rules; use it to validate the query you produce.
+- `helix-query-typescript` — the TypeScript DSL emits the same JSON AST, if the target is TypeScript rather than Rust.
+- `helix-query-json-dynamic` — the inline JSON form of the same query.

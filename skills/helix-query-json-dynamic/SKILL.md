@@ -30,7 +30,7 @@ Use this skill when the task is to:
 - use query warming on a dynamic read
 - translate a Rust DSL query you already have into its JSON form
 
-Do not use this skill as the main guide for writing stored Rust DSL query functions. Use `helix-query-authoring` for that.
+Do not use this skill as the main guide for writing stored DSL query functions. Use `helix-query-rust` (Rust) or `helix-query-typescript` (TypeScript) for that.
 
 ## First Steps
 
@@ -327,18 +327,18 @@ Before finishing:
 
 ## Source References
 
-Authoritative source files (for when the reference answer is ambiguous):
+Authoritative source files (for when the reference answer is ambiguous). The canonical AST lives in the `helix-db` crate at `sdks/rust/src/dsl.rs`:
 
-- `src/lib.rs:2506-2962` — `Step` enum (every variant)
-- `src/lib.rs:1548-1596` — `Predicate`; `src/lib.rs:1603-1626` — `SourcePredicate`
-- `src/lib.rs:1352-1384` — `Expr`
-- `src/lib.rs:972-1002` — `PropertyValue`; `src/lib.rs:1197-1202` — `PropertyInput`
-- `src/lib.rs:1232-1339` — `NodeRef` / `EdgeRef`
-- `src/lib.rs:1888-1965` — `PropertyProjection` / `ExprProjection` / `Projection` (untagged)
-- `src/lib.rs:2250-2323` — `RepeatConfig`; `src/lib.rs:1984-1993` — `EmitBehavior`
-- `src/lib.rs:2327-2398` — `IndexSpec`
-- `src/lib.rs:4041-4078` — `BatchCondition`, `BatchEntry`, `NamedQuery`
-- `src/lib.rs:4089-4270` — `ReadBatch` / `WriteBatch` / `BatchQuery` (untagged)
-- `src/lib.rs:4346-4452` — `DynamicQueryRequestType` (lowercase), `DynamicQueryValue` (untagged), `DynamicQueryRequest`
-- `src/query_generator.rs:9-31` — `QueryParamType`
-- `tests/register_metadata_tests.rs:182-186, 243-245, 274-275` — ground-truth serialized examples
+- `sdks/rust/src/dsl.rs:2606-3062` — `Step` enum (every variant)
+- `sdks/rust/src/dsl.rs:1564` — `Predicate`; `:1619` — `SourcePredicate`
+- `sdks/rust/src/dsl.rs:1368` — `Expr`
+- `sdks/rust/src/dsl.rs:973` — `PropertyValue`; `:1197` — `PropertyInput`
+- `sdks/rust/src/dsl.rs:1241` / `:1308` — `NodeRef` / `EdgeRef`
+- `sdks/rust/src/dsl.rs:1988-2062` — `PropertyProjection` / `ExprProjection` / `Projection` (untagged)
+- `sdks/rust/src/dsl.rs:2350` — `RepeatConfig`; `:2084` — `EmitBehavior`
+- `sdks/rust/src/dsl.rs:2427` — `IndexSpec`
+- `sdks/rust/src/dsl.rs:4142` / `:4168` / `:4156` — `BatchCondition`, `BatchEntry`, `NamedQuery`
+- `sdks/rust/src/dsl.rs:4190` / `:4280` / `:4365` — `ReadBatch` / `WriteBatch` / `BatchQuery` (untagged)
+- `sdks/rust/src/dsl.rs:4448` / `:4458` / `:4479` — `DynamicQueryRequestType` (lowercase), `DynamicQueryValue` (untagged), `DynamicQueryRequest`
+- `sdks/rust/src/query_generator.rs:10` — `QueryParamType`
+- `sdks/rust/src/dsl.rs:4593` and `sdks/rust/src/lib.rs:200` (`mod tests`), `sdks/typescript/test/basic.test.ts` — ground-truth serialized examples

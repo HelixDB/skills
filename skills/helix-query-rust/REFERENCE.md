@@ -1,8 +1,8 @@
 # Helix Query Authoring — Rust DSL Reference
 
-Exhaustive builder catalog for `helix_dsl`. Use when `SKILL.md` points you at a specific category or when you need a signature confirmed. Every entry is grouped by category; categories line up 1:1 with `../helix-query-json-dynamic/REFERENCE.md` so you can jump between Rust and JSON forms.
+Exhaustive builder catalog for the `helix-db` Rust crate (`sdks/rust`). Use when `SKILL.md` points you at a specific category or when you need a signature confirmed. Every entry is grouped by category; categories line up 1:1 with `../helix-query-typescript/REFERENCE.md` and `../helix-query-json-dynamic/REFERENCE.md` so you can jump between the Rust DSL, TypeScript DSL, and JSON forms.
 
-All signatures come from `helix-enterprise-ql/src/lib.rs`; line numbers are cited inline.
+Import: `use helix_db::dsl::prelude::*;`. All signatures come from `sdks/rust/src/dsl.rs` (re-exported at the crate root via `pub use dsl::*`); line numbers are cited inline.
 
 ## Typestate Cheat Sheet
 
@@ -35,7 +35,7 @@ OnEdges(WriteEnabled) -- drop_edge_by_id                                ↻ OnEd
 
 ## Batch Entry Points
 
-`src/lib.rs:4454-4463`:
+`sdks/rust/src/dsl.rs:4556`, `:4562`, `:4133`, `:2342`:
 
 ```rust
 pub fn read_batch() -> ReadBatch
@@ -51,7 +51,7 @@ pub fn sub() -> SubTraversal
 - `for_each_param(param: &str, body: ReadBatch | WriteBatch)` — run `body` once per object in an array param. `body.queries` are inlined inside a `BatchEntry::ForEach`.
 - `returning<I, S: Into<String>>(vars)` — restrict the response to these variable names.
 
-### `BatchCondition`  (`src/lib.rs:4041-4051`)
+### `BatchCondition`  (`sdks/rust/src/dsl.rs:4142`)
 
 ```rust
 BatchCondition::VarNotEmpty(name)
@@ -64,7 +64,7 @@ BatchCondition::PrevNotEmpty
 
 ## Sources  (`Traversal<Empty>` → `Traversal<On*, _>`)
 
-`src/lib.rs:3104-3236`, `:3242-3368`:
+`sdks/rust/src/dsl.rs:3191` (`impl Traversal<Empty, ReadOnly>`):
 
 ```rust
 // Nodes
@@ -101,7 +101,7 @@ Prefer the `_with` variants for parameterized routes — they accept `PropertyIn
 
 ## Traversal
 
-Node state (`src/lib.rs:3490-3518`):
+Node state (`sdks/rust/src/dsl.rs:3586`, `impl<M: MutationMode> Traversal<OnNodes, M>`):
 
 ```rust
 traversal.out(label: Option<impl Into<String>>)   -> Traversal<OnNodes, M>
@@ -112,7 +112,7 @@ traversal.in_e(label)                             -> Traversal<OnEdges, M>
 traversal.both_e(label)                           -> Traversal<OnEdges, M>
 ```
 
-Edge state (`src/lib.rs` edge impl):
+Edge state (`sdks/rust/src/dsl.rs:4023`, `impl<M: MutationMode> Traversal<OnEdges, M>`):
 
 ```rust
 traversal.out_n()   -> Traversal<OnNodes, M>   // edge → target
@@ -138,7 +138,7 @@ Pass `None::<&str>` to skip label filtering: `.out(None::<&str>)`.
 .edge_has_label(label)                             // Edges only
 ```
 
-### `Predicate`  (`src/lib.rs:1711-1882`)
+### `Predicate`  (enum `sdks/rust/src/dsl.rs:1564`, impl `:1811`)
 
 Literal constructors:
 
@@ -166,13 +166,15 @@ Predicate::gt_param(prop, param)  Predicate::gte_param(prop, param)
 Predicate::lt_param(prop, param)  Predicate::lte_param(prop, param)
 ```
 
-### `SourcePredicate`  (`src/lib.rs:1628-1687`)
+### `SourcePredicate`  (enum `sdks/rust/src/dsl.rs:1619`, impl `:1658`)
 
 Restricted subset for `n_where` / `e_where` (must be index-friendly):
 
 ```rust
 SourcePredicate::eq / neq / gt / gte / lt / lte / between / has_key / starts_with / and / or
 ```
+
+Each comparison **auto-routes** by argument type. A literal keeps the plain variant (`SourcePredicate::eq("status", "active")` → `Eq("status", String("active"))`); an `Expr`/param routes to the `*Expr` variant (`SourcePredicate::eq("status", Expr::param("s"))` → `EqExpr("status", Param("s"))`). The enum carries both forms (`Eq`/`EqExpr`, `Between`/`BetweenExpr`, etc.); `.to_predicate()` maps the `*Expr` variants to `Compare`.
 
 **Not available** at source position: `is_null`, `is_not_null`, `contains[_param]`, `ends_with`, `is_in*`, `not`, `compare`. Push those into a following `.where_(Predicate::...)`.
 
@@ -186,7 +188,7 @@ CompareOp::{Eq, Neq, Gt, Gte, Lt, Lte}
 
 ## Expressions
 
-`Expr`  (`src/lib.rs:1386-1454`):
+`Expr`  (enum `sdks/rust/src/dsl.rs:1368`, impl `:1402`):
 
 ```rust
 Expr::prop(name)                    Expr::val(value: impl Into<PropertyValue>)
@@ -270,7 +272,7 @@ Each arm is a `SubTraversal`, built by `sub()` + the same filter / traversal / p
 .optional(sub_a)                     // pass through if sub_a is empty
 ```
 
-`SubTraversal` API (`src/lib.rs:2031-2234`) includes: `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`, `out_n`, `in_n`, `other_n`, `has`, `has_label`, `has_key`, `where_`, `dedup`, `within`, `without`, `edge_has`, `edge_has_label`, `limit`, `skip`, `range`, `as_`, `store`, `select`, `order_by`, `order_by_multiple`, `path`, `simple_path`.
+`SubTraversal` API (struct `sdks/rust/src/dsl.rs:2124`, impl `:2129`) includes: `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`, `out_n`, `in_n`, `other_n`, `has`, `has_label`, `has_key`, `where_`, `dedup`, `within`, `without`, `edge_has`, `edge_has_label`, `limit`, `skip`, `range`, `as_`, `store`, `select`, `order_by`, `order_by_multiple`, `path`, `simple_path`.
 
 ---
 
@@ -286,7 +288,7 @@ traversal.repeat(
 )
 ```
 
-`RepeatConfig`  (`src/lib.rs:2265-2323`):
+`RepeatConfig`  (struct `sdks/rust/src/dsl.rs:2350`, impl `:2365`):
 
 - `.times(n: usize)` — fixed iterations
 - `.until(Predicate)` — stop when predicate is true
@@ -308,7 +310,7 @@ Default `emit` is `EmitBehavior::None` (only the final result is returned). Boun
 .edge_properties()                                          -> Traversal<Terminal, M>  // OnEdges only
 ```
 
-Projection constructors (`src/lib.rs:1895-1965`):
+Projection constructors (`sdks/rust/src/dsl.rs:1988-2062`):
 
 ```rust
 PropertyProjection::new("name")                 // no rename; source == alias
@@ -332,7 +334,7 @@ Usable on both node and edge streams. `.edge_properties()` is edge-only.
 
 ---
 
-## Mutations (write-only)  (`src/lib.rs:3443-3918`)
+## Mutations (write-only)  (`sdks/rust/src/dsl.rs:3191`, `:3586`)
 
 Source-position mutation (`Traversal<Empty>` → `Traversal<OnNodes, WriteEnabled>`):
 
@@ -370,7 +372,7 @@ PropertyInput::param("userId")              // wraps Expr::Param("userId")
 
 ---
 
-## Indexes (write-only)  (`src/lib.rs:3374-3434`)
+## Indexes (write-only)  (`sdks/rust/src/dsl.rs:3191`)
 
 Generic `IndexSpec` forms:
 
@@ -388,7 +390,7 @@ g().create_text_index_nodes(label, property, tenant_property)
 g().create_text_index_edges(label, property, tenant_property)
 ```
 
-`IndexSpec` constructors  (`src/lib.rs:2401-2497`):
+`IndexSpec` constructors  (enum `sdks/rust/src/dsl.rs:2427`, impl `:2501`):
 
 ```rust
 IndexSpec::node_equality(label, property)               // unique = false
@@ -418,7 +420,7 @@ Emit the corresponding steps but have no effect in the current interpreter. Safe
 
 ## `#[register]` Macro & Dynamic Transport
 
-`helix-dsl-macros/src/lib.rs`. Apply to a top-level function returning `ReadBatch` or `WriteBatch`; the macro generates a wrapper that constructs a `DynamicQueryRequest` with the function's arguments as typed parameters.
+`sdks/rust/helix-dsl-macros/src/lib.rs`. Apply to a top-level function returning `ReadBatch` or `WriteBatch`; the macro generates a wrapper that constructs a `DynamicQueryRequest` with the function's arguments as typed parameters.
 
 ```rust
 #[register]
@@ -443,7 +445,7 @@ Supported param types: primitives (`bool`, `i64`, `f64`, `f32`, `String`, `DateT
 
 ### Query bundles
 
-`src/query_generator.rs`:
+`sdks/rust/src/query_generator.rs`:
 
 ```rust
 pub fn build_query_bundle() -> Result<QueryBundle, GenerateError>

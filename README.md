@@ -8,6 +8,7 @@ These skills are for agents that need to:
 - translate from Cypher, Gremlin, and SQL into Helix query code
 - optimize Helix query shape and index usage
 - build correct dynamic `POST /v1/query` payloads
+- design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 
 ## Status
 
@@ -18,6 +19,7 @@ Available now:
 - `helix-query-from-gremlin`
 - `helix-query-json-dynamic`
 - `helix-query-optimize`
+- `helix-memory-system`
 
 Planned next:
 
@@ -96,6 +98,19 @@ It teaches agents to:
 - move scope filters earlier
 - shrink large projections
 - review BM25 and vector search routes separately
+
+### `helix-memory-system`
+
+Use this skill when an agent needs to design or operate an AI agent memory system on Helix — generation, deduplication, updating/consolidation, deletion/forgetting, and categorisation, not just retrieval.
+
+It teaches agents to:
+
+- model per-user memory with `User`, `Memory`, `Category`, `Entity`, and `Session` labels plus the edges and indexes that make it fast and tenant-safe
+- choose the right mechanism per operation: properties + equality index, graph edges, vector search, or BM25 text search
+- run the full write/maintain lifecycle (dedup-on-generate, reinforce-on-access, supersede/correct, soft-delete, decay and expiry sweeps, upsert-and-link categorisation)
+- build hybrid recall that fuses vector + BM25 app-side and expands through the graph
+
+It is TypeScript-first (`@helixdb/enterprise-ql`) with a Rust DSL variant in `EXAMPLES.rust.md`.
 
 ## Shared References
 

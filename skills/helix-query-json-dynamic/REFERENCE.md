@@ -2,6 +2,8 @@
 
 Exhaustive variant catalog for the `POST /v1/query` inline AST. Every variant shows its Rust signature, its JSON encoding, and a one-line semantics note. Organized for grep: each category header is a stable anchor.
 
+Rust signatures and line numbers cite the canonical AST source — the `helix-db` crate at `sdks/rust/src/dsl.rs` (re-exported at the crate root via `pub use dsl::*`). The TypeScript DSL (`@helix-db/helix-db`) emits structurally identical JSON. Both DSLs can produce these bodies: Rust `DynamicQueryRequest::{read,write}(batch).to_json_string()` (see `../helix-query-rust/`), TypeScript `batch.toDynamicJson(params, values)` (see `../helix-query-typescript/`).
+
 Conventions used below:
 
 - `<X>` — a JSON value of type X (defined elsewhere in this document).
@@ -16,7 +18,7 @@ Conventions used below:
 
 ## 1. Envelope
 
-### `DynamicQueryRequest`  (`src/lib.rs:4378-4391`)
+### `DynamicQueryRequest`  (`sdks/rust/src/dsl.rs:4479`)
 
 ```json
 {
@@ -30,7 +32,7 @@ Conventions used below:
 - `request_type` — `#[serde(rename_all = "lowercase")]`. Only `"read"` / `"write"`.
 - `parameters` / `parameter_types` — both optional; serialize via `skip_serializing_if = "Option::is_none"`. Server accepts `null` or omission.
 
-### `BatchQuery`  (`src/lib.rs:4263-4270`)  —  `#[serde(untagged)]`
+### `BatchQuery`  (`sdks/rust/src/dsl.rs:4365`)  —  `#[serde(untagged)]`
 
 Value written inline; **no `{"Read": ...}` or `{"Write": ...}` wrapper**. Whichever object shape is present (`ReadBatch` / `WriteBatch`) both look structurally identical:
 
@@ -38,7 +40,7 @@ Value written inline; **no `{"Read": ...}` or `{"Write": ...}` wrapper**. Whiche
 { "queries": [<BatchEntry>, ...], "returns": ["<var>", ...] }
 ```
 
-### `ReadBatch` / `WriteBatch`  (`src/lib.rs:4089-4258`)
+### `ReadBatch` / `WriteBatch`  (`sdks/rust/src/dsl.rs:4190`, `:4280`)
 
 Same JSON shape — the distinction is enforced on the Rust side; JSON distinguishes via the envelope's `request_type`.
 
@@ -47,7 +49,7 @@ Same JSON shape — the distinction is enforced on the Rust side; JSON distingui
 | `queries` | `[BatchEntry, ...]` | Entries executed in order |
 | `returns` | `["<var>", ...]` | Named variables to include in the response; empty = all |
 
-### `BatchEntry`  (`src/lib.rs:4068-4078`)
+### `BatchEntry`  (`sdks/rust/src/dsl.rs:4168`)
 
 Tagged enum with two variants:
 
@@ -58,7 +60,7 @@ Tagged enum with two variants:
 
 - `ForEach.param` must reference a top-level parameter typed as `{"Array": "Object"}` (an array of objects). Each iteration binds the current object's fields as scoped parameters inside `body`.
 
-### `NamedQuery`  (`src/lib.rs:4055-4063`)
+### `NamedQuery`  (`sdks/rust/src/dsl.rs:4156`)
 
 ```json
 {
@@ -71,7 +73,7 @@ Tagged enum with two variants:
 - `name` stores the result under that variable; `null` means no storage.
 - `condition` gates execution of the entire entry.
 
-### `BatchCondition`  (`src/lib.rs:4041-4051`)
+### `BatchCondition`  (`sdks/rust/src/dsl.rs:4142`)
 
 ```json
 {"VarNotEmpty": "<var>"}        // execute only if var has >=1 item
@@ -84,7 +86,7 @@ Tagged enum with two variants:
 
 ## 2. Primitive Values
 
-### `PropertyValue`  (`src/lib.rs:972-1002`)  —  externally tagged
+### `PropertyValue`  (`sdks/rust/src/dsl.rs:973`)  —  externally tagged
 
 Used everywhere inside the AST where a literal appears (e.g. `Predicate::Eq`, `Step::Has`, `Expr::Constant`, `PropertyInput::Value`).
 
@@ -105,7 +107,7 @@ Used everywhere inside the AST where a literal appears (e.g. `Predicate::Eq`, `S
 | `Array(Vec<PropertyValue>)` | heterogeneous | `{"Array": [{"I64": 1}, {"String": "a"}]}` |
 | `Object(BTreeMap<String, PropertyValue>)` | | `{"Object": {"k": {"I64": 1}}}` |
 
-### `PropertyInput`  (`src/lib.rs:1196-1202`)
+### `PropertyInput`  (`sdks/rust/src/dsl.rs:1197`)
 
 Used in mutation step property lists (`AddN`, `AddE`, `SetProperty`, `EdgeHas`) and in `VectorSearchNodes.query_vector` / `VectorSearchEdges.query_vector` / `tenant_value`.
 
@@ -116,7 +118,7 @@ Used in mutation step property lists (`AddN`, `AddE`, `SetProperty`, `EdgeHas`) 
 
 `PropertyInput::param("x")` is syntactic sugar for `{"Expr": {"Param": "x"}}`.
 
-### `NodeRef`  (`src/lib.rs:1231-1239`)
+### `NodeRef`  (`sdks/rust/src/dsl.rs:1241`)
 
 ```json
 {"Ids": [1, 2, 3]}              // concrete node ids (u64)
@@ -124,7 +126,7 @@ Used in mutation step property lists (`AddN`, `AddE`, `SetProperty`, `EdgeHas`) 
 {"Param": "<name>"}             // array of ids from a parameter
 ```
 
-### `EdgeRef`  (`src/lib.rs:1291-1299`)
+### `EdgeRef`  (`sdks/rust/src/dsl.rs:1308`)
 
 Same three variants as `NodeRef` but over edge ids:
 
@@ -132,7 +134,7 @@ Same three variants as `NodeRef` but over edge ids:
 {"Ids": [10, 20]} | {"Var": "<name>"} | {"Param": "<name>"}
 ```
 
-### `StreamBound`  (`src/lib.rs:1457-1463`)
+### `StreamBound`  (`sdks/rust/src/dsl.rs:1474`)
 
 Non-negative integer for `limit`, `skip`, `range` bounds.
 
@@ -145,7 +147,7 @@ Non-negative integer for `limit`, `skip`, `range` bounds.
 
 ## 3. Parameter Values & Types
 
-### `DynamicQueryValue`  (`src/lib.rs:4357-4375`)  —  `#[serde(untagged)]`
+### `DynamicQueryValue`  (`sdks/rust/src/dsl.rs:4458`)  —  `#[serde(untagged)]`
 
 Values inside the top-level `parameters` map are **bare JSON** — no variant tag.
 
@@ -192,7 +194,7 @@ Example (from `tests/register_metadata_tests.rs:185`):
 
 ## 4. Expressions
 
-### `Expr`  (`src/lib.rs:1351-1384`)
+### `Expr`  (`sdks/rust/src/dsl.rs:1368`)
 
 | Variant | Rust | JSON |
 |---|---|---|
@@ -230,11 +232,11 @@ Each `when_then` entry is a 2-tuple `[predicate, expr]` — a `Vec<(Predicate, E
 
 ## 5. Predicates
 
-### `CompareOp`  (`src/lib.rs:1528-1542`)
+### `CompareOp`  (`sdks/rust/src/dsl.rs:1545`)
 
 Unit variants as bare strings: `"Eq"`, `"Neq"`, `"Gt"`, `"Gte"`, `"Lt"`, `"Lte"`.
 
-### `Predicate`  (`src/lib.rs:1547-1596`)
+### `Predicate`  (`sdks/rust/src/dsl.rs:1564`)
 
 | Variant | JSON |
 |---|---|
@@ -267,7 +269,7 @@ Unit variants as bare strings: `"Eq"`, `"Neq"`, `"Gt"`, `"Gte"`, `"Lt"`, `"Lte"`
 
 Same pattern for `neq_param`, `gt_param`, `gte_param`, `lt_param`, `lte_param`.
 
-### `SourcePredicate`  (`src/lib.rs:1603-1626`) — used in `NWhere` / `EWhere`
+### `SourcePredicate`  (`sdks/rust/src/dsl.rs:1619`) — used in `NWhere` / `EWhere`
 
 Strict subset of `Predicate`. Same JSON shape for the shared variants; the following are **not allowed** at source-step position: `IsNull`, `IsNotNull`, `Contains`, `ContainsExpr`, `EndsWith`, `IsIn`, `IsInExpr`, `Not`, `Compare`. Use `Step::Where` for those after the source.
 
@@ -275,7 +277,7 @@ Strict subset of `Predicate`. Same JSON shape for the shared variants; the follo
 
 ## 6. Projections
 
-### `PropertyProjection`  (`src/lib.rs:1887-1912`)
+### `PropertyProjection`  (`sdks/rust/src/dsl.rs:1988`)
 
 ```json
 {"source": "<property>", "alias": "<output_name>"}
@@ -283,13 +285,13 @@ Strict subset of `Predicate`. Same JSON shape for the shared variants; the follo
 
 Both fields required; set them equal for no-rename. Virtual fields (`$id`, `$label`, `$distance`, `$from`, `$to`) are legal `source` values.
 
-### `ExprProjection`  (`src/lib.rs:1915-1931`)
+### `ExprProjection`  (`sdks/rust/src/dsl.rs:2016`)
 
 ```json
 {"alias": "<output_name>", "expr": <Expr>}
 ```
 
-### `Projection`  (`src/lib.rs:1934-1941`)  —  `#[serde(untagged)]`
+### `Projection`  (`sdks/rust/src/dsl.rs:2036`)  —  `#[serde(untagged)]`
 
 A `Vec<Projection>` inside a `Project` step contains a mix of `PropertyProjection` and `ExprProjection` objects **without variant wrappers**. Disambiguation is by field shape (`source + alias` vs `alias + expr`):
 
@@ -305,15 +307,15 @@ A `Vec<Projection>` inside a `Project` step contains a mix of `PropertyProjectio
 
 ## 7. Order, Emit, Aggregation
 
-### `Order`  (`src/lib.rs:1968-1974`)
+### `Order`  (`sdks/rust/src/dsl.rs:2069`)
 
 Bare strings: `"Asc"`, `"Desc"`.
 
-### `EmitBehavior`  (`src/lib.rs:1983-1993`)
+### `EmitBehavior`  (`sdks/rust/src/dsl.rs:2084`)
 
 Bare strings: `"None"`, `"Before"`, `"After"`, `"All"`.
 
-### `AggregateFunction`  (`src/lib.rs:2002-2014`)
+### `AggregateFunction`  (`sdks/rust/src/dsl.rs:2103`)
 
 Bare strings: `"Count"`, `"Sum"`, `"Min"`, `"Max"`, `"Mean"`.
 
@@ -321,7 +323,7 @@ Bare strings: `"Count"`, `"Sum"`, `"Min"`, `"Max"`, `"Mean"`.
 
 ## 8. SubTraversal & RepeatConfig
 
-### `SubTraversal`  (`src/lib.rs:2024-2027`)
+### `SubTraversal`  (`sdks/rust/src/dsl.rs:2124`)
 
 ```json
 {"steps": [<Step>, ...]}
@@ -329,7 +331,7 @@ Bare strings: `"Count"`, `"Sum"`, `"Min"`, `"Max"`, `"Mean"`.
 
 Used wherever an inner traversal is needed: `Union`, `Choose.then_traversal`, `Choose.else_traversal`, `Coalesce`, `Optional`, `Repeat.traversal`.
 
-### `RepeatConfig`  (`src/lib.rs:2249-2263`)
+### `RepeatConfig`  (`sdks/rust/src/dsl.rs:2350`)
 
 ```json
 {
@@ -352,7 +354,7 @@ Used wherever an inner traversal is needed: `Union`, `Choose.then_traversal`, `C
 
 ## 9. IndexSpec
 
-`IndexSpec`  (`src/lib.rs:2326-2398`):
+`IndexSpec`  (`sdks/rust/src/dsl.rs:2427`):
 
 ```json
 {"NodeEquality": {"label": "<L>", "property": "<p>", "unique": false}}
@@ -372,7 +374,7 @@ Used wherever an inner traversal is needed: `Union`, `Choose.then_traversal`, `C
 
 ## 10. Step Catalog
 
-All Step variants (`src/lib.rs:2506-2962`) grouped by category. **TS** = typestate requirement (`E` = Empty source position, `N` = on nodes, `X` = on edges, `*` = any). **W** = write-only.
+All Step variants (`sdks/rust/src/dsl.rs:2606-3062`) grouped by category. **TS** = typestate requirement (`E` = Empty source position, `N` = on nodes, `X` = on edges, `*` = any). **W** = write-only.
 
 ### Sources (TS: `E` unless noted)
 

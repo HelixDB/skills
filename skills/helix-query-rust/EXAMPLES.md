@@ -1,8 +1,8 @@
 # Helix Query Authoring — Rust Examples
 
-Each numbered scenario corresponds 1:1 with `../helix-query-json-dynamic/EXAMPLES.md`. When moving between Rust DSL and inline JSON, open both files at the same scenario.
+Each numbered scenario corresponds 1:1 with `../helix-query-typescript/EXAMPLES.md` and `../helix-query-json-dynamic/EXAMPLES.md`. When moving between the Rust DSL, TypeScript DSL, and inline JSON, open the same scenario in each file.
 
-All snippets assume `use helix_dsl::prelude::*;`.
+All snippets assume `use helix_db::dsl::prelude::*;`.
 
 ---
 
@@ -480,7 +480,7 @@ Drop an index with `g().drop_index(IndexSpec::...)`. The convenience methods (`c
 Warming uses the *same* query body; the header (`X-Helix-Warm: true`) is applied on the HTTP client. Build the request and let callers decide to warm:
 
 ```rust
-use helix_dsl::prelude::*;
+use helix_db::dsl::prelude::*;
 
 let req = user_by_id("u-42".to_string())?;
 let body = req.to_json_string()?;

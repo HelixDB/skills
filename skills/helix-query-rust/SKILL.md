@@ -1,15 +1,15 @@
 ---
-name: helix-query-authoring
-description: Write and revise HelixDB Rust DSL stored queries from scratch. Use when the task is to add, update, or review a Helix query built with read_batch, write_batch, traversal builders, projections, indexes, BM25 text search, or vector search. Inspect local labels, edges, properties, and existing query patterns before inventing new code. See REFERENCE.md for the full builder catalog and EXAMPLES.md for end-to-end patterns.
+name: helix-query-rust
+description: Write and revise HelixDB Rust DSL queries from scratch. Use when the task is to add, update, or review a Helix query built in Rust with read_batch, write_batch, traversal builders, projections, indexes, BM25 text search, or vector search — and for stored-query bundles or #[register] dynamic requests. Inspect local labels, edges, properties, and existing query patterns before inventing new code. See REFERENCE.md for the full builder catalog and EXAMPLES.md for end-to-end patterns. For the TypeScript DSL use helix-query-typescript; for inline JSON use helix-query-json-dynamic.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.2.0
+  version: 0.3.0
 ---
 
-# Helix Query Authoring
+# Helix Query Authoring — Rust
 
-Write Helix Rust DSL queries in a way that is schema-aware, explicit, and easy for agents to reason about.
+Write Helix Rust DSL queries in a way that is schema-aware, explicit, and easy for agents to reason about. The Rust builder is the `helix-db` crate (`sdks/rust`); the TypeScript DSL (`helix-query-typescript`) emits the same JSON AST.
 
 ## When To Use
 
@@ -21,7 +21,7 @@ Use this skill when the task is to:
 - choose between `read_batch()` and `write_batch()`
 - add traversal, projection, pagination, BM25 search, or vector search to an existing query
 
-Do not use this skill as the main guide for inline `POST /v1/query` payloads. Use the dynamic-query skill for that.
+Do not use this skill as the main guide for inline `POST /v1/query` payloads — use `helix-query-json-dynamic`. For the TypeScript DSL, use `helix-query-typescript`.
 
 ## First Steps
 
@@ -232,4 +232,4 @@ Before finishing:
 ## Reference Files
 
 - `REFERENCE.md` — full builder catalog (sources, traversal, predicates, expressions, projections, branching, repeat, mutations, indexes, dynamic-request transport).
-- `EXAMPLES.md` — end-to-end Rust queries mirroring the scenarios in `helix-query-json-dynamic/EXAMPLES.md`, so you can move fluently between Rust DSL and JSON forms.
+- `EXAMPLES.md` — end-to-end Rust queries mirroring the scenarios in `../helix-query-typescript/EXAMPLES.md` and `../helix-query-json-dynamic/EXAMPLES.md` 1:1, so you can move fluently between the Rust DSL, TypeScript DSL, and JSON forms.
