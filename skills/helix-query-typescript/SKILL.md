@@ -11,6 +11,8 @@ metadata:
 
 Write Helix TypeScript DSL queries in a way that is schema-aware, explicit, and easy for agents to reason about. The TypeScript builder (`@helix-db/helix-db`) produces the same JSON AST as the Rust DSL; the compatibility target is structural JSON equality with Rust serde output.
 
+This is the preferred way to author Helix queries in a TypeScript codebase — type-checked, and it emits the dynamic-request JSON for you. Drop to raw dynamic JSON (`helix-query-json-dynamic`) only for debugging or dynamically-shaped requests.
+
 ## When To Use
 
 Use this skill when the task is to:

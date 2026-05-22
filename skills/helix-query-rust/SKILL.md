@@ -11,6 +11,8 @@ metadata:
 
 Write Helix Rust DSL queries in a way that is schema-aware, explicit, and easy for agents to reason about. The Rust builder is the `helix-db` crate (`sdks/rust`); the TypeScript DSL (`helix-query-typescript`) emits the same JSON AST.
 
+This is the preferred way to author Helix queries in a Rust codebase. Drop to raw dynamic JSON (`helix-query-json-dynamic`) only for debugging or dynamically-shaped requests.
+
 ## When To Use
 
 Use this skill when the task is to:

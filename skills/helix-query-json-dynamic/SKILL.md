@@ -13,6 +13,8 @@ Use this skill for inline dynamic query requests sent directly to `POST /v1/quer
 
 The inline `query` body is a JSON serialization of the Rust DSL AST. Every variant an agent can send is documented in the companion files. **If you are writing anything beyond a trivial read, open `REFERENCE.md` first** — do not guess variant names or field shapes.
 
+> **Prefer a DSL when you are authoring queries inside a codebase.** If the app is TypeScript, build queries with `helix-query-typescript` (`@helix-db/helix-db`); if it is Rust, use `helix-query-rust`. Those builders are type-checked and emit exactly this JSON, so you get the same wire format without hand-writing tagged ASTs. Reach for this skill (raw dynamic JSON) when you are debugging a `POST /v1/query` call, sending a one-off / dynamically-shaped request, working in a language without a DSL, or hand-inspecting the wire format — not as the default way to write application queries.
+
 ## Reference Files
 
 - `REFERENCE.md` — complete AST variant catalog (every `Step`, `Predicate`, `Expr`, `PropertyValue`, `IndexSpec`, `RepeatConfig`, `BatchCondition`, envelope field). Use when writing a non-trivial request.
