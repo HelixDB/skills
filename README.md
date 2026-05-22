@@ -5,7 +5,7 @@ Hosted `skills.sh` repository for HelixDB agent skills.
 These skills are for agents that need to:
 
 - write Helix queries in the Rust DSL
-- translate from Cypher, Gremlin, and SQL into Helix query code
+- translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
 - build correct dynamic `POST /v1/query` payloads
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
@@ -17,6 +17,7 @@ Available now:
 - `helix-query-authoring`
 - `helix-query-from-cypher`
 - `helix-query-from-gremlin`
+- `helix-query-from-hql`
 - `helix-query-json-dynamic`
 - `helix-query-optimize`
 - `helix-memory-system`
@@ -86,6 +87,17 @@ It teaches agents to:
 - map `out`, `in`, `both`, `outE`, and `inE` into explicit Helix traversal steps
 - map `dedup`, `count`, `range`, ordering, and `valueMap` into deliberate result shaping
 - handle `repeat`, `path`, `select`, and side-effect-heavy traversals as semantic translations rather than literal rewrites
+
+### `helix-query-from-hql`
+
+Use this skill when an agent needs to migrate legacy HelixQL (HQL) `.hx` queries into the v2 Rust or TypeScript DSL.
+
+It teaches agents to:
+
+- map every HQL construct (`N<T>`/`E<T>`, `Out`/`In`/`OutE`/`FromN`/`ToN`, `WHERE`/`EQ`/`IS_IN`, projections, `GROUP_BY`/`AGGREGATE_BY`, `ORDER`/`RANGE`, `AddN`/`AddE`/`UPDATE`/`DROP`, `SearchV`/`SearchBM25`) to its Rust and TypeScript builder
+- handle the Rust-vs-TypeScript spelling differences (`in_`/`in`, `where_`/`where`, `::`/`.`, `Some()`/`null`)
+- flag HQL features with no DSL equivalent (`Upsert`, `RerankRRF`/`RerankMMR`, shortest-path, `Embed`, advanced math, `EXISTS`/count-in-`WHERE`, schema defaults, `#[model]`/`#[mcp]`) and move that logic to application code
+- verify each migration by compiling, diffing the Rust vs TypeScript JSON AST for parity, and running against the same data
 
 ### `helix-query-optimize`
 

@@ -1,8 +1,8 @@
 # Helix Memory System — TypeScript Examples
 
-Complete, runnable `@helixdb/enterprise-ql` snippets for the full memory lifecycle. This is the **default** path so the whole app stays in TypeScript. The Rust equivalents are in `EXAMPLES.rust.md`. The data model and index bootstrap are in `REFERENCE.md`.
+Complete `@helixdb/enterprise-ql` snippets for a tenant-safe memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`. The model and indexes are in `REFERENCE.md`.
 
-Each query function is plain; call it and `.toDynamicJson(params, values)` to get the body for `POST /v1/query` (or `helix query dev --json '<body>'`). Send the resulting string straight to the gateway.
+Each query function is plain; call it and `.toDynamicJson(params, values)` to get the body for `POST /v1/query`. Embeddings are produced by the application and passed as numeric arrays. Every tenant-owned node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant value.
 
 ```ts
 import {
@@ -12,7 +12,25 @@ import {
 } from "@helixdb/enterprise-ql";
 ```
 
-Throughout: `EMBED_DIM`-length vectors are produced by the app's embedding call; `userId` is always passed as the search `tenantValue`; every read filters `deletedAt IsNull`.
+Shared predicates used by recall routes:
+
+```ts
+function currentMemoryPredicate(nowParam = "now") {
+  return Predicate.and([
+    Predicate.eq("isLatest", true),
+    Predicate.isNull("deletedAt"),
+    Predicate.isNull("validTo"),
+    Predicate.or([
+      Predicate.isNull("expiresAt"),
+      Predicate.compare(Expr.prop("expiresAt"), CompareOp.Gt, Expr.param(nowParam)),
+    ]),
+  ]);
+}
+
+function liveChunkPredicate() {
+  return Predicate.isNull("deletedAt");
+}
+```
 
 ---
 
@@ -21,185 +39,261 @@ Throughout: `EMBED_DIM`-length vectors are produced by the app's embedding call;
 ```ts
 function bootstrapMemoryIndexes() {
   return writeBatch()
-    .varAs("userId",     g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("User", "userId")))
-    .varAs("memoryId",   g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Memory", "memoryId")))
-    .varAs("memUserId",  g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "userId")))
-    .varAs("memVector",  g().createVectorIndexNodes("Memory", "embedding", "userId"))
-    .varAs("memText",    g().createTextIndexNodes("Memory", "content", "userId"))
-    .varAs("catName",    g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Category", "name")))
-    .varAs("entName",    g().createIndexIfNotExists(IndexSpec.nodeEquality("Entity", "name")))
-    .varAs("sessId",     g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Session", "sessionId")))
-    .returning(["memVector", "memText"]);
+    .varAs("tenant",      g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Tenant", "tenant_id")))
+    .varAs("userKey",     g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("User", "userKey")))
+    .varAs("userTenant",  g().createIndexIfNotExists(IndexSpec.nodeEquality("User", "tenant_id")))
+    .varAs("userId",      g().createIndexIfNotExists(IndexSpec.nodeEquality("User", "userId")))
+    .varAs("profileId",   g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("UserProfile", "profileId")))
+    .varAs("profileTen",  g().createIndexIfNotExists(IndexSpec.nodeEquality("UserProfile", "tenant_id")))
+    .varAs("profileUser", g().createIndexIfNotExists(IndexSpec.nodeEquality("UserProfile", "userId")))
+    .varAs("docId",       g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("SourceDocument", "documentId")))
+    .varAs("docTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("SourceDocument", "tenant_id")))
+    .varAs("docChecksum", g().createIndexIfNotExists(IndexSpec.nodeEquality("SourceDocument", "checksum")))
+    .varAs("chunkId",     g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Chunk", "chunkId")))
+    .varAs("chunkTenant", g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "tenant_id")))
+    .varAs("chunkDoc",    g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "documentId")))
+    .varAs("chunkVec",    g().createIndexIfNotExists(IndexSpec.nodeVector("Chunk", "embedding", "tenant_id")))
+    .varAs("chunkText",   g().createIndexIfNotExists(IndexSpec.nodeText("Chunk", "content", "tenant_id")))
+    .varAs("memoryId",    g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Memory", "memoryId")))
+    .varAs("memTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "tenant_id")))
+    .varAs("memUser",     g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "userId")))
+    .varAs("memLatest",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "isLatest")))
+    .varAs("memVector",   g().createIndexIfNotExists(IndexSpec.nodeVector("Memory", "embedding", "tenant_id")))
+    .varAs("memText",     g().createIndexIfNotExists(IndexSpec.nodeText("Memory", "content", "tenant_id")))
+    .varAs("catKey",      g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Category", "categoryKey")))
+    .varAs("catTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Category", "tenant_id")))
+    .varAs("entKey",      g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Entity", "entityKey")))
+    .varAs("entTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Entity", "tenant_id")))
+    .varAs("sessId",      g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Session", "sessionId")))
+    .varAs("sessTenant",  g().createIndexIfNotExists(IndexSpec.nodeEquality("Session", "tenant_id")))
+    .returning(["memVector", "memText", "chunkVec", "chunkText"]);
 }
-
-// const body = bootstrapMemoryIndexes().toDynamicJson(); // no params
 ```
 
 ---
 
-## 2. Generation — read-then-write dedup
+## 2. Source document + chunk ingestion
 
-A similarity threshold can't be a batch condition, so the app reads the nearest neighbour first, then decides.
+Extraction, chunking, and embedding happen app-side. This query stores one chunk and links it to its source document.
 
-**2a. Read nearest existing memory for this user.**
+```ts
+const ingestChunkParams = defineParams({
+  tenant_id: param.string(),
+  documentId: param.string(),
+  chunkId: param.string(),
+  sourceType: param.string(),
+  title: param.string(),
+  uri: param.string(),
+  checksum: param.string(),
+  content: param.string(),
+  embedding: param.array(param.f32()),
+  ordinal: param.i64(),
+});
+
+function ingestChunk(p = ingestChunkParams) {
+  return writeBatch()
+    .varAs("doc", g().nWithLabelWhere("SourceDocument", SourcePredicate.eq("documentId", p.documentId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAsIf(
+      "docNew",
+      BatchCondition.varEmpty("doc"),
+      g().addN("SourceDocument", {
+        documentId: p.documentId,
+        tenant_id: p.tenant_id,
+        sourceType: p.sourceType,
+        title: p.title,
+        uri: p.uri,
+        checksum: p.checksum,
+        status: "indexed",
+        createdAt: Expr.datetime(),
+        updatedAt: Expr.datetime(),
+      }),
+    )
+    .varAs(
+      "chunk",
+      g().addN("Chunk", {
+        chunkId: p.chunkId,
+        tenant_id: p.tenant_id,
+        documentId: p.documentId,
+        content: p.content,
+        embedding: p.embedding,
+        ordinal: p.ordinal,
+        createdAt: Expr.datetime(),
+        updatedAt: Expr.datetime(),
+      }),
+    )
+    .varAsIf("linkDoc",    BatchCondition.varNotEmpty("doc"),    g().n(NodeRef.var("doc")).addE("HAS_CHUNK", NodeRef.var("chunk"), { tenant_id: p.tenant_id, ordinal: p.ordinal }))
+    .varAsIf("linkDocNew", BatchCondition.varNotEmpty("docNew"), g().n(NodeRef.var("docNew")).addE("HAS_CHUNK", NodeRef.var("chunk"), { tenant_id: p.tenant_id, ordinal: p.ordinal }))
+    .returning(["chunk"]);
+}
+```
+
+---
+
+## 3. Generation — read-then-write semantic dedup
+
+A similarity threshold cannot be a batch condition. Read the nearest current memory for the tenant, then the app decides whether to reinforce or create.
 
 ```ts
 const nearestParams = defineParams({
-  userId: param.string(),
-  embedding: param.array(param.f64()),
+  tenant_id: param.string(),
+  embedding: param.array(param.f32()),
+  now: param.dateTime(),
 });
 
-function nearestMemory(p = nearestParams) {
+function nearestCurrentMemory(p = nearestParams) {
   return readBatch()
     .varAs(
       "nearest",
       g()
-        .vectorSearchNodesWith("Memory", "embedding", p.embedding, 1, p.userId)
-        .where(Predicate.isNull("deletedAt"))
+        .vectorSearchNodesWith("Memory", "embedding", p.embedding, 1, p.tenant_id)
+        .where(Predicate.and([
+          Predicate.eqParam("tenant_id", "tenant_id"),
+          currentMemoryPredicate("now"),
+        ]))
         .project([
           Projection.property("memoryId", "memoryId"),
+          Projection.property("content", "content"),
           Projection.property("$distance", "distance"),
         ]),
     )
     .returning(["nearest"]);
 }
-
-// App logic:
-//   const { nearest } = await runQuery(nearestMemory().toDynamicJson(nearestParams, { userId, embedding }));
-//   if (nearest[0] && nearest[0].distance < DEDUP_THRESHOLD) reinforce(nearest[0].memoryId);
-//   else createMemory(...);
 ```
 
-**2b. Create a new memory + ownership edge** (when no near-duplicate exists).
+---
+
+## 4. Create memory with tenant-scoped user/session upserts
+
+Use this after semantic dedup decides the candidate is new.
 
 ```ts
-const createParams = defineParams({
+const createMemoryParams = defineParams({
+  tenant_id: param.string(),
   userId: param.string(),
+  userKey: param.string(),
+  sessionId: param.string(),
   memoryId: param.string(),
   content: param.string(),
-  embedding: param.array(param.f64()),
+  embedding: param.array(param.f32()),
   kind: param.string(),
   salience: param.f64(),
-  sessionId: param.string(),
+  confidence: param.f64(),
+  isStatic: param.bool(),
 });
 
-function createMemory(p = createParams) {
+function createMemory(p = createMemoryParams) {
   return writeBatch()
-    .varAs("user", g().nWithLabelWhere("User", SourcePredicate.eq("userId", p.userId)))
+    .varAs("user", g().nWithLabelWhere("User", SourcePredicate.eq("userKey", p.userKey)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAsIf(
+      "userNew",
+      BatchCondition.varEmpty("user"),
+      g().addN("User", {
+        userKey: p.userKey,
+        tenant_id: p.tenant_id,
+        userId: p.userId,
+        createdAt: Expr.datetime(),
+      }),
+    )
+    .varAs("session", g().nWithLabelWhere("Session", SourcePredicate.eq("sessionId", p.sessionId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAsIf(
+      "sessionNew",
+      BatchCondition.varEmpty("session"),
+      g().addN("Session", {
+        sessionId: p.sessionId,
+        tenant_id: p.tenant_id,
+        userId: p.userId,
+        startedAt: Expr.datetime(),
+      }),
+    )
     .varAs(
       "mem",
       g().addN("Memory", {
         memoryId: p.memoryId,
+        tenant_id: p.tenant_id,
         userId: p.userId,
         content: p.content,
         embedding: p.embedding,
         kind: p.kind,
         salience: p.salience,
+        confidence: p.confidence,
+        isLatest: true,
+        isStatic: p.isStatic,
+        inferred: false,
         accessCount: 0,
-        createdAt: Expr.timestamp(),
-        updatedAt: Expr.timestamp(),
-        lastAccessedAt: Expr.timestamp(),
+        validFrom: Expr.datetime(),
+        createdAt: Expr.datetime(),
+        updatedAt: Expr.datetime(),
+        lastAccessedAt: Expr.datetime(),
         sourceSessionId: p.sessionId,
       }),
     )
-    .varAs("own", g().n(NodeRef.var("user")).addE("OWNS", NodeRef.var("mem"), {}))
+    .varAsIf("own",       BatchCondition.varNotEmpty("user"),       g().n(NodeRef.var("user")).addE("OWNS", NodeRef.var("mem"), { tenant_id: p.tenant_id, createdAt: Expr.datetime() }))
+    .varAsIf("ownNew",    BatchCondition.varNotEmpty("userNew"),    g().n(NodeRef.var("userNew")).addE("OWNS", NodeRef.var("mem"), { tenant_id: p.tenant_id, createdAt: Expr.datetime() }))
+    .varAsIf("fromSess",  BatchCondition.varNotEmpty("session"),    g().n(NodeRef.var("mem")).addE("DERIVED_FROM", NodeRef.var("session"), { tenant_id: p.tenant_id }))
+    .varAsIf("fromSessN", BatchCondition.varNotEmpty("sessionNew"), g().n(NodeRef.var("mem")).addE("DERIVED_FROM", NodeRef.var("sessionNew"), { tenant_id: p.tenant_id }))
     .returning(["mem"]);
 }
 ```
 
-**2c. Idempotent upsert by `memoryId`** (single batch — catches exact repeats without a read round-trip).
-
-```ts
-const upsertParams = defineParams({
-  userId: param.string(),
-  memoryId: param.string(),
-  content: param.string(),
-  embedding: param.array(param.f64()),
-  kind: param.string(),
-  salience: param.f64(),
-});
-
-function upsertMemory(p = upsertParams) {
-  return writeBatch()
-    .varAs("existing", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId)))
-    .varAsIf(
-      "updated",
-      BatchCondition.varNotEmpty("existing"),
-      g()
-        .n(NodeRef.var("existing"))
-        .setProperty("content", p.content)
-        .setProperty("embedding", p.embedding)   // re-embed alongside content
-        .setProperty("updatedAt", Expr.timestamp()),
-    )
-    .varAsIf(
-      "created",
-      BatchCondition.varEmpty("existing"),
-      g().addN("Memory", {
-        memoryId: p.memoryId,
-        userId: p.userId,
-        content: p.content,
-        embedding: p.embedding,
-        kind: p.kind,
-        salience: p.salience,
-        accessCount: 0,
-        createdAt: Expr.timestamp(),
-        updatedAt: Expr.timestamp(),
-        lastAccessedAt: Expr.timestamp(),
-      }),
-    )
-    .returning(["updated", "created"]);
-}
-```
-
-> `BatchCondition` is imported from `@helixdb/enterprise-ql`.
-
 ---
 
-## 3. Categorisation — upsert + link (topic, entity, kind)
+## 5. Categorisation and entity linking
 
-Upsert the `Category` by unique `name`, then link the memory to whichever variable got populated. Same shape works for `Entity`/`MENTIONS`.
+Pass tenant-qualified keys from the app, e.g. `categoryKey = tenant_id + ":" + normalisedName`.
 
 ```ts
 const categoriseParams = defineParams({
+  tenant_id: param.string(),
   memoryId: param.string(),
-  category: param.string(),
-  entity: param.string(),
-  kind: param.string(),
+  categoryKey: param.string(),
+  categoryName: param.string(),
+  entityKey: param.string(),
+  entityName: param.string(),
+  entityType: param.string(),
+  confidence: param.f64(),
 });
 
 function categoriseMemory(p = categoriseParams) {
   return writeBatch()
-    .varAs("mem", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId)).setProperty("kind", p.kind))
-    // --- Category upsert ---
-    .varAs("cat", g().nWithLabelWhere("Category", SourcePredicate.eq("name", p.category)))
-    .varAsIf("catNew", BatchCondition.varEmpty("cat"), g().addN("Category", { name: p.category }))
-    .varAsIf("linkCat",    BatchCondition.varNotEmpty("cat"),    g().n(NodeRef.var("mem")).addE("IN_CATEGORY", NodeRef.var("cat"), {}))
-    .varAsIf("linkCatNew", BatchCondition.varNotEmpty("catNew"), g().n(NodeRef.var("mem")).addE("IN_CATEGORY", NodeRef.var("catNew"), {}))
-    // --- Entity upsert ---
-    .varAs("ent", g().nWithLabelWhere("Entity", SourcePredicate.eq("name", p.entity)))
-    .varAsIf("entNew", BatchCondition.varEmpty("ent"), g().addN("Entity", { name: p.entity }))
-    .varAsIf("mentions",    BatchCondition.varNotEmpty("ent"),    g().n(NodeRef.var("mem")).addE("MENTIONS", NodeRef.var("ent"), {}))
-    .varAsIf("mentionsNew", BatchCondition.varNotEmpty("entNew"), g().n(NodeRef.var("mem")).addE("MENTIONS", NodeRef.var("entNew"), {}))
+    .varAs("mem", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAs("cat", g().nWithLabelWhere("Category", SourcePredicate.eq("categoryKey", p.categoryKey)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAsIf("catNew", BatchCondition.varEmpty("cat"), g().addN("Category", { categoryKey: p.categoryKey, tenant_id: p.tenant_id, name: p.categoryName }))
+    .varAsIf("linkCat",    BatchCondition.varNotEmpty("cat"),    g().n(NodeRef.var("mem")).addE("IN_CATEGORY", NodeRef.var("cat"), { tenant_id: p.tenant_id, confidence: p.confidence }))
+    .varAsIf("linkCatNew", BatchCondition.varNotEmpty("catNew"), g().n(NodeRef.var("mem")).addE("IN_CATEGORY", NodeRef.var("catNew"), { tenant_id: p.tenant_id, confidence: p.confidence }))
+    .varAs("ent", g().nWithLabelWhere("Entity", SourcePredicate.eq("entityKey", p.entityKey)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAsIf("entNew", BatchCondition.varEmpty("ent"), g().addN("Entity", { entityKey: p.entityKey, tenant_id: p.tenant_id, name: p.entityName, entityType: p.entityType }))
+    .varAsIf("mentions",    BatchCondition.varNotEmpty("ent"),    g().n(NodeRef.var("mem")).addE("MENTIONS", NodeRef.var("ent"), { tenant_id: p.tenant_id }))
+    .varAsIf("mentionsNew", BatchCondition.varNotEmpty("entNew"), g().n(NodeRef.var("mem")).addE("MENTIONS", NodeRef.var("entNew"), { tenant_id: p.tenant_id }))
     .returning(["mem"]);
 }
 ```
 
 ---
 
-## 4. Updating — reinforce on access
+## 6. Updating — reinforce on access
 
 ```ts
-const reinforceParams = defineParams({ memoryId: param.string() });
+const reinforceParams = defineParams({
+  tenant_id: param.string(),
+  memoryId: param.string(),
+  now: param.dateTime(),
+});
 
 function reinforceMemory(p = reinforceParams) {
+  const raised = Expr.prop("salience").add(Expr.val(0.1));
+
   return writeBatch()
     .varAs(
       "mem",
       g()
         .nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId))
-        .setProperty("lastAccessedAt", Expr.timestamp())
+        .where(Predicate.and([
+          Predicate.eqParam("tenant_id", "tenant_id"),
+          currentMemoryPredicate("now"),
+        ]))
+        .setProperty("lastAccessedAt", Expr.datetime())
         .setProperty("accessCount", Expr.prop("accessCount").add(Expr.val(1)))
-        .setProperty("salience", Expr.prop("salience").add(Expr.val(0.1))),
+        .setProperty("salience", Expr.case([[Predicate.compare(raised, CompareOp.Gt, Expr.val(1.0)), Expr.val(1.0)]], raised)),
     )
     .returning(["mem"]);
 }
@@ -207,53 +301,62 @@ function reinforceMemory(p = reinforceParams) {
 
 ---
 
-## 5. Correct / supersede — new memory invalidates an old one
+## 7. Correct/update — new memory supersedes old
+
+The app creates the new memory first, then links it to the old one and invalidates the old version.
 
 ```ts
-const supersedeParams = defineParams({
+const updateParams = defineParams({
+  tenant_id: param.string(),
   newId: param.string(),
   oldId: param.string(),
   reason: param.string(),
 });
 
-function supersedeMemory(p = supersedeParams) {
+function markMemoryUpdated(p = updateParams) {
   return writeBatch()
-    .varAs("old", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.oldId)))
-    .varAs("new", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.newId)))
-    .varAs("link", g().n(NodeRef.var("new")).addE("SUPERSEDES", NodeRef.var("old"), { reason: p.reason, at: Expr.timestamp() }))
-    .varAs("invalidate", g().n(NodeRef.var("old")).setProperty("validTo", Expr.timestamp()))
+    .varAs("old", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.oldId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAs("new", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.newId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAs("link", g().n(NodeRef.var("new")).addE("UPDATES", NodeRef.var("old"), { tenant_id: p.tenant_id, reason: p.reason, at: Expr.datetime() }))
+    .varAs(
+      "invalidate",
+      g()
+        .n(NodeRef.var("old"))
+        .setProperty("isLatest", false)
+        .setProperty("validTo", Expr.datetime()),
+    )
     .returning(["link", "invalidate"]);
 }
 ```
 
-> Keeps the old memory for audit. To also hide it from recall, add `.setProperty("deletedAt", Expr.timestamp())` to the `invalidate` traversal.
-
 ---
 
-## 6. Soft-delete (forget, reversibly)
+## 8. Forgetting sweeps
+
+Soft-delete is preferred; reads filter it out.
 
 ```ts
-const softDeleteParams = defineParams({ memoryId: param.string() });
+const softDeleteParams = defineParams({ tenant_id: param.string(), memoryId: param.string() });
 
 function softDeleteMemory(p = softDeleteParams) {
   return writeBatch()
-    .varAs("mem", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId)).setProperty("deletedAt", Expr.timestamp()))
+    .varAs(
+      "mem",
+      g()
+        .nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId))
+        .where(Predicate.eqParam("tenant_id", "tenant_id"))
+        .setProperty("deletedAt", Expr.datetime()),
+    )
     .returning(["mem"]);
 }
 ```
 
----
-
-## 7. Decay sweep — soft-delete weak, stale, rarely-used memories
-
-Anchor on the user's index, then filter. Run on a schedule.
-
 ```ts
 const decayParams = defineParams({
-  userId: param.string(),
-  cutoff: param.dateTime(),       // e.g. now - 30 days
-  minSalience: param.f64(),       // e.g. 0.2
-  minAccess: param.i64(),         // e.g. 2
+  tenant_id: param.string(),
+  cutoff: param.dateTime(),
+  minSalience: param.f64(),
+  minAccess: param.i64(),
 });
 
 function decaySweep(p = decayParams) {
@@ -261,135 +364,172 @@ function decaySweep(p = decayParams) {
     .varAs(
       "decayed",
       g()
-        .nWithLabelWhere("Memory", SourcePredicate.eq("userId", p.userId))
-        .where(
-          Predicate.and([
-            Predicate.isNull("deletedAt"),
-            Predicate.compare(Expr.prop("lastAccessedAt"), CompareOp.Lt, Expr.param("cutoff")),
-            Predicate.compare(Expr.prop("salience"), CompareOp.Lt, Expr.param("minSalience")),
-            Predicate.compare(Expr.prop("accessCount"), CompareOp.Lt, Expr.param("minAccess")),
-          ]),
-        )
-        .setProperty("deletedAt", Expr.timestamp()),
+        .nWithLabelWhere("Memory", SourcePredicate.eq("tenant_id", p.tenant_id))
+        .where(Predicate.and([
+          Predicate.isNull("deletedAt"),
+          Predicate.eq("isLatest", true),
+          Predicate.compare(Expr.prop("lastAccessedAt"), CompareOp.Lt, Expr.param("cutoff")),
+          Predicate.compare(Expr.prop("salience"), CompareOp.Lt, Expr.param("minSalience")),
+          Predicate.compare(Expr.prop("accessCount"), CompareOp.Lt, Expr.param("minAccess")),
+        ]))
+        .setProperty("deletedAt", Expr.datetime()),
     )
     .returning(["decayed"]);
 }
 ```
 
----
-
-## 8. Expiry sweep — hard-delete past `expiresAt`
-
 ```ts
-const expiryParams = defineParams({
-  userId: param.string(),
-  now: param.dateTime(),
-});
+const expiryParams = defineParams({ tenant_id: param.string(), now: param.dateTime() });
 
 function expirySweep(p = expiryParams) {
   return writeBatch()
     .varAs(
       "expired",
       g()
-        .nWithLabelWhere("Memory", SourcePredicate.eq("userId", p.userId))
-        .where(
-          Predicate.and([
-            Predicate.isNotNull("expiresAt"),
-            Predicate.compare(Expr.prop("expiresAt"), CompareOp.Lt, Expr.param("now")),
-          ]),
-        )
-        .drop(),
+        .nWithLabelWhere("Memory", SourcePredicate.eq("tenant_id", p.tenant_id))
+        .where(Predicate.and([
+          Predicate.isNull("deletedAt"),
+          Predicate.isNotNull("expiresAt"),
+          Predicate.compare(Expr.prop("expiresAt"), CompareOp.Lt, Expr.param("now")),
+        ]))
+        .setProperty("deletedAt", Expr.datetime()),
     )
     .returning(["expired"]);
 }
 ```
 
-> `drop()` removes the node. If your deployment is a multigraph and you need to guarantee no dangling edges, traverse and `dropEdgeById(...)` the incident edges first; otherwise prefer the soft-delete in Example 6.
-
 ---
 
-## 9. Hybrid retrieval — vector + BM25, fused app-side, then graph-expanded
+## 9. Hybrid retrieval — profile + memories + source chunks
 
-**9a. Two recall paths in one read batch**, both tenant-scoped, both filtering deleted.
+Run multiple recall paths in one read batch, then fuse and rerank app-side.
 
 ```ts
 const recallParams = defineParams({
+  tenant_id: param.string(),
   userId: param.string(),
-  embedding: param.array(param.f64()),
+  embedding: param.array(param.f32()),
   query: param.string(),
   k: param.i64(),
+  now: param.dateTime(),
 });
 
 function hybridRecall(p = recallParams) {
   return readBatch()
     .varAs(
-      "semantic",
+      "profile",
       g()
-        .vectorSearchNodesWith("Memory", "embedding", p.embedding, p.k, p.userId)
-        .where(Predicate.isNull("deletedAt"))
+        .nWithLabelWhere("UserProfile", SourcePredicate.eq("tenant_id", p.tenant_id))
+        .where(Predicate.eqParam("userId", "userId"))
         .project([
-          Projection.property("memoryId", "memoryId"),
+          Projection.property("staticSummary", "staticSummary"),
+          Projection.property("dynamicSummary", "dynamicSummary"),
+        ]),
+    )
+    .varAs(
+      "memorySemantic",
+      g()
+        .vectorSearchNodesWith("Memory", "embedding", p.embedding, p.k, p.tenant_id)
+        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), currentMemoryPredicate("now")]))
+        .project([
+          Projection.property("memoryId", "id"),
           Projection.property("content", "content"),
           Projection.property("kind", "kind"),
           Projection.property("salience", "salience"),
           Projection.property("lastAccessedAt", "lastAccessedAt"),
+          Projection.property("documentId", "documentId"),
+          Projection.property("chunkId", "chunkId"),
           Projection.property("$distance", "distance"),
         ]),
     )
     .varAs(
-      "keyword",
+      "memoryKeyword",
       g()
-        .textSearchNodesWith("Memory", "content", p.query, p.k, p.userId)
-        .where(Predicate.isNull("deletedAt"))
+        .textSearchNodesWith("Memory", "content", p.query, p.k, p.tenant_id)
+        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), currentMemoryPredicate("now")]))
         .project([
-          Projection.property("memoryId", "memoryId"),
+          Projection.property("memoryId", "id"),
           Projection.property("content", "content"),
           Projection.property("kind", "kind"),
           Projection.property("salience", "salience"),
           Projection.property("lastAccessedAt", "lastAccessedAt"),
+          Projection.property("documentId", "documentId"),
+          Projection.property("chunkId", "chunkId"),
           Projection.property("$distance", "score"),
         ]),
     )
-    .returning(["semantic", "keyword"]);
+    .varAs(
+      "chunkSemantic",
+      g()
+        .vectorSearchNodesWith("Chunk", "embedding", p.embedding, p.k, p.tenant_id)
+        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), liveChunkPredicate()]))
+        .project([
+          Projection.property("chunkId", "id"),
+          Projection.property("documentId", "documentId"),
+          Projection.property("content", "content"),
+          Projection.property("ordinal", "ordinal"),
+          Projection.property("$distance", "distance"),
+        ]),
+    )
+    .varAs(
+      "chunkKeyword",
+      g()
+        .textSearchNodesWith("Chunk", "content", p.query, p.k, p.tenant_id)
+        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), liveChunkPredicate()]))
+        .project([
+          Projection.property("chunkId", "id"),
+          Projection.property("documentId", "documentId"),
+          Projection.property("content", "content"),
+          Projection.property("ordinal", "ordinal"),
+          Projection.property("$distance", "score"),
+        ]),
+    )
+    .returning(["profile", "memorySemantic", "memoryKeyword", "chunkSemantic", "chunkKeyword"]);
 }
 ```
 
-**9b. Fuse with RRF + re-rank (app-side).**
+App-side fusion:
 
 ```ts
-type Hit = { memoryId: string; content: string; salience: number; lastAccessedAt: number };
+type Hit = { id: string; content: string; salience?: number; lastAccessedAt?: number };
 
-function fuse(semantic: Hit[], keyword: Hit[], k = 60): Hit[] {
+function fuse(lists: Hit[][], k = 60): Hit[] {
   const score = new Map<string, { hit: Hit; s: number }>();
-  const add = (list: Hit[]) =>
+
+  for (const list of lists) {
     list.forEach((hit, i) => {
-      const cur = score.get(hit.memoryId) ?? { hit, s: 0 };
-      cur.s += 1 / (k + i + 1);                  // reciprocal rank, 1-based
-      score.set(hit.memoryId, cur);
+      const cur = score.get(hit.id) ?? { hit, s: 0 };
+      cur.s += 1 / (k + i + 1);
+      score.set(hit.id, cur);
     });
-  add(semantic);
-  add(keyword);
+  }
 
   const now = Date.now();
-  const HALFLIFE_MS = 30 * 24 * 3600 * 1000;
+  const halflifeMs = 30 * 24 * 3600 * 1000;
+
   return [...score.values()]
     .map(({ hit, s }) => {
-      const ageDays = (now - hit.lastAccessedAt) / 86_400_000;
-      const recency = Math.exp((-Math.LN2 * (now - hit.lastAccessedAt)) / HALFLIFE_MS);
-      const final = 1.0 * s + 0.3 * hit.salience + 0.2 * recency;
-      return { hit, final };
+      const salience = hit.salience ?? 0;
+      const last = hit.lastAccessedAt ?? now;
+      const recency = Math.exp((-Math.LN2 * (now - last)) / halflifeMs);
+      return { hit, final: 1.0 * s + 0.3 * salience + 0.2 * recency };
     })
     .sort((a, b) => b.final - a.final)
     .map((x) => x.hit);
 }
 ```
 
-**9c. Optional graph expansion** — pull memories that mention the same entities, scoped to the user and not deleted.
+---
+
+## 10. Bounded graph expansion
+
+Pull memories that mention the same entities. The seed can come from the fused top-k list.
 
 ```ts
 const expandParams = defineParams({
+  tenant_id: param.string(),
   memoryId: param.string(),
-  userId: param.string(),
+  now: param.dateTime(),
 });
 
 function expandViaEntities(p = expandParams) {
@@ -398,23 +538,23 @@ function expandViaEntities(p = expandParams) {
       "related",
       g()
         .nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId))
+        .where(Predicate.eqParam("tenant_id", "tenant_id"))
         .out("MENTIONS")
         .in("MENTIONS")
         .dedup()
-        .where(
-          Predicate.and([
-            Predicate.isNull("deletedAt"),
-            Predicate.compare(Expr.prop("userId"), CompareOp.Eq, Expr.param("userId")),
-          ]),
-        )
+        .where(Predicate.and([
+          Predicate.eqParam("tenant_id", "tenant_id"),
+          currentMemoryPredicate("now"),
+        ]))
         .limit(10)
         .project([
           Projection.property("memoryId", "memoryId"),
           Projection.property("content", "content"),
+          Projection.property("kind", "kind"),
         ]),
     )
     .returning(["related"]);
 }
 ```
 
-> The expansion returns the seed memory itself (it mentions its own entities); filter it out by `memoryId` in app code, or add a `Predicate.neq("memoryId", …)` once parameterised comparison for inequality is needed.
+The expansion can return the seed memory itself. Filter it out app-side by `memoryId`, or add an inequality predicate if the local DSL route already supports the exact parameterized comparison shape you prefer.

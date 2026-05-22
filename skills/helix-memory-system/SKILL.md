@@ -1,120 +1,187 @@
 ---
 name: helix-memory-system
-description: Design and operate an AI agent memory system on HelixDB using hybrid graph + vector + full-text search. Use when building agent memory, long-term memory, a memory store, recall/"remember" features, episodic/semantic/procedural memory, or memory generation, deduplication, consolidation, updating, forgetting/deletion, and categorisation — not only retrieval. Covers the per-user data model, the modality decision rules (when to use properties vs edges vs vectors vs BM25), and the full write/maintain lifecycle. TypeScript-first (@helixdb/enterprise-ql); a Rust DSL variant is in EXAMPLES.rust.md.
+description: Design and operate an advanced AI agent memory system on HelixDB using hybrid graph + vector + BM25 search. Use when building long-term memory, user profiles, document/chunk RAG, recall/remember features, memory extraction, deduplication, consolidation, versioning, updating, forgetting/deletion, categorisation, or connector-backed ingestion. Covers tenant-safe Helix data modeling, modality decision rules, the full write/maintain lifecycle, and the product layers an agent must implement around Helix. TypeScript-first (@helixdb/enterprise-ql); a Rust DSL variant is in EXAMPLES.rust.md.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.0
+  version: 0.2.0
 ---
 
 # Helix Memory System
 
-Build a durable, per-user agent memory store on Helix that combines **graph relationships**, **vector similarity**, and **BM25 full-text** in one database. This skill is about the whole memory lifecycle — **generation, updating, deletion/forgetting, and categorisation** — with retrieval as the last step, not the only one.
+Build a durable, per-tenant agent memory platform on Helix that combines **graph relationships**, **vector similarity**, and **BM25 full-text** in one database. This skill covers the whole memory lifecycle: raw context ingestion, extraction, memory generation, deduplication, updating/versioning, deletion/forgetting, categorisation, profile maintenance, and hybrid retrieval.
+
+Helix is the storage and retrieval engine. A complete memory product also needs application workers for extraction, chunking, embeddings, relationship classification, reranking, connector sync, and profile summarisation.
 
 ## When To Use
 
 Use this skill when the task is to:
 
-- design the data model for agent / assistant memory, long-term memory, or a "remember what the user told me" feature
-- write the queries that **create, deduplicate, reinforce, consolidate, correct, expire, forget, or categorise** memories
-- decide which Helix capability (property index, edge, vector, BM25) a given memory operation should use
-- build hybrid recall that fuses semantic + keyword + graph context
+- design the data model for agent memory, long-term memory, user profiles, document/chunk RAG, or a "remember what the user told me" feature
+- write queries that create, deduplicate, reinforce, consolidate, version, correct, expire, forget, categorise, or retrieve memories
+- decide which Helix capability (property index, graph edge, vector index, BM25 text index) a given memory operation should use
+- build hybrid recall that fuses semantic + keyword + graph + profile context
+- implement advanced memory components such as source documents, chunks, connectors, extracted facts, evolving profiles, relationship-aware recall, and forgetting
 
-Do **not** use this skill for generic query syntax questions. For builder/method details defer to `helix-query-typescript` (the default DSL) or `helix-query-rust`, and `helix-query-json-dynamic` (raw `POST /v1/query` payloads). This skill assumes those and focuses on the *memory design* on top of them.
+Do **not** use this skill for generic query syntax questions. For builder/method details defer to `helix-query-typescript` (the default DSL), `helix-query-rust`, or `helix-query-json-dynamic`. This skill assumes those and focuses on the memory architecture on top of Helix.
 
 ## First Steps
 
-1. Inspect the target repo for any existing `Memory`/`User`/`Category` labels, edges, and indexes; reuse exact casing if present.
-2. **Default to the TypeScript DSL** (`@helixdb/enterprise-ql`) so the whole app stays in TypeScript. Use the Rust variant (`EXAMPLES.rust.md`) only if the app/runtime is Rust or you are shipping a stored enterprise route.
-3. Reuse the canonical memory model below before inventing new labels. Adapt names, never the shape.
-4. Confirm how embeddings are produced: **the application computes embeddings client-side** (calls an embedding API) and passes them in as `F64`/`F32` arrays. Helix does **not** embed text for you on the dynamic-query path — there is no `Embed()`/`SearchV` (that is the stale `.hx` dialect). Keep the embedding **model and dimension fixed** for the life of the index.
+1. Inspect the target repo for existing labels, edges, properties, indexes, and route style. Reuse exact casing if present.
+2. **Default to the TypeScript DSL** (`@helixdb/enterprise-ql`) so the app can keep query generation near service code. Use `EXAMPLES.rust.md` only if the runtime is Rust or the team explicitly ships Rust stored routes.
+3. Decide the tenancy boundary before modeling anything. The canonical tenant property is **`tenant_id`** because tenant-partitioned Helix text indexes currently require that name. Attach `tenant_id` to every tenant-owned node and edge.
+4. Reuse the canonical model below before inventing labels. Adapt names, not the shape.
+5. Confirm how embeddings are produced. The application computes embeddings client-side and passes numeric arrays (`F32` preferred; `F64` accepted). Helix does **not** embed text on the dynamic-query path; there is no `Embed()`/`SearchV` in the current DSL. Keep embedding model and dimension fixed for each vector index.
+6. Identify the application workers outside Helix: extractor, chunker, embedder, memory writer, relationship classifier, decay/expiry sweeper, profile summariser, optional query rewriter, optional reranker, and connector sync jobs.
 
 ## The Memory Model At A Glance
 
-Labels: **`User`** (owner / tenant), **`Memory`** (the unit of memory), **`Category`** (topic taxonomy), **`Entity`** (people/places/things mentioned), **`Session`** (episodic provenance).
+Core labels: **`Tenant`**, **`User`**, **`UserProfile`**, **`SourceDocument`**, **`Chunk`**, **`Memory`**, **`Category`**, **`Entity`**, **`Session`**, optional **`Connector`** and **`IngestionJob`**.
 
-Edges: **`OWNS`** (User→Memory), **`IN_CATEGORY`** (Memory→Category), **`MENTIONS`** (Memory→Entity), **`SUPERSEDES`** (Memory→Memory, correction/contradiction), **`RELATES_TO`** (Memory→Memory, association cluster), **`DERIVED_FROM`** (Memory→Session), optional **`PARENT_OF`** (Category→Category).
+Core edges: **`OWNS`** (Tenant/User→Memory), **`HAS_PROFILE`** (User→UserProfile), **`HAS_CHUNK`** (SourceDocument→Chunk), **`EXTRACTED_FROM`** (Memory→Chunk or SourceDocument), **`IN_CATEGORY`** (Memory→Category), **`MENTIONS`** (Memory→Entity), **`UPDATES`** (new Memory→old Memory), **`EXTENDS`** (Memory→Memory enrichment), **`DERIVES`** (inferred Memory→supporting Memory), **`RELATES_TO`** (Memory→Memory association), **`DERIVED_FROM`** (Memory→Session), optional **`PARENT_OF`** (Category→Category).
 
-The fields that make it fast and safe: `Memory.memoryId` (unique), `Memory.userId` (equality index — the tenant key), a **vector index** on `Memory.embedding` and a **text index** on `Memory.content` — both **tenant-scoped by `userId`**. Full spec, types, and the index bootstrap are in `REFERENCE.md`.
+Fast and safe fields:
 
-## Modality Decision Rules (the core skill)
+- `tenant_id` on every tenant-owned node and edge, with equality indexes where used as an anchor
+- stable IDs such as `memoryId`, `documentId`, `chunkId`, `categoryKey`, `entityKey`, `sessionId`, and `profileId`
+- `Memory.isLatest`, `validFrom`, `validTo`, `expiresAt`, and `deletedAt` for current/forgotten filtering
+- tenant-partitioned vector/text indexes on `Memory.embedding`/`Memory.content` and optionally `Chunk.embedding`/`Chunk.content`, all partitioned by `tenant_id`
 
-Pick the mechanism by the *question you are answering*, and use them together:
+Full spec, types, and index bootstrap are in `REFERENCE.md`.
+
+## Modality Decision Rules
+
+Pick the mechanism by the question you are answering, and combine them deliberately:
 
 | Need | Use | Why |
 |---|---|---|
-| Tenant isolation (`userId`), exact identity (`memoryId`), lifecycle flags (`deletedAt`, `expiresAt`, `validTo`), ordering/filtering (`createdAt`, `salience`) | **Properties + equality index** | O(1) anchors; never scan the whole label. Tenant scope is non-negotiable. |
-| Categorisation, entity-centric recall, provenance, contradiction/temporal chains, association clusters, taxonomy | **Graph / edges** | These are *relationships*; you traverse and aggregate over them. |
-| "Is this new memory already known?" (dedup); "memories *like* this" | **Vector search** (`Memory.embedding`) | Semantic similarity; tolerant of paraphrase. |
-| Exact keyword / proper noun / id / rare-token recall | **BM25 text search** (`Memory.content`) | Embeddings blur names, codes, and exact tokens; BM25 nails them. |
+| Tenant isolation (`tenant_id`), exact identity, lifecycle flags (`deletedAt`, `expiresAt`, `validTo`, `isLatest`), ordering/filtering (`createdAt`, `salience`) | **Properties + equality/range index** | Narrow anchors and safe filters. Tenant scope is non-negotiable. |
+| Categorisation, entities, provenance, profile ownership, updates/extensions/derivations, association clusters, taxonomy | **Graph edges** | These are relationships; traverse and aggregate over them. |
+| Deduplication, paraphrase recall, memories like this, chunks like this | **Vector search** | Semantic similarity; tolerant of rewording. |
+| Exact names, ids, rare tokens, commands, file paths, product terms | **BM25 text search** | Embeddings blur exact tokens; BM25 preserves them. |
+| Broad user context the model should always know | **UserProfile node + summariser worker** | Avoid multiple searches for stable identity/preferences/recent focus. |
+| Raw documents and citations | **SourceDocument + Chunk nodes** | Memory facts are not a replacement for source-grounded RAG. |
 
-Rule of thumb: **never collapse a memory system to vector-only.** Vectors miss exact names and have no notion of ownership, recency, contradiction, or category. Properties carry identity and lifecycle; edges carry meaning between memories; vector + BM25 are two complementary recall paths you fuse.
+Rule of thumb: **never collapse a memory system to vector-only.** Vectors miss exact names and have no notion of ownership, recency, contradiction, provenance, profile state, or category.
 
-Always: scope vector/BM25 searches to the user via `tenantValue = userId`, and filter `deletedAt` out on every read.
+Always scope vector/BM25 searches with `tenantValue = tenant_id`. Every recall path must filter out forgotten/stale records: `deletedAt IsNull`, `isLatest = true`, `validTo IsNull`, and `expiresAt` absent or in the future. If a route cannot express one of those filters inside Helix, over-fetch and apply the remaining policy in application code before returning context.
+
+## Product Layers
+
+Helix gives you graph + search primitives. A full intelligent memory system also needs:
+
+| Layer | Responsibility |
+|---|---|
+| Ingestion API | Accept text, chats, files, URLs, connector events, and direct memory writes. |
+| Extractors | Convert PDFs, docs, HTML, images/OCR, audio/video transcripts, code, and structured data into text. |
+| Chunkers | Split raw context by semantic sections, message turns, document headings, code AST boundaries, or transcript segments. |
+| Embedding worker | Generate fixed-dimension embeddings for memories and chunks before writing to Helix. |
+| Memory generator | Extract atomic, entity-centric candidate facts from conversations/documents. |
+| Relationship classifier | Decide whether each candidate `UPDATES`, `EXTENDS`, `DERIVES`, duplicates, or stands alone. |
+| Profile summariser | Maintain `UserProfile.staticSummary` and `dynamicSummary` from latest memories. |
+| Forgetting jobs | Run expiry, decay, stale-profile, and connector deletion sweeps. |
+| Retrieval service | Rewrite queries, run vector + BM25 over memories/chunks, fuse, rerank, graph-expand, and pack context with citations. |
+| Evaluation | Measure recall quality, stale-memory suppression, tenant isolation, latency, and token efficiency. |
+
+Do not imply Helix automatically does extraction, chunking, embedding, relationship classification, profile generation, connector sync, reranking, or TTL. Those are application responsibilities unless the user has a managed service that provides them.
 
 ## The Memory Lifecycle
 
-Each step links to a complete example in `EXAMPLES.md` (TypeScript) / `EXAMPLES.rust.md` (Rust).
+Each step links to complete examples in `EXAMPLES.md` (TypeScript) and `EXAMPLES.rust.md` (Rust).
 
-### 1. Generation
-1. **Extract** candidate memories from the conversation (LLM, app-side) — atomic, self-contained statements.
-2. **Embed** each candidate (app-side) → `F64`/`F32` array.
-3. **Deduplicate** before writing. A distance threshold can **not** be a batch condition, so use one of:
-   - *read-then-write*: vector-search the nearest existing memory for this user; if `distance < threshold`, **reinforce** it instead of inserting; otherwise create. (Example 2.)
-   - *idempotent upsert*: key on a stable `memoryId` (uuid or content hash) and branch with `varAsIf(VarNotEmpty/VarEmpty)` in one write batch — catches exact repeats. (Example 2b.)
-4. **Write**: `addN("Memory", …)` with `embedding`, `content`, `kind`, `salience`, and timestamps via `Expr.timestamp()`; link `User -OWNS-> Memory`.
-5. **Categorise** immediately (see step 4 below).
+### 1. Ingestion & Generation
 
-### 2. Updating
-- **Reinforce on access**: bump `accessCount` (`Expr.prop("accessCount").add(Expr.val(1))`), set `lastAccessedAt = Expr.timestamp()`, raise `salience`. (Example 4.)
-- **Consolidate** near-duplicates/related memories with a `RELATES_TO` edge, or rewrite one canonical memory. **If you change `content`, re-embed and overwrite `embedding` in the same write** — content and vector must never drift apart.
-- **Correct / contradict**: add `new -SUPERSEDES-> old`, and invalidate the old one (set `validTo` or soft-delete it). Keep the old node for audit unless you have a reason to hard-delete. (Example 5.)
+1. Accept raw context as a `SourceDocument`, conversation/session, direct memory write, or connector update.
+2. Extract and chunk app-side when the input is not already an atomic memory.
+3. Embed each candidate memory/chunk app-side.
+4. Extract atomic, self-contained candidate memories. Prefer entity-centric facts: "Alex prefers morning meetings" rather than "prefers morning meetings".
+5. Classify candidate kind: `fact`, `preference`, `episode`, `procedure`, or app-specific equivalents.
+6. Deduplicate before writing. A similarity threshold cannot be a batch condition, so use read-then-write for semantic dedup and idempotent upsert for exact repeats.
+7. Write `Memory` with `tenant_id`, `memoryId`, `content`, `embedding`, `kind`, `salience`, `isLatest: true`, and lifecycle timestamps; link ownership and provenance edges.
+8. Categorise and entity-link immediately.
+
+### 2. Updating & Versioning
+
+- **Reinforce on access:** bump `accessCount`, `lastAccessedAt`, and bounded `salience`.
+- **Update/correct:** create a new memory, link `new -UPDATES-> old`, set old `isLatest = false` and `validTo`, and optionally set `deletedAt` if it should disappear from normal recall.
+- **Extend:** link `new -EXTENDS-> existing` when the new fact enriches but does not replace the old fact.
+- **Derive:** link inferred facts with `DERIVES` edges to supporting memories and mark them as inferred with confidence metadata.
+- If `content` changes, re-embed and update `embedding` in the same write. Content and vector must never drift.
 
 ### 3. Deletion / Forgetting
-Helix has **no native TTL or decay** — forgetting is explicit write queries the app runs (e.g. on a cron/schedule).
-- **Soft-delete** (preferred): set `deletedAt = Expr.timestamp()`. Reads filter `deletedAt IsNull`. Reversible, preserves history. (Example 6.)
-- **Decay sweep**: soft-delete memories that are low `salience` **and** stale `lastAccessedAt` **and** low `accessCount`. (Example 7.)
-- **Expiry sweep**: hard-delete where `expiresAt < now`. (Example 8.)
-- **Hard delete**: `drop()` the node; drop its edges explicitly if your graph is a multigraph (note in `REFERENCE.md`).
 
-### 4. Categorisation
-- Set `Memory.kind` ∈ {`episodic`, `semantic`, `procedural`} at generation.
-- **Topic**: upsert a `Category` by unique `name` (`varAsIf`), then link `Memory -IN_CATEGORY-> Category`. (Example 3.)
-- **Entities**: upsert `Entity` by name and link `Memory -MENTIONS-> Entity` — this is what powers entity-centric multi-hop recall.
-- Prefer **edges over array-of-tags** when you will traverse or aggregate by the tag; use an array property only for flat, display-only labels.
+Helix has **no native TTL or decay**. Forgetting is explicit write queries the app runs.
 
-### Retrieval (hybrid — last, not first)
-Run vector and BM25 as two sub-queries in one read batch, **both tenant-scoped and both filtering `deletedAt IsNull`**, project `$distance` immediately, then **fuse app-side (RRF)** and re-rank by `salience` + recency. Optionally expand via `MENTIONS`/`IN_CATEGORY`/`RELATES_TO` for related context. (Example 9; fusion formula in `REFERENCE.md`.)
+- **Soft-delete** (preferred): set `deletedAt = Expr.datetime()` and filter it from reads. Reversible and audit-friendly.
+- **Version invalidation:** set `isLatest = false` and `validTo = Expr.datetime()` when a memory is superseded.
+- **Expiry sweep:** hide or hard-delete memories where `expiresAt < now`.
+- **Decay sweep:** hide weak, stale, rarely accessed episodic memories.
+- **Hard delete:** use `drop()` only when policy requires physical deletion. `drop()` removes the node and incident edges; use `dropEdgeById` for surgical edge cleanup on multigraph-sensitive paths.
+
+### 4. Categorisation & Entity Linking
+
+- Store display categories as `Category` nodes scoped by `tenant_id` and a unique `categoryKey` such as `${tenant_id}:${normalisedName}`.
+- Store entities as `Entity` nodes scoped by `tenant_id` and a unique `entityKey` such as `${tenant_id}:${normalisedName}`.
+- Prefer edges over arrays when you will traverse, aggregate, or recall by the tag/entity.
+- Use array/string metadata only for flat display filters that do not need graph expansion.
+
+### 5. Profile Maintenance
+
+- Maintain one `UserProfile` per user/container with `profileId`, `tenant_id`, `userId`, `staticSummary`, `dynamicSummary`, and `updatedAt`.
+- Static profile: identity, stable preferences, long-lived background.
+- Dynamic profile: current projects, recent context, temporary goals, unresolved tasks.
+- Update profiles asynchronously after memory writes and deletions; keep profile generation deterministic enough to test.
+
+### Retrieval
+
+Run multiple recall paths and fuse app-side:
+
+1. Fetch the `UserProfile` for always-on context.
+2. Run vector and BM25 over current `Memory` nodes, tenant-scoped and freshness-filtered.
+3. Optionally run vector and BM25 over `Chunk` nodes for source-grounded RAG and citations.
+4. Fuse app-side with RRF, then re-rank by salience, recency, relationship type, and optional cross-encoder score.
+5. Expand top memories through `MENTIONS`, `IN_CATEGORY`, `EXTENDS`, `UPDATES`, and `RELATES_TO`, bounded by depth and tenant filters.
+6. Pack context without embeddings and include source/citation metadata when available.
 
 ## Anti-Patterns
 
 Do not:
-- use the `.hx` dialect (`Embed()`, `SearchV`, `SearchBM25`, `AddV`) — the dynamic-query/TS-DSL path passes pre-computed vectors and uses `vectorSearchNodes` / `textSearchNodes`.
-- build a vector-only store and call it memory — you lose ownership, recency, contradiction, categories, and exact-name recall.
-- forget `tenantValue = userId` on vector/BM25 search, or skip the `deletedAt IsNull` filter on reads (you will leak other users' or forgotten memories).
-- read `$distance` after an `out`/`in`/`both` step — project it right after the search.
-- expect a TTL — schedule the decay/expiry sweeps yourself.
-- try to express a similarity-threshold dedup as a `BatchCondition` — it can only test variable emptiness/size; use read-then-write.
-- update `content` without re-embedding.
-- return `embedding` arrays in API responses — project only what the caller needs.
-- hard-delete by default when soft-delete + `SUPERSEDES` preserves a useful history.
+
+- use the deprecated `.hx` dialect (`Embed()`, `SearchV`, `SearchBM25`, `AddV`) for new dynamic/TS/Rust DSL work
+- use `userId` as the text-index tenant property; use `tenant_id` for tenant-partitioned text/vector indexes
+- attach `tenant_id` only to `Memory`; every tenant-owned node and edge needs it
+- mutate, delete, categorise, or reinforce by `memoryId` without also checking `tenant_id`
+- return superseded/forgotten/expired memories because recall only checked `deletedAt`
+- build a vector-only store and call it memory
+- expect Helix to extract files, chunk documents, generate embeddings, classify updates, build profiles, rerank, sync connectors, or run TTL jobs automatically
+- read `$distance` after an `out`/`in`/`both` step; project it immediately after search
+- try to express a similarity-threshold dedup as a `BatchCondition`; it can only test variable emptiness/size
+- update `content` without re-embedding
+- return `embedding` arrays in API responses unless explicitly required
+- make `Category` or `Entity` global by display name in a multi-tenant memory app
 
 ## Validation Checklist
 
 Before finishing:
-- read vs write batch is correct (`readBatch()` / `writeBatch()`).
-- every search is tenant-scoped (`tenantValue = userId`) and every read filters `deletedAt IsNull`.
-- the indexes the queries rely on exist (run the bootstrap from Example 1 first).
-- `embedding` dimension and model are consistent across write and search.
-- generation deduplicates (read-then-write or idempotent upsert).
-- content edits re-embed in the same write.
-- timestamps use `Expr.timestamp()`; counters use `Expr.prop(...).add(...)`.
-- no `embedding` in projected output unless explicitly required.
-- labels/edges/properties match any existing repo casing.
+
+- `readBatch()` vs `writeBatch()` is correct
+- every tenant-owned node and edge has `tenant_id`
+- vector/text indexes use `tenant_property = "tenant_id"`, and searches pass `tenantValue = tenant_id`
+- every read filters `deletedAt IsNull`, current/latest state, and expiry validity
+- every write route accepts and filters by `tenant_id`
+- IDs used for upsert are either globally unique or tenant-qualified (`categoryKey`, `entityKey`, etc.)
+- embedding dimension/model is consistent across writes and searches
+- content edits re-embed in the same write
+- generation deduplicates semantically and exact repeats are idempotent
+- source documents/chunks exist if the feature promises citations or RAG over raw context
+- user profile update jobs exist if the feature promises always-on personalization
+- timestamps use one consistent convention; this skill uses typed DateTime via `Expr.datetime()` and `param.dateTime()`
+- no projected output includes `embedding` unless explicitly required
+- labels/edges/properties match existing repo casing
 
 ## Reference Files
 
-- `REFERENCE.md` — full data-model spec (labels, properties + types, edges, the complete index bootstrap), the modality cheat-sheet, embedding guidance, the RRF fusion + re-ranking formula, and a TypeScript ↔ Rust API mapping.
-- `EXAMPLES.md` — the nine lifecycle scenarios as complete `@helixdb/enterprise-ql` (TypeScript) snippets. **Default.**
-- `EXAMPLES.rust.md` — the same nine scenarios in the Rust DSL.
+- `REFERENCE.md` — full data-model spec, tenant rules, indexes, modality cheat-sheet, embedding guidance, fusion/re-ranking formula, and TypeScript ↔ Rust API mapping.
+- `EXAMPLES.md` — lifecycle scenarios as `@helixdb/enterprise-ql` TypeScript snippets. **Default.**
+- `EXAMPLES.rust.md` — the same scenarios in the Rust DSL.
 - Adjacent skills: `helix-query-typescript`, `helix-query-rust`, `helix-query-json-dynamic`, `helix-query-optimize`.
