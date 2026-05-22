@@ -90,7 +90,9 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 | `tenant_id` | String | equality | Tenant scope. |
 | `documentId` | String | equality | Source pointer. |
 | `content` | String | **text (BM25), tenant_property `tenant_id`** | Chunk text. |
-| `embedding` | F32Array / F64Array | **vector, tenant_property `tenant_id`** | Client-computed embedding of `content`. |
+| `embedding` | F32Array | **vector, tenant_property `tenant_id`** | Client-computed embedding of `content`. Default: OpenAI `text-embedding-3-small`, 1536 dims. |
+| `embeddingModel` | String | — | Optional per-record audit value, e.g. `openai:text-embedding-3-small`. Usually also stored in app config. |
+| `embeddingDim` | I64 | — | Optional per-record audit value. Default `1536`. |
 | `ordinal` | I64 | range optional | Position in document. |
 | `metadataJson` | String | — | Flattened metadata when complex metadata is needed. Helix properties are flat. |
 | `createdAt` / `updatedAt` | DateTime | — | Lifecycle timestamps. |
@@ -104,7 +106,9 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 | `tenant_id` | String | equality | Tenant scope and search partition value. |
 | `userId` | String | equality | User/container id for profile grouping. |
 | `content` | String | **text (BM25), tenant_property `tenant_id`** | Human-readable memory text. |
-| `embedding` | F32Array / F64Array | **vector, tenant_property `tenant_id`** | Client-computed embedding of `content`. |
+| `embedding` | F32Array | **vector, tenant_property `tenant_id`** | Client-computed embedding of `content`. Default: OpenAI `text-embedding-3-small`, 1536 dims. |
+| `embeddingModel` | String | — | Optional per-record audit value, e.g. `openai:text-embedding-3-small`. Usually also stored in app config. |
+| `embeddingDim` | I64 | — | Optional per-record audit value. Default `1536`. |
 | `kind` | String | equality optional | `fact`, `preference`, `episode`, `procedure`, or app-specific. |
 | `salience` | F64 | range optional | Importance 0..1; drives reranking and decay. |
 | `confidence` | F64 | range optional | Extraction/classification confidence. |
@@ -233,11 +237,67 @@ Helix can express these as `where(Predicate.and([...]))` after a vector/text sea
 
 ## Embedding Guidance
 
-- Embeddings are produced by the application (OpenAI, Gemini, local model, etc.) and passed as numeric array parameters (`param.array(param.f32())` or `param.array(param.f64())`).
-- Keep the same embedding model and dimension for writes/searches over the life of an index. Changing models requires re-embedding records and rebuilding or replacing the index strategy.
+- Default production profile: OpenAI `text-embedding-3-small`, `1536` dimensions, stored and queried as `F32Array` (`param.array(param.f32())` / `Vec<f32>`).
+- Embeddings are produced by the application and passed as numeric array parameters. Dynamic JSON/TS calls should assume client-side embeddings.
+- Validate `embedding.length === 1536` before writing or searching when using the default model.
+- Store `embeddingModel = "openai:text-embedding-3-small"` and `embeddingDim = 1536` in app configuration or an operational metadata node. Optionally duplicate those values on `Memory`/`Chunk` for audit/migration.
+- Do not mix embeddings from different models or dimensions in one index. Changing models requires re-embedding records and rebuilding or replacing the index strategy.
 - Embed the same text stored in `content` or a deterministic normalised version.
-- Store embedding model/dimension in app configuration or an operational metadata node; do not mix embeddings from different models in one index.
-- For stored Rust enterprise routes, a server-side embedding model may be configured with route-specific features when supported. Dynamic JSON/TS calls should assume client-side embeddings.
+- Deterministic token-hash embeddings are acceptable for local smoke tests and UI demos only. Do not use them for production recall quality, MemoryBench-style evaluations, or threshold tuning.
+- Similarity/dedup thresholds are model-specific. Retune thresholds after changing embedding model, dimension, normalisation, or chunk/memory text format.
+- For stored Rust enterprise routes, a server-side embedding model may be configured with route-specific features when supported. Keep the default guidance as client-side embeddings unless the target repo already uses server-side embedding routes.
+
+## Contextual Memory Extraction
+
+Extraction is an application worker. It should not classify the current message in isolation. Pass the extractor a structured input containing:
+
+- current user message
+- previous assistant message
+- bounded recent conversation window
+- recalled active memories
+- active entities and topics
+- current date/time
+
+Required extractor behaviour:
+
+- resolve pronouns and ellipsis before deciding whether a fact is durable
+- treat short answers to assistant follow-up questions as memory candidates
+- output self-contained memories with named entities where possible
+- attach relationship intent: `new`, `duplicate`, `EXTENDS`, `UPDATES`, or `DERIVES`
+- include source pointers (`sessionId`, `messageId`, `documentId`, `chunkId`) and confidence
+
+Example:
+
+```text
+Existing memory: User is planning a trip to Japan with Maya.
+Assistant: When are you going?
+User: next April
+Extract: User is planning a trip to Japan with Maya next April.
+Relationship: EXTENDS the existing Japan trip memory; MENTIONS Maya and Japan.
+
+Assistant: What do you want to do there?
+User: mostly food, temples, and trains
+Extract: User wants their Japan trip with Maya to focus on food, temples, and trains.
+Relationship: EXTENDS the existing Japan trip memory; IN_CATEGORY travel/preferences.
+
+User later: actually we're going in May instead
+Extract: User is planning a trip to Japan with Maya in May.
+Relationship: UPDATES the previous next-April timing memory; set old isLatest=false and validTo.
+```
+
+Minimal extractor output shape:
+
+```json
+{
+  "content": "User wants their Japan trip with Maya to focus on food, temples, and trains.",
+  "kind": "preference",
+  "category": "travel",
+  "salience": 0.72,
+  "confidence": 0.86,
+  "entities": ["Maya", "Japan"],
+  "relationship": { "type": "EXTENDS", "targetMemoryId": "mem_trip_japan" }
+}
+```
 
 ## Hybrid Fusion & Re-Ranking
 

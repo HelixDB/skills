@@ -31,7 +31,7 @@ Do **not** use this skill for generic query syntax questions. For builder/method
 2. **Default to the TypeScript DSL** (`@helixdb/enterprise-ql`) so the app can keep query generation near service code. Use `EXAMPLES.rust.md` only if the runtime is Rust or the team explicitly ships Rust stored routes.
 3. Decide the tenancy boundary before modeling anything. The canonical tenant property is **`tenant_id`** because tenant-partitioned Helix text indexes currently require that name. Attach `tenant_id` to every tenant-owned node and edge.
 4. Reuse the canonical model below before inventing labels. Adapt names, not the shape.
-5. Confirm how embeddings are produced. The application computes embeddings client-side and passes numeric arrays (`F32` preferred; `F64` accepted). Helix does **not** embed text on the dynamic-query path; there is no `Embed()`/`SearchV` in the current DSL. Keep embedding model and dimension fixed for each vector index.
+5. Confirm how embeddings are produced. **Default to OpenAI `text-embedding-3-small`** for production and benchmarkable memory systems: `1536` dimensions, stored as `F32` arrays. The application computes embeddings client-side and passes numeric arrays (`param.array(param.f32())`). Helix does **not** embed text on the dynamic-query path; there is no `Embed()`/`SearchV` in the current DSL. Keep embedding model and dimension fixed for each vector index. Deterministic hash embeddings are acceptable only for local UI demos or smoke tests, not for quality benchmarks.
 6. Identify the application workers outside Helix: extractor, chunker, embedder, memory writer, relationship classifier, decay/expiry sweeper, profile summariser, optional query rewriter, optional reranker, and connector sync jobs.
 
 ## The Memory Model At A Glance
@@ -75,8 +75,8 @@ Helix gives you graph + search primitives. A full intelligent memory system also
 | Ingestion API | Accept text, chats, files, URLs, connector events, and direct memory writes. |
 | Extractors | Convert PDFs, docs, HTML, images/OCR, audio/video transcripts, code, and structured data into text. |
 | Chunkers | Split raw context by semantic sections, message turns, document headings, code AST boundaries, or transcript segments. |
-| Embedding worker | Generate fixed-dimension embeddings for memories and chunks before writing to Helix. |
-| Memory generator | Extract atomic, entity-centric candidate facts from conversations/documents. |
+| Embedding worker | Generate `text-embedding-3-small` 1536-dim `F32` embeddings for memories and chunks before writing to Helix, unless the app has explicitly standardised on another model. |
+| Memory generator | Extract atomic, entity-centric candidate facts from conversations/documents using the current turn plus recent context, active entities, recalled memories, and current date. |
 | Relationship classifier | Decide whether each candidate `UPDATES`, `EXTENDS`, `DERIVES`, duplicates, or stands alone. |
 | Profile summariser | Maintain `UserProfile.staticSummary` and `dynamicSummary` from latest memories. |
 | Forgetting jobs | Run expiry, decay, stale-profile, and connector deletion sweeps. |
@@ -93,12 +93,43 @@ Each step links to complete examples in `EXAMPLES.md` (TypeScript) and `EXAMPLES
 
 1. Accept raw context as a `SourceDocument`, conversation/session, direct memory write, or connector update.
 2. Extract and chunk app-side when the input is not already an atomic memory.
-3. Embed each candidate memory/chunk app-side.
+3. Embed each candidate memory/chunk app-side with OpenAI `text-embedding-3-small` by default. Store/pass a 1536-length `F32` vector.
 4. Extract atomic, self-contained candidate memories. Prefer entity-centric facts: "Alex prefers morning meetings" rather than "prefers morning meetings".
 5. Classify candidate kind: `fact`, `preference`, `episode`, `procedure`, or app-specific equivalents.
 6. Deduplicate before writing. A similarity threshold cannot be a batch condition, so use read-then-write for semantic dedup and idempotent upsert for exact repeats.
 7. Write `Memory` with `tenant_id`, `memoryId`, `content`, `embedding`, `kind`, `salience`, `isLatest: true`, and lifecycle timestamps; link ownership and provenance edges.
 8. Categorise and entity-link immediately.
+
+### Contextual Extraction Rules
+
+Do not extract from the latest user message in isolation. The extraction worker should receive:
+
+- the current user message
+- the previous assistant message, because it often defines what a short answer means
+- a bounded recent conversation window
+- recalled active memories and active entities
+- the current date/time for relative time phrases
+
+Resolve pronouns, ellipsis, and short follow-up answers before deciding whether to store a memory. If the assistant asks a memory-bearing follow-up question and the user answers briefly, convert the answer into a self-contained memory.
+
+Example:
+
+```text
+Existing memory: User is planning a trip to Japan with Maya.
+Assistant: When are you going?
+User: next April
+Extract: User is planning a trip to Japan with Maya next April.
+Relationship: EXTENDS the existing Japan trip memory; MENTIONS Maya and Japan.
+
+Assistant: What do you want to do there?
+User: mostly food, temples, and trains
+Extract: User wants their Japan trip with Maya to focus on food, temples, and trains.
+Relationship: EXTENDS the existing Japan trip memory; categorise as travel/preferences.
+
+User later: actually we're going in May instead
+Extract: User is planning a trip to Japan with Maya in May.
+Relationship: UPDATES the previous next-April timing memory and invalidates the older version.
+```
 
 ### 2. Updating & Versioning
 
@@ -153,6 +184,9 @@ Do not:
 - mutate, delete, categorise, or reinforce by `memoryId` without also checking `tenant_id`
 - return superseded/forgotten/expired memories because recall only checked `deletedAt`
 - build a vector-only store and call it memory
+- use a toy hash embedding for production recall or benchmark claims; default to `text-embedding-3-small` unless the app has a better standard model
+- extract memories from only the latest user message and miss contextual follow-ups such as "next April" or "mostly food, temples, and trains"
+- drop short follow-up answers because they are not self-contained before context resolution
 - expect Helix to extract files, chunk documents, generate embeddings, classify updates, build profiles, rerank, sync connectors, or run TTL jobs automatically
 - read `$distance` after an `out`/`in`/`both` step; project it immediately after search
 - try to express a similarity-threshold dedup as a `BatchCondition`; it can only test variable emptiness/size
@@ -170,9 +204,10 @@ Before finishing:
 - every read filters `deletedAt IsNull`, current/latest state, and expiry validity
 - every write route accepts and filters by `tenant_id`
 - IDs used for upsert are either globally unique or tenant-qualified (`categoryKey`, `entityKey`, etc.)
-- embedding dimension/model is consistent across writes and searches
+- embedding model is `openai:text-embedding-3-small` and every vector is 1536-dim `F32`, unless the app explicitly standardises on another fixed model/dimension
 - content edits re-embed in the same write
 - generation deduplicates semantically and exact repeats are idempotent
+- extraction sees the previous assistant turn, recent conversation window, recalled active memories/entities, and current date before deciding what to store
 - source documents/chunks exist if the feature promises citations or RAG over raw context
 - user profile update jobs exist if the feature promises always-on personalization
 - timestamps use one consistent convention; this skill uses typed DateTime via `Expr.datetime()` and `param.dateTime()`

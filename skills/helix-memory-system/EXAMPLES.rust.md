@@ -2,11 +2,20 @@
 
 The same lifecycle patterns as `EXAMPLES.md`, in the Rust DSL. Use this when the app/runtime is Rust or the team ships Rust stored routes. TypeScript is the default for Node/TS services.
 
-Each query is a `#[register]` function. Parameters are bound by name, and calling the generated route yields a request that can be sent to Helix. Data model and indexes are in `REFERENCE.md`.
+Each query is a `#[register]` function. Parameters are bound by name, and calling the generated route yields a request that can be sent to Helix. Data model and indexes are in `REFERENCE.md`. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model.
 
 ```rust
 use helix_db::dsl::prelude::*;
 ```
+
+Embedding constants used by the write examples:
+
+```rust
+const DEFAULT_EMBEDDING_MODEL: &str = "openai:text-embedding-3-small";
+const DEFAULT_EMBEDDING_DIM: i64 = 1536;
+```
+
+Extraction happens app-side before `create_memory(...)`. The extractor should receive the current user message, previous assistant message, recent conversation window, recalled active memories/entities, and current date. It must resolve short follow-up answers into self-contained memories before embedding and writing.
 
 Shared predicates used by recall routes:
 
@@ -121,6 +130,8 @@ pub fn ingest_chunk(
                     ("documentId", PropertyInput::param("documentId")),
                     ("content", PropertyInput::param("content")),
                     ("embedding", PropertyInput::param("embedding")),
+                    ("embeddingModel", PropertyInput::from(DEFAULT_EMBEDDING_MODEL)),
+                    ("embeddingDim", PropertyInput::from(DEFAULT_EMBEDDING_DIM)),
                     ("ordinal", PropertyInput::param("ordinal")),
                     ("createdAt", PropertyInput::from(Expr::datetime())),
                     ("updatedAt", PropertyInput::from(Expr::datetime())),
@@ -250,6 +261,8 @@ pub fn create_memory(
                     ("userId", PropertyInput::param("userId")),
                     ("content", PropertyInput::param("content")),
                     ("embedding", PropertyInput::param("embedding")),
+                    ("embeddingModel", PropertyInput::from(DEFAULT_EMBEDDING_MODEL)),
+                    ("embeddingDim", PropertyInput::from(DEFAULT_EMBEDDING_DIM)),
                     ("kind", PropertyInput::param("kind")),
                     ("salience", PropertyInput::param("salience")),
                     ("confidence", PropertyInput::param("confidence")),

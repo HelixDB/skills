@@ -2,7 +2,7 @@
 
 Complete `@helixdb/enterprise-ql` snippets for a tenant-safe memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`. The model and indexes are in `REFERENCE.md`.
 
-Each query function is plain; call it and `.toDynamicJson(params, values)` to get the body for `POST /v1/query`. Embeddings are produced by the application and passed as numeric arrays. Every tenant-owned node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant value.
+Each query function is plain; call it and `.toDynamicJson(params, values)` to get the body for `POST /v1/query`. Embeddings are produced by the application and passed as numeric arrays. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model. Every tenant-owned node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant value.
 
 ```ts
 import {
@@ -30,6 +30,23 @@ function currentMemoryPredicate(nowParam = "now") {
 function liveChunkPredicate() {
   return Predicate.isNull("deletedAt");
 }
+```
+
+Embedding constants used by the write examples:
+
+```ts
+const DEFAULT_EMBEDDING_MODEL = "openai:text-embedding-3-small";
+const DEFAULT_EMBEDDING_DIM = 1536;
+```
+
+Extraction happens app-side before `createMemory(...)`. The extractor should receive the current user message, previous assistant message, recent conversation window, recalled active memories/entities, and current date. It must resolve short follow-up answers into self-contained memories.
+
+```text
+Existing memory: User is planning a trip to Japan with Maya.
+Assistant: When are you going?
+User: next April
+Extract: User is planning a trip to Japan with Maya next April.
+Relationship: EXTENDS the existing Japan trip memory.
 ```
 
 ---
@@ -74,7 +91,7 @@ function bootstrapMemoryIndexes() {
 
 ## 2. Source document + chunk ingestion
 
-Extraction, chunking, and embedding happen app-side. This query stores one chunk and links it to its source document.
+Extraction, chunking, and embedding happen app-side. This query stores one chunk and links it to its source document. `embedding` should be a 1536-length `F32` vector from `text-embedding-3-small` when using the default profile.
 
 ```ts
 const ingestChunkParams = defineParams({
@@ -116,6 +133,8 @@ function ingestChunk(p = ingestChunkParams) {
         documentId: p.documentId,
         content: p.content,
         embedding: p.embedding,
+        embeddingModel: DEFAULT_EMBEDDING_MODEL,
+        embeddingDim: DEFAULT_EMBEDDING_DIM,
         ordinal: p.ordinal,
         createdAt: Expr.datetime(),
         updatedAt: Expr.datetime(),
@@ -131,7 +150,7 @@ function ingestChunk(p = ingestChunkParams) {
 
 ## 3. Generation — read-then-write semantic dedup
 
-A similarity threshold cannot be a batch condition. Read the nearest current memory for the tenant, then the app decides whether to reinforce or create.
+A similarity threshold cannot be a batch condition. Read the nearest current memory for the tenant, then the app decides whether to reinforce or create. `embedding` should be the 1536-length `F32` query vector from the same embedding model used at write time.
 
 ```ts
 const nearestParams = defineParams({
@@ -164,7 +183,7 @@ function nearestCurrentMemory(p = nearestParams) {
 
 ## 4. Create memory with tenant-scoped user/session upserts
 
-Use this after semantic dedup decides the candidate is new.
+Use this after contextual extraction and semantic dedup decide the candidate is new. `embedding` must be computed from the final self-contained `content`, not from the raw short user utterance.
 
 ```ts
 const createMemoryParams = defineParams({
@@ -213,6 +232,8 @@ function createMemory(p = createMemoryParams) {
         userId: p.userId,
         content: p.content,
         embedding: p.embedding,
+        embeddingModel: DEFAULT_EMBEDDING_MODEL,
+        embeddingDim: DEFAULT_EMBEDDING_DIM,
         kind: p.kind,
         salience: p.salience,
         confidence: p.confidence,
