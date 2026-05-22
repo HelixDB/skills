@@ -2,7 +2,7 @@
 
 Complete `@helixdb/enterprise-ql` snippets for a tenant-safe memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`. The model and indexes are in `REFERENCE.md`.
 
-Each query function is plain; call it and `.toDynamicJson(params, values)` to get the body for `POST /v1/query`. Embeddings are produced by the application and passed as numeric arrays. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model. Every tenant-owned node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant value.
+Each query function is plain; call it and `.toDynamicJson(params, values)` to get the body for `POST /v1/query`. Embeddings are produced by the application and passed as numeric arrays. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model. Every tenant-owned node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant value. The default examples also filter user-private memories and chunks by `userId`; replace that with `containerId`, `scopeId`, or app ACL filtering for project/team/workspace memory.
 
 ```ts
 import {
@@ -30,6 +30,22 @@ function currentMemoryPredicate(nowParam = "now") {
 function liveChunkPredicate() {
   return Predicate.isNull("deletedAt");
 }
+
+function currentUserMemoryPredicate(nowParam = "now", userParam = "userId") {
+  return Predicate.and([
+    Predicate.eqParam("tenant_id", "tenant_id"),
+    Predicate.eqParam("userId", userParam),
+    currentMemoryPredicate(nowParam),
+  ]);
+}
+
+function liveUserChunkPredicate(userParam = "userId") {
+  return Predicate.and([
+    Predicate.eqParam("tenant_id", "tenant_id"),
+    Predicate.eqParam("userId", userParam),
+    liveChunkPredicate(),
+  ]);
+}
 ```
 
 Embedding constants used by the write examples:
@@ -39,7 +55,7 @@ const DEFAULT_EMBEDDING_MODEL = "openai:text-embedding-3-small";
 const DEFAULT_EMBEDDING_DIM = 1536;
 ```
 
-Extraction happens app-side before `createMemory(...)`. The extractor should receive the current user message, previous assistant message, recent conversation window, recalled active memories/entities, and current date. It must resolve short follow-up answers into self-contained memories.
+Extraction happens app-side before `createMemory(...)`. The extractor should receive the current user message, previous assistant message, recent conversation window, recalled active memories/entities, current date, and memory scope (`tenant_id` plus `userId` or the app's container/ACL context). It must resolve short follow-up answers into self-contained memories and return a relationship decision (`new`, `duplicate`, `EXTENDS`, `UPDATES`, or `DERIVES`) rather than relying on vector distance alone.
 
 ```text
 Existing memory: User is planning a trip to Japan with Maya.
@@ -65,9 +81,11 @@ function bootstrapMemoryIndexes() {
     .varAs("profileUser", g().createIndexIfNotExists(IndexSpec.nodeEquality("UserProfile", "userId")))
     .varAs("docId",       g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("SourceDocument", "documentId")))
     .varAs("docTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("SourceDocument", "tenant_id")))
+    .varAs("docUser",     g().createIndexIfNotExists(IndexSpec.nodeEquality("SourceDocument", "userId")))
     .varAs("docChecksum", g().createIndexIfNotExists(IndexSpec.nodeEquality("SourceDocument", "checksum")))
     .varAs("chunkId",     g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Chunk", "chunkId")))
     .varAs("chunkTenant", g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "tenant_id")))
+    .varAs("chunkUser",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "userId")))
     .varAs("chunkDoc",    g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "documentId")))
     .varAs("chunkVec",    g().createIndexIfNotExists(IndexSpec.nodeVector("Chunk", "embedding", "tenant_id")))
     .varAs("chunkText",   g().createIndexIfNotExists(IndexSpec.nodeText("Chunk", "content", "tenant_id")))
@@ -83,6 +101,7 @@ function bootstrapMemoryIndexes() {
     .varAs("entTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Entity", "tenant_id")))
     .varAs("sessId",      g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Session", "sessionId")))
     .varAs("sessTenant",  g().createIndexIfNotExists(IndexSpec.nodeEquality("Session", "tenant_id")))
+    .varAs("sessUser",    g().createIndexIfNotExists(IndexSpec.nodeEquality("Session", "userId")))
     .returning(["memVector", "memText", "chunkVec", "chunkText"]);
 }
 ```
@@ -91,11 +110,12 @@ function bootstrapMemoryIndexes() {
 
 ## 2. Source document + chunk ingestion
 
-Extraction, chunking, and embedding happen app-side. This query stores one chunk and links it to its source document. `embedding` should be a 1536-length `F32` vector from `text-embedding-3-small` when using the default profile.
+Extraction, chunking, and embedding happen app-side. This query stores one user-scoped chunk and links it to its source document. `embedding` should be a 1536-length `F32` vector from `text-embedding-3-small` when using the default profile. For intentionally tenant-wide shared documents, replace `userId` filtering with explicit `visibility`/ACL policy.
 
 ```ts
 const ingestChunkParams = defineParams({
   tenant_id: param.string(),
+  userId: param.string(),
   documentId: param.string(),
   chunkId: param.string(),
   sourceType: param.string(),
@@ -109,13 +129,15 @@ const ingestChunkParams = defineParams({
 
 function ingestChunk(p = ingestChunkParams) {
   return writeBatch()
-    .varAs("doc", g().nWithLabelWhere("SourceDocument", SourcePredicate.eq("documentId", p.documentId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAs("doc", g().nWithLabelWhere("SourceDocument", SourcePredicate.eq("documentId", p.documentId)).where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), Predicate.eqParam("userId", "userId")])))
     .varAsIf(
       "docNew",
       BatchCondition.varEmpty("doc"),
       g().addN("SourceDocument", {
         documentId: p.documentId,
         tenant_id: p.tenant_id,
+        userId: p.userId,
+        visibility: "user",
         sourceType: p.sourceType,
         title: p.title,
         uri: p.uri,
@@ -130,6 +152,8 @@ function ingestChunk(p = ingestChunkParams) {
       g().addN("Chunk", {
         chunkId: p.chunkId,
         tenant_id: p.tenant_id,
+        userId: p.userId,
+        visibility: "user",
         documentId: p.documentId,
         content: p.content,
         embedding: p.embedding,
@@ -150,11 +174,12 @@ function ingestChunk(p = ingestChunkParams) {
 
 ## 3. Generation — read-then-write semantic dedup
 
-A similarity threshold cannot be a batch condition. Read the nearest current memory for the tenant, then the app decides whether to reinforce or create. `embedding` should be the 1536-length `F32` query vector from the same embedding model used at write time.
+A similarity threshold cannot be a batch condition. Read the nearest current memory for the tenant and user scope, then the app decides whether to reinforce or create. `embedding` should be the 1536-length `F32` query vector from the same embedding model used at write time.
 
 ```ts
 const nearestParams = defineParams({
   tenant_id: param.string(),
+  userId: param.string(),
   embedding: param.array(param.f32()),
   now: param.dateTime(),
 });
@@ -165,10 +190,7 @@ function nearestCurrentMemory(p = nearestParams) {
       "nearest",
       g()
         .vectorSearchNodesWith("Memory", "embedding", p.embedding, 1, p.tenant_id)
-        .where(Predicate.and([
-          Predicate.eqParam("tenant_id", "tenant_id"),
-          currentMemoryPredicate("now"),
-        ]))
+        .where(currentUserMemoryPredicate("now", "userId"))
         .project([
           Projection.property("memoryId", "memoryId"),
           Projection.property("content", "content"),
@@ -213,7 +235,7 @@ function createMemory(p = createMemoryParams) {
         createdAt: Expr.datetime(),
       }),
     )
-    .varAs("session", g().nWithLabelWhere("Session", SourcePredicate.eq("sessionId", p.sessionId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAs("session", g().nWithLabelWhere("Session", SourcePredicate.eq("sessionId", p.sessionId)).where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), Predicate.eqParam("userId", "userId")])))
     .varAsIf(
       "sessionNew",
       BatchCondition.varEmpty("session"),
@@ -239,6 +261,7 @@ function createMemory(p = createMemoryParams) {
         confidence: p.confidence,
         isLatest: true,
         isStatic: p.isStatic,
+        visibility: "user",
         inferred: false,
         accessCount: 0,
         validFrom: Expr.datetime(),
@@ -265,6 +288,7 @@ Pass tenant-qualified keys from the app, e.g. `categoryKey = tenant_id + ":" + n
 ```ts
 const categoriseParams = defineParams({
   tenant_id: param.string(),
+  userId: param.string(),
   memoryId: param.string(),
   categoryKey: param.string(),
   categoryName: param.string(),
@@ -276,7 +300,7 @@ const categoriseParams = defineParams({
 
 function categoriseMemory(p = categoriseParams) {
   return writeBatch()
-    .varAs("mem", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAs("mem", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId)).where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), Predicate.eqParam("userId", "userId")])))
     .varAs("cat", g().nWithLabelWhere("Category", SourcePredicate.eq("categoryKey", p.categoryKey)).where(Predicate.eqParam("tenant_id", "tenant_id")))
     .varAsIf("catNew", BatchCondition.varEmpty("cat"), g().addN("Category", { categoryKey: p.categoryKey, tenant_id: p.tenant_id, name: p.categoryName }))
     .varAsIf("linkCat",    BatchCondition.varNotEmpty("cat"),    g().n(NodeRef.var("mem")).addE("IN_CATEGORY", NodeRef.var("cat"), { tenant_id: p.tenant_id, confidence: p.confidence }))
@@ -296,6 +320,7 @@ function categoriseMemory(p = categoriseParams) {
 ```ts
 const reinforceParams = defineParams({
   tenant_id: param.string(),
+  userId: param.string(),
   memoryId: param.string(),
   now: param.dateTime(),
 });
@@ -308,10 +333,7 @@ function reinforceMemory(p = reinforceParams) {
       "mem",
       g()
         .nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId))
-        .where(Predicate.and([
-          Predicate.eqParam("tenant_id", "tenant_id"),
-          currentMemoryPredicate("now"),
-        ]))
+        .where(currentUserMemoryPredicate("now", "userId"))
         .setProperty("lastAccessedAt", Expr.datetime())
         .setProperty("accessCount", Expr.prop("accessCount").add(Expr.val(1)))
         .setProperty("salience", Expr.case([[Predicate.compare(raised, CompareOp.Gt, Expr.val(1.0)), Expr.val(1.0)]], raised)),
@@ -329,6 +351,7 @@ The app creates the new memory first, then links it to the old one and invalidat
 ```ts
 const updateParams = defineParams({
   tenant_id: param.string(),
+  userId: param.string(),
   newId: param.string(),
   oldId: param.string(),
   reason: param.string(),
@@ -336,8 +359,8 @@ const updateParams = defineParams({
 
 function markMemoryUpdated(p = updateParams) {
   return writeBatch()
-    .varAs("old", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.oldId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
-    .varAs("new", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.newId)).where(Predicate.eqParam("tenant_id", "tenant_id")))
+    .varAs("old", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.oldId)).where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), Predicate.eqParam("userId", "userId")])))
+    .varAs("new", g().nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.newId)).where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), Predicate.eqParam("userId", "userId")])))
     .varAs("link", g().n(NodeRef.var("new")).addE("UPDATES", NodeRef.var("old"), { tenant_id: p.tenant_id, reason: p.reason, at: Expr.datetime() }))
     .varAs(
       "invalidate",
@@ -357,7 +380,7 @@ function markMemoryUpdated(p = updateParams) {
 Soft-delete is preferred; reads filter it out.
 
 ```ts
-const softDeleteParams = defineParams({ tenant_id: param.string(), memoryId: param.string() });
+const softDeleteParams = defineParams({ tenant_id: param.string(), userId: param.string(), memoryId: param.string() });
 
 function softDeleteMemory(p = softDeleteParams) {
   return writeBatch()
@@ -365,7 +388,7 @@ function softDeleteMemory(p = softDeleteParams) {
       "mem",
       g()
         .nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId))
-        .where(Predicate.eqParam("tenant_id", "tenant_id"))
+        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), Predicate.eqParam("userId", "userId")]))
         .setProperty("deletedAt", Expr.datetime()),
     )
     .returning(["mem"]);
@@ -451,7 +474,7 @@ function hybridRecall(p = recallParams) {
       "memorySemantic",
       g()
         .vectorSearchNodesWith("Memory", "embedding", p.embedding, p.k, p.tenant_id)
-        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), currentMemoryPredicate("now")]))
+        .where(currentUserMemoryPredicate("now", "userId"))
         .project([
           Projection.property("memoryId", "id"),
           Projection.property("content", "content"),
@@ -467,7 +490,7 @@ function hybridRecall(p = recallParams) {
       "memoryKeyword",
       g()
         .textSearchNodesWith("Memory", "content", p.query, p.k, p.tenant_id)
-        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), currentMemoryPredicate("now")]))
+        .where(currentUserMemoryPredicate("now", "userId"))
         .project([
           Projection.property("memoryId", "id"),
           Projection.property("content", "content"),
@@ -483,7 +506,7 @@ function hybridRecall(p = recallParams) {
       "chunkSemantic",
       g()
         .vectorSearchNodesWith("Chunk", "embedding", p.embedding, p.k, p.tenant_id)
-        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), liveChunkPredicate()]))
+        .where(liveUserChunkPredicate("userId"))
         .project([
           Projection.property("chunkId", "id"),
           Projection.property("documentId", "documentId"),
@@ -496,7 +519,7 @@ function hybridRecall(p = recallParams) {
       "chunkKeyword",
       g()
         .textSearchNodesWith("Chunk", "content", p.query, p.k, p.tenant_id)
-        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), liveChunkPredicate()]))
+        .where(liveUserChunkPredicate("userId"))
         .project([
           Projection.property("chunkId", "id"),
           Projection.property("documentId", "documentId"),
@@ -549,6 +572,7 @@ Pull memories that mention the same entities. The seed can come from the fused t
 ```ts
 const expandParams = defineParams({
   tenant_id: param.string(),
+  userId: param.string(),
   memoryId: param.string(),
   now: param.dateTime(),
 });
@@ -559,14 +583,11 @@ function expandViaEntities(p = expandParams) {
       "related",
       g()
         .nWithLabelWhere("Memory", SourcePredicate.eq("memoryId", p.memoryId))
-        .where(Predicate.eqParam("tenant_id", "tenant_id"))
+        .where(Predicate.and([Predicate.eqParam("tenant_id", "tenant_id"), Predicate.eqParam("userId", "userId")]))
         .out("MENTIONS")
         .in("MENTIONS")
         .dedup()
-        .where(Predicate.and([
-          Predicate.eqParam("tenant_id", "tenant_id"),
-          currentMemoryPredicate("now"),
-        ]))
+        .where(currentUserMemoryPredicate("now", "userId"))
         .limit(10)
         .project([
           Projection.property("memoryId", "memoryId"),

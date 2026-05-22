@@ -30,8 +30,26 @@ Rules:
 - attach `tenant_id` to every tenant-owned node: `User`, `UserProfile`, `SourceDocument`, `Chunk`, `Memory`, `Category`, `Entity`, `Session`, `Connector`, `IngestionJob`
 - attach `tenant_id` to every tenant-owned edge that carries properties or can be traversed broadly
 - filter every read and write by `tenant_id`, even when the ID is expected to be globally unique
-- use tenant-qualified unique keys where the natural display name is not globally unique, such as `categoryKey = tenant_id + ":" + normalisedName`
+- use tenant-qualified unique keys where the natural display name or external id is not globally unique, such as `categoryKey = tenant_id + ":" + normalisedName`
 - pass `tenantValue = tenant_id` to every tenant-partitioned vector/text search
+
+## Scope & Visibility Rules
+
+`tenant_id` is the Helix search partition key. It is not automatically the user's recall boundary.
+
+Default user-memory policy:
+
+```text
+tenant_id == request.tenant_id
+userId == request.userId
+record is current and not deleted/expired
+```
+
+Use a different or additional scope key when the product stores team, project, workspace, channel, or agent-container memory. Common fields are `containerId`, `projectId`, `scopeId`, `visibility`, and app-side ACL ids. Keep tenant-scoped vector/BM25 search, then filter the returned records by the app's visibility policy before context packing.
+
+Only intentionally shared records should be tenant-wide. Mark them explicitly with fields such as `visibility = "tenant"` or put them in a separate shared-memory path; do not rely on omitted `userId` as an implicit sharing signal.
+
+Unique-indexed ids (`memoryId`, `profileId`, `documentId`, `chunkId`, `sessionId`) must be globally unique within the database or tenant-qualified before insertion, for example `${tenant_id}:${externalId}`. If an external connector emits ids that repeat across tenants, never store the raw external id as a unique-indexed property.
 
 ## Data Model
 
@@ -74,6 +92,9 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 |---|---|---|---|
 | `documentId` | String | unique equality | Stable source id. |
 | `tenant_id` | String | equality | Tenant scope. |
+| `userId` | String | equality optional | Owner when the document is user/container-specific. Required by the default examples. |
+| `scopeId` | String | equality optional | Project/workspace/container scope when `userId` is not the right visibility key. |
+| `visibility` | String | equality optional | `user`, `container`, `tenant`, or app-specific. Do not omit scope for private documents. |
 | `sourceType` | String | equality optional | `text`, `chat`, `pdf`, `url`, `connector`, etc. |
 | `title` | String | text optional | Display/source title. |
 | `uri` | String | equality optional | URL, file path, connector resource id. |
@@ -88,6 +109,9 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 |---|---|---|---|
 | `chunkId` | String | unique equality | Stable chunk id. |
 | `tenant_id` | String | equality | Tenant scope. |
+| `userId` | String | equality optional | Owner copied from the source document for default user-scoped recall. |
+| `scopeId` | String | equality optional | Project/workspace/container scope copied from the source document. |
+| `visibility` | String | equality optional | `user`, `container`, `tenant`, or app-specific. |
 | `documentId` | String | equality | Source pointer. |
 | `content` | String | **text (BM25), tenant_property `tenant_id`** | Chunk text. |
 | `embedding` | F32Array | **vector, tenant_property `tenant_id`** | Client-computed embedding of `content`. Default: OpenAI `text-embedding-3-small`, 1536 dims. |
@@ -105,6 +129,8 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 | `memoryId` | String | unique equality | App-generated stable id (uuid or content hash). |
 | `tenant_id` | String | equality | Tenant scope and search partition value. |
 | `userId` | String | equality | User/container id for profile grouping. |
+| `scopeId` | String | equality optional | Project/workspace/container scope if recall is not purely per-user. |
+| `visibility` | String | equality optional | `user`, `container`, `tenant`, or app-specific shared/private policy. |
 | `content` | String | **text (BM25), tenant_property `tenant_id`** | Human-readable memory text. |
 | `embedding` | F32Array | **vector, tenant_property `tenant_id`** | Client-computed embedding of `content`. Default: OpenAI `text-embedding-3-small`, 1536 dims. |
 | `embeddingModel` | String | — | Optional per-record audit value, e.g. `openai:text-embedding-3-small`. Usually also stored in app config. |
@@ -119,11 +145,16 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 | `updatedAt` | DateTime | — | Last content/embedding change. |
 | `lastAccessedAt` | DateTime | — | Bumped on reinforcement. |
 | `accessCount` | I64 | — | Bumped on reinforcement. |
-| `validFrom` / `validTo` | DateTime | — | Temporal validity; `validTo` set when superseded/invalidated. |
+| `validFrom` / `validTo` | DateTime | — | Record lifecycle validity; `validTo` is set when superseded/invalidated. Do not use these as event dates. |
 | `expiresAt` | DateTime | range optional | Optional expiry target for sweeps. |
 | `deletedAt` | DateTime | — | Soft-delete tombstone. Every recall filters this null. |
 | `sourceSessionId` | String | equality optional | Conversation/session provenance. |
+| `sourceMessageId` | String | equality optional | Specific chat message provenance when available. |
 | `documentId` / `chunkId` | String | equality optional | Source/citation pointer. |
+| `observedAt` | DateTime | range optional | When the app observed or extracted the fact, if different from `createdAt`. |
+| `eventStartAt` / `eventEndAt` | DateTime | range optional | Real-world time window the memory is about, such as a trip or appointment. |
+| `temporalText` | String | — | Original normalized time phrase, e.g. `next April`, when exact dates are unknown. |
+| `timezone` | String | — | Timezone used to resolve relative times. |
 
 **`Category`** — topic taxonomy scoped to a tenant.
 
@@ -185,9 +216,11 @@ Create these from a **write** batch before generation/retrieval:
 - `IndexSpec.nodeEquality("UserProfile", "userId")`
 - `IndexSpec.nodeUniqueEquality("SourceDocument", "documentId")`
 - `IndexSpec.nodeEquality("SourceDocument", "tenant_id")`
+- `IndexSpec.nodeEquality("SourceDocument", "userId")`
 - `IndexSpec.nodeEquality("SourceDocument", "checksum")`
 - `IndexSpec.nodeUniqueEquality("Chunk", "chunkId")`
 - `IndexSpec.nodeEquality("Chunk", "tenant_id")`
+- `IndexSpec.nodeEquality("Chunk", "userId")`
 - `IndexSpec.nodeEquality("Chunk", "documentId")`
 - `IndexSpec.nodeVector("Chunk", "embedding", "tenant_id")`
 - `IndexSpec.nodeText("Chunk", "content", "tenant_id")`
@@ -195,6 +228,7 @@ Create these from a **write** batch before generation/retrieval:
 - `IndexSpec.nodeEquality("Memory", "tenant_id")`
 - `IndexSpec.nodeEquality("Memory", "userId")`
 - `IndexSpec.nodeEquality("Memory", "isLatest")`
+- `IndexSpec.nodeRange("Memory", "eventStartAt")` when temporal/event recall is needed
 - `IndexSpec.nodeVector("Memory", "embedding", "tenant_id")`
 - `IndexSpec.nodeText("Memory", "content", "tenant_id")`
 - `IndexSpec.nodeUniqueEquality("Category", "categoryKey")`
@@ -203,28 +237,31 @@ Create these from a **write** batch before generation/retrieval:
 - `IndexSpec.nodeEquality("Entity", "tenant_id")`
 - `IndexSpec.nodeUniqueEquality("Session", "sessionId")`
 - `IndexSpec.nodeEquality("Session", "tenant_id")`
+- `IndexSpec.nodeEquality("Session", "userId")`
 
 The `tenant_property` on vector/text indexes must be the property name (`tenant_id`), and query-time `tenantValue` must be the tenant value. Tenant-scoped search against a tenant-partitioned index without a tenant value returns no useful results.
 
-## Current Memory Filter
+## Current Scoped Memory Filter
 
-Every normal recall path should return only live/current memories:
+Every normal user-memory recall path should return only visible live/current memories:
 
 ```text
 tenant_id == request.tenant_id
+userId == request.userId       # or the app's container/ACL visibility predicate
 deletedAt IS NULL
 isLatest == true
 validTo IS NULL
 expiresAt IS NULL OR expiresAt > now
 ```
 
-Helix can express these as `where(Predicate.and([...]))` after a vector/text search. If a route cannot express a future-time condition because of local builder limitations, over-fetch and filter in application code before context packing.
+Helix can express these as `where(Predicate.and([...]))` after a vector/text search. If a route cannot express a future-time or ACL condition because of local builder limitations, over-fetch and filter in application code before context packing. Never return records that fail scope or lifecycle policy just because they appeared in a tenant-scoped ANN/BM25 result set.
 
 ## Modality Cheat-Sheet
 
 | Question | Mechanism | Builder |
 |---|---|---|
 | Which tenant/user/exact memory? | property + equality index | `nWithLabelWhere("Memory", SourcePredicate.eq("tenant_id", p.tenant_id))` |
+| Which user/container can see it? | scope properties + app ACL | `Predicate.eqParam("userId", "userId")` or app-specific `scopeId`/ACL filtering |
 | Is this current and recallable? | lifecycle properties | `where(Predicate.isNull("deletedAt"))`, `Predicate.eq("isLatest", true)`, `Predicate.isNull("validTo")` |
 | What category/entity/source/session relates these? | edges | `out("IN_CATEGORY")`, `out("MENTIONS")`, `out("EXTRACTED_FROM")`, `out("DERIVED_FROM")` |
 | Did information change? | version edges | `out("UPDATES")`, `in("UPDATES")`, plus `isLatest`/`validTo` |
@@ -257,12 +294,14 @@ Extraction is an application worker. It should not classify the current message 
 - recalled active memories
 - active entities and topics
 - current date/time
+- tenant and visibility scope (`tenant_id`, `userId`, `containerId`, `projectId`, or ACL context)
 
 Required extractor behaviour:
 
 - resolve pronouns and ellipsis before deciding whether a fact is durable
 - treat short answers to assistant follow-up questions as memory candidates
 - output self-contained memories with named entities where possible
+- separate lifecycle timing from real-world event timing
 - attach relationship intent: `new`, `duplicate`, `EXTENDS`, `UPDATES`, or `DERIVES`
 - include source pointers (`sessionId`, `messageId`, `documentId`, `chunkId`) and confidence
 
@@ -289,15 +328,58 @@ Minimal extractor output shape:
 
 ```json
 {
+  "shouldStore": true,
   "content": "User wants their Japan trip with Maya to focus on food, temples, and trains.",
   "kind": "preference",
   "category": "travel",
   "salience": 0.72,
   "confidence": 0.86,
   "entities": ["Maya", "Japan"],
+  "scope": { "tenant_id": "tenant_123", "userId": "user_456", "visibility": "user" },
+  "source": { "sessionId": "sess_789", "messageId": "msg_012" },
+  "temporal": { "temporalText": null, "eventStartAt": null, "eventEndAt": null, "timezone": "UTC" },
   "relationship": { "type": "EXTENDS", "targetMemoryId": "mem_trip_japan" }
 }
 ```
+
+## Deduplication & Relationship Adjudication
+
+Do semantic dedup as read-then-write. A single vector threshold is not enough for accurate memory updates.
+
+Recommended adjudication input:
+
+- exact id/content match candidates for idempotency
+- nearest vector candidates from current scoped memories
+- BM25 candidates for names, ids, dates, and rare terms
+- active entity/category neighbors for the candidate memory
+- current user/container scope and source pointers
+
+Relationship decisions:
+
+| Decision | Use When | Write Behaviour |
+|---|---|---|
+| `duplicate` | Candidate says the same durable fact as an existing current memory. | Reinforce existing memory; do not add a new fact. |
+| `UPDATES` | Candidate corrects, contradicts, or replaces an older fact. | Create new memory, link `new -UPDATES-> old`, set old `isLatest=false` and `validTo`. |
+| `EXTENDS` | Candidate adds details without replacing the old fact. | Create new memory and link `new -EXTENDS-> existing`. |
+| `DERIVES` | Candidate is inferred from multiple supporting memories. | Create inferred memory and link supporting facts with `DERIVES`. |
+| `new` | No equivalent, replacement, or extension relationship applies. | Create standalone memory with provenance edges. |
+
+Tune thresholds per embedding model, but make the final write decision with explicit relationship classification. Re-run the adjudicator when the embedding model, normalization, chunking, or memory text format changes.
+
+## Evaluation Checklist
+
+Memory quality needs product-level tests, not just query tests:
+
+- tenant isolation: a query in tenant A never returns tenant B records
+- user/container isolation: a user-scoped query never returns another user's private memories inside the same tenant
+- stale suppression: superseded, deleted, expired, and `isLatest=false` memories do not enter context
+- contextual extraction: short answers such as `next April` and `mostly food, temples, and trains` produce self-contained memories with the correct entities
+- exact-token recall: rare names, ids, paths, commands, and dates are recovered through BM25
+- semantic recall: paraphrases recover the right memories through vector search
+- temporal corrections: updates such as `actually May instead` invalidate the old dated memory and preserve the new event timing
+- deletion/forgetting: soft-deleted records disappear from recall and profile rebuilds
+- profile rebuild: profile summaries update after writes, invalidations, and deletions
+- latency and token budget: hybrid recall, reranking, graph expansion, and context packing stay within product limits
 
 ## Hybrid Fusion & Re-Ranking
 
