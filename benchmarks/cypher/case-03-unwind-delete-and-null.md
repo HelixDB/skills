@@ -2,7 +2,7 @@
 
 ## Prompt
 
-Translate these Cypher tasks into Helix Rust DSL stored queries:
+Translate these Cypher tasks into Helix Rust DSL queries:
 
 ```cypher
 UNWIND $memberships AS membership

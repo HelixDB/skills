@@ -1,6 +1,6 @@
 ---
 name: helix-query-optimize
-description: Review and improve HelixDB query performance against the actual interpreter behavior — index push-down, label scope, distance lifecycle, limit/dedup pushdown, range-index ordering, repeat/branching cost, and write-path foot-guns. Use when the task is to optimize a slow Helix query, decide why a query is doing a full scan, fix a missed index, tighten BM25 or vector search scope, slim projections, or decide between stored and dynamic routes. See REFERENCE.md for the mechanism catalog with file:line citations and EXAMPLES.md for paired Rust DSL + JSON dynamic patterns.
+description: Review and improve HelixDB query performance against the actual interpreter behavior — index push-down, label scope, distance lifecycle, limit/dedup pushdown, range-index ordering, repeat/branching cost, and write-path foot-guns. Use when the task is to optimize a slow Helix query, decide why a query is doing a full scan, fix a missed index, tighten BM25 or vector search scope, or slim projections. See REFERENCE.md for the mechanism catalog with file:line citations and EXAMPLES.md for paired Rust DSL + JSON dynamic patterns.
 license: MIT
 metadata:
   author: HelixDB
@@ -20,12 +20,11 @@ Use this skill when the task is to:
 - decide if a `where_(...)` or `has(...)` is filtering at the index or in memory
 - tighten BM25 or vector search routes (tenant scope, distance lifecycle, projection)
 - bound `Repeat` traversals or order `Coalesce` branches by cost
-- decide whether a dynamic route should become a stored route
 - audit write-path safety (`drop_edge` vs `drop_edge_by_id`, `add_n` dupes, `for_each_param` cost)
 
 ## Reference Files
 
-- `REFERENCE.md` — full optimizer mental model: index types, source dispatch table, predicate-index resolution catalog, `RuntimeState` transitions, limit/dedup pushdown, OrderBy paths, projection rules, repeat/branching cost, batch semantics, write-path mechanics, dynamic vs stored cost. Every claim cites `enterprise/helix/src/traversal/interpreter.rs` (helix-hyperscale) or `sdks/rust/src/dsl.rs` (the `helix-db` DSL crate).
+- `REFERENCE.md` — full optimizer mental model: index types, source dispatch table, predicate-index resolution catalog, `RuntimeState` transitions, limit/dedup pushdown, OrderBy paths, projection rules, repeat/branching cost, batch semantics, write-path mechanics, dynamic query cost. Every claim cites `enterprise/helix/src/traversal/interpreter.rs` (helix-hyperscale) or `sdks/rust/src/dsl.rs` (the `helix-db` DSL crate).
 - `EXAMPLES.md` — paired Rust DSL + JSON dynamic patterns for every optimization rule below: weaker form, stronger form, what changed and why.
 
 When the JSON encoding rules are not obvious, cross-reference `../helix-query-json-dynamic/REFERENCE.md` (it is the authoritative AST encoding catalog).
@@ -105,7 +104,7 @@ Steps that **preserve** ranking: `As`, `Store`, `Select`, plus terminal projecti
 
 ## Read-vs-Write Foot-Guns
 
-Stored writes and dynamic writes share the same anti-patterns (write detection lives in `request_type` for the dynamic route; the interpreter executes the same Steps either way).
+Writes share the same anti-patterns regardless of how they are built (write detection lives in `request_type` on the dynamic route; the interpreter executes the same Steps either way).
 
 - **`add_n` without an existence check creates duplicates.** Every `Step::AddN` allocates a fresh node id (`interpreter.rs:8954-8967`). Build upserts as `var_as("existing", ...) → var_as_if(VarNotEmpty, set_property...) → var_as_if(VarEmpty, add_n...)`. See `EXAMPLES.md §9`.
 - **`drop_edge(to)` is multigraph-unsafe.** It calls `tx.remove_edge(from, to)` which removes *all* edges between source and target, regardless of label (`interpreter.rs:9095`). Use `drop_edge_labeled(to, label)` to scope by label, or `drop_edge_by_id(EdgeRef::Ids([...]))` for surgical deletion (`interpreter.rs:9136-9149`).
@@ -113,11 +112,11 @@ Stored writes and dynamic writes share the same anti-patterns (write detection l
 - **`for_each_param` over a large array is O(rows × body cost).** Each iteration runs the body fresh; there's no batched merge. For bulk inserts, prefer building one `WriteBatch` per request when the cardinality is bounded, or break into pages.
 - **Upsert lookups need an index.** The "load existing" step in an upsert (`var_as("existing", g().n_with_label_where(L, SourcePredicate::eq("uniqueId", param)))`) must hit an equality index — otherwise every upsert is a full scan.
 
-## Stored vs Dynamic, and Warming
+## Query Cost & Warming
 
-- **Prefer stored routes for steady traffic.** Stored routes register via the `#[register]` macro (helix-dsl-macros) and avoid per-request JSON parse / AST validation. Dynamic routes are right for ad-hoc queries, admin tools, and tests.
-- **Query warming is read-only.** Send the same body with header `X-Helix-Warm: true`; the gateway returns `204 No Content` on success. Writes with the warm header are rejected.
-- **No `"mcp"` request_type on the dynamic route.** That value belongs to the stored-route MCP surface only.
+- **The dynamic route parses and validates the AST per request.** This is inherent to dynamic execution. The Rust `#[register]` macro is the authoring path — calling a registered function yields a `DynamicQueryRequest` you POST to `/v1/query`; it does not change the per-request cost.
+- **Warm steady-traffic reads.** Query warming is read-only: send the same body with header `X-Helix-Warm: true`; the gateway returns `204 No Content` on success. Writes with the warm header are rejected.
+- **No `"mcp"` request_type on the dynamic route.** That value belongs to the MCP tool surface only.
 
 ## Anti-Patterns
 
@@ -134,7 +133,6 @@ Do not:
 - use `value_map(None)` on nodes that store embeddings or other large fields
 - use `drop_edge(to)` on a multigraph
 - run `for_each_param` over an unbounded array
-- default to dynamic queries for stable production traffic
 
 ## Validation Checklist
 
@@ -155,4 +153,4 @@ Before finishing a review:
 - [ ] `value_map(None)` is not used on nodes that hold heavy properties
 - [ ] writes use `drop_edge_by_id` on multigraphs
 - [ ] upsert lookups hit an indexed property
-- [ ] stable production traffic uses stored routes; warming is read-only
+- [ ] steady-traffic reads are warmed where it helps; warming is read-only

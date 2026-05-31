@@ -477,19 +477,20 @@ Drop an index with `g().drop_index(IndexSpec::...)`. The convenience methods (`c
 
 ## 17. Warm a read route
 
-Warming uses the *same* query body; the header (`X-Helix-Warm: true`) is applied on the HTTP client. Build the request and let callers decide to warm:
+Warming uses the *same* query; `.warm_only()` sets the `X-Helix-Warm: true` header on the client. Build the request and let callers decide to warm:
 
 ```rust
-use helix_db::dsl::prelude::*;
+use helix_db::Client;
 
-let req = user_by_id("u-42".to_string())?;
-let body = req.to_json_string()?;
-// Send via reqwest / curl / etc:
-//   POST /v1/query
-//   X-Helix-Warm: true
-//   Content-Type: application/json
-//   <body>
-// A successful warm returns 204 No Content. Writes reject warming.
+let client = Client::new(Some("https://helix.example.com"))?.with_api_key(Some(&api_key));
+
+// .warm_only() sets X-Helix-Warm: true. A successful warm returns 204 No Content; writes reject warming.
+let _: serde_json::Value = client
+    .query()
+    .warm_only()
+    .dynamic(user_by_id("u-42".to_string())?)
+    .send()
+    .await?;
 ```
 
 Warming is strictly read-only; a `WriteBatch` with `X-Helix-Warm: true` is rejected by the gateway.

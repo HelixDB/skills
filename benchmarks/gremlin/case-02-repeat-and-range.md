@@ -2,7 +2,7 @@
 
 ## Prompt
 
-Translate this Gremlin traversal into a Helix Rust DSL stored query:
+Translate this Gremlin traversal into a Helix Rust DSL query:
 
 ```gremlin
 g.V().hasLabel('Entity').has('entityId', seedId).repeat(__.both('RELATED_TO')).times(3).emit().dedup().range(start, end)

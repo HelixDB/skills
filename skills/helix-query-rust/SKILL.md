@@ -1,6 +1,6 @@
 ---
 name: helix-query-rust
-description: Write and revise HelixDB Rust DSL queries from scratch. Use when the task is to add, update, or review a Helix query built in Rust with read_batch, write_batch, traversal builders, projections, indexes, BM25 text search, or vector search — and for stored-query bundles or #[register] dynamic requests. Inspect local labels, edges, properties, and existing query patterns before inventing new code. See REFERENCE.md for the full builder catalog and EXAMPLES.md for end-to-end patterns. For the TypeScript DSL use helix-query-typescript; for inline JSON use helix-query-json-dynamic.
+description: Write and revise HelixDB Rust DSL queries from scratch. Use when the task is to add, update, or review a Helix query built in Rust with read_batch, write_batch, traversal builders, projections, indexes, BM25 text search, or vector search — and for #[register] dynamic requests and queries.json bundles. Inspect local labels, edges, properties, and existing query patterns before inventing new code. See REFERENCE.md for the full builder catalog and EXAMPLES.md for end-to-end patterns. For the TypeScript DSL use helix-query-typescript; for inline JSON use helix-query-json-dynamic.
 license: MIT
 metadata:
   author: HelixDB
@@ -19,7 +19,7 @@ Use this skill when the task is to:
 
 - write a new Helix query in Rust
 - revise an existing Helix Rust DSL route
-- add a stored query for deployment
+- bundle queries into a `queries.json`
 - choose between `read_batch()` and `write_batch()`
 - add traversal, projection, pagination, BM25 search, or vector search to an existing query
 
@@ -133,6 +133,7 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 | Mutations | `add_n`, `add_e`, `set_property`, `remove_property`, `drop`, `drop_edge`, `drop_edge_labeled`, `drop_edge_by_id` | `drop_edge_by_id` is multigraph-safe. |
 | Indexes | `IndexSpec::node_equality / node_range / edge_equality / edge_range / node_vector / node_text / edge_vector / edge_text` plus `create_index` / `drop_index`; convenience: `create_vector_index_nodes`, `create_text_index_nodes`, edge variants | Use `.create_index(spec)` from a write batch. |
 | Transport | `DynamicQueryRequest::{read,write}(batch).with_parameter_value(...).with_parameter_type(...).to_json_string()` | Bridge from Rust DSL to the JSON payload (`helix-query-json-dynamic`). |
+| Client | `Client::new(Some(url))?.with_api_key(...).query().writer_only()/.warm_only()/.should_await_durability(b).dynamic(req)/.stored(name).send().await` | Sends to `POST /v1/query`; `send()` yields `R` on 200, else `HelixError`. See REFERENCE.md → "Client". |
 
 See `REFERENCE.md` for signatures and typestate constraints.
 
@@ -215,7 +216,7 @@ Do not:
 - return embeddings by default in search results
 - ignore tenant scope on text or vector search
 - add `dedup` or `limit` without a reason
-- assume dynamic inline-query rules apply to stored Rust DSL routes
+- assume dynamic inline-query rules apply to Rust DSL queries authored with the builder
 - treat BM25 as if it searches every property automatically
 
 ## Validation Checklist

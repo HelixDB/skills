@@ -1,6 +1,6 @@
 ---
 name: helix-query-from-gremlin
-description: Translate Gremlin and TinkerPop-style traversals into HelixDB Rust DSL stored queries. Use when the input contains Gremlin, TinkerPop, g.V, g.E, hasLabel, has, out, in, both, outE, inE, repeat, emit, dedup, valueMap, count, range, or limit and the goal is to produce an equivalent Helix Rust query.
+description: Translate Gremlin and TinkerPop-style traversals into HelixDB Rust DSL queries. Use when the input contains Gremlin, TinkerPop, g.V, g.E, hasLabel, has, out, in, both, outE, inE, repeat, emit, dedup, valueMap, count, range, or limit and the goal is to produce an equivalent Helix Rust query.
 license: MIT
 metadata:
   author: HelixDB
@@ -16,7 +16,7 @@ Translate Gremlin into Helix Rust DSL by turning imperative step chains into exp
 Use this skill when the task is to:
 
 - translate a Gremlin traversal into Helix Rust DSL
-- port a TinkerPop query into a stored Helix route
+- port a TinkerPop query into a Helix query
 - replace `g.V`, `hasLabel`, `has`, `out`, `in`, `both`, `outE`, `inE`, `repeat`, `emit`, `dedup`, `count`, `range`, or `limit` with Helix DSL equivalents
 - explain how a Gremlin traversal should be expressed in Helix Rust
 

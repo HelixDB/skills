@@ -472,6 +472,30 @@ req.to_json_bytes()
 
 For the JSON wire encoding this produces, see `../helix-query-json-dynamic/REFERENCE.md`.
 
+### `Client` (sending requests)
+
+Async HTTP client for running a request against a Helix instance (`reqwest`-based).
+
+```rust
+use helix_db::{Client, HelixError};
+
+Client::new(url: Option<&str>) -> Result<Self, HelixError>   // default "http://localhost:6969"; InvalidURL on bad url
+    .with_api_key(api_key: Option<&str>) -> Self              // Authorization: Bearer <key>
+    .query::<R: Deserialize>() -> QueryBuilder<R>
+
+// QueryBuilder — request headers + body, then pick a route:
+    .writer_only()                       // X-Helix-Require-Writer: true
+    .warm_only()                         // X-Helix-Warm: true
+    .should_await_durability(b: bool)    // X-Helix-Await-Durable: true|false
+    .body(&data)? -> Self                // JSON body for a stored route
+    .dynamic(req: DynamicQueryRequest) -> QueryRequest<R>     // POST /v1/query
+    .stored(name: String) -> QueryRequest<R>                 // POST /v1/query/{name}
+
+request.send().await -> Result<R, HelixError>                // 200 -> R; any other status -> HelixError::RemoteError
+```
+
+`HelixError` variants: `ReqwestError` (transport), `RemoteError { details }` (non-200), `SerializationError`, `InvalidURL`. Build the `DynamicQueryRequest` from a registered fn call (`count_users()`) or `DynamicQueryRequest::read(batch)`.
+
 ---
 
 ## Common Pitfalls

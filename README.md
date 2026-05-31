@@ -61,7 +61,7 @@ Use this skill when an agent needs to build or debug dynamic inline-query reques
 It teaches agents to:
 
 - use the correct request envelope
-- distinguish stored routes from inline dynamic routes
+- target the dynamic route (`POST /v1/query`) with an inline `query` object
 - add `parameter_types` when typed coercion matters
 - send `DateTime` values correctly
 - avoid malformed bundle-shaped payloads

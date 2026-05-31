@@ -44,15 +44,15 @@ g().text_search_nodes_with(
 .range(0, Expr::param("limit"))
 ```
 
-## Prefer Stored Routes For Stable Traffic
+## Warm Stable Read Traffic
 
-Use the dynamic route when you need flexibility.
-
-Prefer a stored route when the query is:
+Every query runs on the dynamic route (`POST /v1/query`). For queries that are:
 
 - stable
 - performance-sensitive
 - part of steady production traffic
+
+warm the caches at startup (see below) instead of optimizing away the per-request AST parse.
 
 ## Warm Reads, Not Writes
 

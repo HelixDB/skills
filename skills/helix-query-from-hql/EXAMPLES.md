@@ -5,11 +5,11 @@ translations.
 
 - **Rust** assumes `use helix_db::dsl::prelude::*;`. Query bodies are shown as bare `read_batch()`/`write_batch()`
   expressions using explicit parameter references (`NodeRef::param`, `Predicate::eq_param`, `Expr::param`,
-  `PropertyInput::param`). To bundle one as a stored route, wrap the body in a `#[register] fn` and run
+  `PropertyInput::param`). To bundle one into `queries.json`, wrap the body in a `#[register] fn` and run
   `helix_db::generate()`; serialize a single query with `req.to_json_string()`.
 - **TypeScript** assumes `import { ... } from "@helix-db/helix-db";`. Builders are plain functions returning a
   `ReadBatch`/`WriteBatch`. Produce a request with `builder().toDynamicJson(params, values)` (or `.toDynamicJson()`
-  with no params), or register in `defineQueries({...})` for a stored bundle.
+  with no params), or register in `defineQueries({...})` for a query bundle.
 
 Recurring spelling traps: Rust `.in_(Some("X"))` / `.where_(...)` vs TS `.in("X")` / `.where(...)`; `::`
 constructors in Rust vs `.` in TS; `Some()/None::<&str>` vs `"X"/null`; integer params are `bigint` (`1n`) in TS.

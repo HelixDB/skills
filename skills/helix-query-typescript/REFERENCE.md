@@ -531,8 +531,44 @@ For the exact JSON wire encoding these produce (externally-tagged enums, untagge
 
 ---
 
+## Client (sending requests)
+
+Built-in HTTP client for running a request against a Helix instance. Uses the global `fetch`, so there are no extra dependencies. Strict port of the Rust `helix_db::Client`.
+
+```ts
+new Client(url?: string | null)          // default "http://localhost:6969"; throws HelixError (InvalidUrl) on a bad URL
+  .withApiKey(key?: string | null)        // Authorization: Bearer <key> (null/undefined clears it)
+  .query<R = unknown>()                    // -> QueryBuilder<R>
+
+// QueryBuilder<R> — request headers + body, then pick a route:
+  .writerOnly()                            // X-Helix-Require-Writer: true
+  .warmOnly()                              // X-Helix-Warm: true
+  .shouldAwaitDurability(b: boolean)       // X-Helix-Await-Durable: true|false
+  .body(data: unknown)                     // JSON body for a stored route (bigint-safe)
+  .dynamic(req: DynamicQueryRequest)       // -> QueryRequest<R>  (POST /v1/query)
+  .stored(name: string)                    // -> QueryRequest<R>  (POST /v1/query/{name})
+
+await request.send(): Promise<R>           // 200 -> parsed JSON (parseJsonStructural); any other status -> throws HelixError
+```
+
+```ts
+import { Client, HelixError } from "@helix-db/helix-db";
+
+const client = new Client("https://helix.example.com").withApiKey(apiKey);
+
+const users = await client
+  .query<UserRow[]>()
+  .dynamic(findUsers().toDynamicRequest(params, { tenantId: "acme", limit: 25n }))
+  .send();
+```
+
+Only HTTP `200` is treated as success (mirrors the Rust client). Build the `DynamicQueryRequest` argument with `batch.toDynamicRequest(...)` or `queries.call.route(...)`.
+
+---
+
 ## Errors
 
+- `HelixError` (`src/index.ts`) — raised by `Client`/`send()`. `kind` ∈ `Network | Remote | Serialization | InvalidUrl`; `Remote` carries the server response body in `details`.
 - `DynamicQueryError` (`src/index.ts:158`) — `kind` ∈ `Serialize | Utf8 | UnsupportedBytesParameter | InvalidDateTimeParameter`.
 - `GenerateError` (`src/index.ts:197`) — `kind` ∈ `DuplicateQueryName | Io | Json | UnsupportedVersion`.
 
@@ -574,5 +610,7 @@ DynamicQueryRequestType.{Read, Write}                // src/index.ts:2174 (lower
 | `vector_search_nodes_with(...)` | `vectorSearchNodesWith(...)` |
 | `#[register] fn` + fn params | `defineParams(...)` + `registerRead/registerWrite` |
 | `DynamicQueryRequest::read(b).to_json_string()` | `batch.toDynamicJson(params, values)` |
+| `Client::new(Some(url))?` / `.with_api_key(...)` | `new Client(url)` / `.withApiKey(...)` |
+| `client.query().warm_only().dynamic(r).send()` | `client.query().warmOnly().dynamic(r).send()` |
 
 The wire output (enum tags, field names, omitted/null fields) is identical between the two DSLs — only the surface naming differs.

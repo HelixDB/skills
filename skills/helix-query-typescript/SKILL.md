@@ -1,6 +1,6 @@
 ---
 name: helix-query-typescript
-description: Write and revise HelixDB queries with the TypeScript DSL (@helix-db/helix-db). Use when the task is to add, update, or review a Helix query built in TypeScript with readBatch, writeBatch, g(), traversal builders, projections, indexes, BM25 text search, or vector search — and when producing a stored-query bundle (defineQueries/registerRead/registerWrite) or a dynamic POST /v1/query request (toDynamicJson/toDynamicRequest). Inspect local labels, edges, properties, and existing query patterns before inventing new code. See REFERENCE.md for the full builder catalog and EXAMPLES.md for end-to-end patterns.
+description: Write and revise HelixDB queries with the TypeScript DSL (@helix-db/helix-db). Use when the task is to add, update, or review a Helix query built in TypeScript with readBatch, writeBatch, g(), traversal builders, projections, indexes, BM25 text search, or vector search — producing dynamic POST /v1/query requests (toDynamicJson/toDynamicRequest) and, optionally, a query bundle (defineQueries/registerRead/registerWrite). Inspect local labels, edges, properties, and existing query patterns before inventing new code. See REFERENCE.md for the full builder catalog and EXAMPLES.md for end-to-end patterns.
 license: MIT
 metadata:
   author: HelixDB
@@ -20,7 +20,8 @@ Use this skill when the task is to:
 - write a new Helix query in TypeScript
 - revise an existing TypeScript query function
 - produce a dynamic `POST /v1/query` request from TypeScript (`toDynamicJson` / `toDynamicRequest`)
-- generate a stored-query bundle (`defineQueries(...).generate("queries.json")`)
+- send a request to a running Helix instance with the built-in `Client` (`client.query().dynamic(req).send()`)
+- generate a query bundle (`defineQueries(...).generate("queries.json")`)
 - add traversal, projection, pagination, BM25 search, or vector search to an existing query
 - migrate a Rust DSL query (`#[register]`, `read_batch()`, …) to TypeScript
 
@@ -115,11 +116,12 @@ function findUsers(p = params) {
 
 - **Dynamic request:** `findUsers().toDynamicJson(params, { tenantId: "acme", limit: 25n })` → request JSON string for `POST /v1/query`. Use `toDynamicRequest(...)` for the object, `toDynamicBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toDynamicJson()`.
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
-- **Stored bundle:** register routes and generate a `queries.json` (see Rule 10).
+- **Bundle:** register queries and generate a `queries.json` (see Rule 10).
+- **Send it with the client:** `new Client(url).withApiKey(key).query<R>().dynamic(findUsers().toDynamicRequest(params, values)).send()` POSTs to `/v1/query` and returns the parsed JSON on HTTP 200, else throws `HelixError`. Add `.warmOnly()` / `.writerOnly()` / `.shouldAwaitDurability(b)` for the matching request headers; use `.stored(name).body(x)` for a deployed named route. See REFERENCE.md → "Client".
 
-### 10. Stored Bundles: `registerRead` / `registerWrite` / `defineQueries`
+### 10. Bundles: `registerRead` / `registerWrite` / `defineQueries`
 
-Registration is only needed for predefined/stored query bundles:
+Registration is needed when bundling queries into a `queries.json`:
 
 ```ts
 export const queries = defineQueries({
@@ -158,6 +160,7 @@ Route names must be unique across read and write routes — duplicates throw `Ge
 | Mutations | `addN`, `addE`, `setProperty`, `removeProperty`, `drop`, `dropEdge`, `dropEdgeLabeled`, `dropEdgeById` | `dropEdgeById` is multigraph-safe. |
 | Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/edgeEquality/edgeRange/nodeVector/nodeText/edgeVector/edgeText` | All write-only (terminal). |
 | Output | `toJsonString`, `toDynamicJson`, `toDynamicRequest`, `toDynamicBytes` | Dynamic forms take `(params, values)` unless the query has no parameters. |
+| Client / transport | `new Client(url)`, `.withApiKey`, `.query<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.body`, `.dynamic`/`.stored`, `.send()` | Sends to `POST /v1/query`; `send()` resolves parsed JSON on 200, else throws `HelixError`. |
 | Bundles | `defineParams`, `param.*`, `registerRead`, `registerWrite`, `defineQueries`, `serializeQueryBundle`, `.buildQueryBundle()`, `.generate()` | `QUERY_BUNDLE_VERSION = 4`. |
 
 See `REFERENCE.md` for full signatures and typestate constraints.

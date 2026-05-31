@@ -126,11 +126,9 @@ For vector routes, check:
 - is the embedding omitted from the returned projection?
 - is `$distance` included only when useful?
 
-## 8. Stored Versus Dynamic
+## 8. Steady-Traffic Reads
 
-If a route is stable and production-facing, prefer a stored query over a dynamic inline query.
-
-Stored queries reduce runtime overhead. Dynamic queries are useful for flexibility, but they should not be the default optimization target for steady traffic.
+Every query executes on the dynamic route (`POST /v1/query`), which parses and validates the inline AST per request. For stable, production-facing reads, warm the caches (see §9) rather than treating per-request parsing as the optimization target.
 
 ## 9. Query Warming
 
@@ -162,7 +160,7 @@ When reviewing a query, answer in this order:
 4. projection-size issues
 5. traversal breadth issues
 6. search-specific issues if the route uses BM25 or vectors
-7. whether the route should remain dynamic or become stored
+7. whether steady-traffic reads should be warmed
 
 ## See Also
 

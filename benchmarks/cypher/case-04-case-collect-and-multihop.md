@@ -2,7 +2,7 @@
 
 ## Prompt
 
-Translate these Cypher tasks into Helix Rust DSL stored queries:
+Translate these Cypher tasks into Helix Rust DSL queries:
 
 ```cypher
 MATCH (u:User {userId: $userId})-[:FOLLOWS*1..2]->(v:User)

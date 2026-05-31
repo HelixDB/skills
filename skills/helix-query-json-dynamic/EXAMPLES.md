@@ -676,7 +676,7 @@ To drop instead, replace each `CreateIndex` with:
 
 ## 17. Warm a read route
 
-**Goal:** prefetch caches for a recurring read without retrieving rows.
+**Goal:** prefetch caches for a recurring read without retrieving rows. (From the TS/Rust SDKs use the client's `.warmOnly()` / `.warm_only()` instead of setting the header by hand — see `helix-query-typescript` / `helix-query-rust` §17.)
 
 ```text
 POST /v1/query

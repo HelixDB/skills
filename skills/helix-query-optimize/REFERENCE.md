@@ -349,24 +349,23 @@ The lookup at step 1 must hit an equality index on `(X, uniqueId)` — otherwise
 
 ---
 
-## 16. Dynamic vs stored cost
+## 16. Dynamic query cost & warming
 
-| Aspect | Stored | Dynamic |
-|---|---|---|
-| AST construction | compile-time, via `#[register]` macro | per-request, JSON parse + validate |
-| Parameter typing | macro-derived from Rust signature | explicit `parameter_types` map |
-| Network shape | single endpoint per route | one endpoint, body carries the AST |
-| Validation cost | none at runtime | per-request |
-| Caching opportunity | full plan can be cached | cache by AST structure |
-| Right for | steady production traffic, MCP tools | ad-hoc, admin, tests, exploration |
+Every request to the dynamic route (`POST /v1/query`) carries the inline AST, so the gateway pays a fixed per-request cost:
 
-Query warming (`X-Helix-Warm: true` header) is read-only — it pre-runs the query without returning rows, populating caches. Returns `204 No Content`. Writes with the warm header are rejected. Warming is supported on both stored and dynamic routes.
+- **JSON parse + AST validation** on every call.
+- **Explicit parameter typing** — the `parameter_types` map is sent alongside the values (vs. the Rust `#[register]` macro deriving types from the function signature at author time).
+- **Cache by AST structure** — the body carries the AST, so caching keys off its shape.
+
+The Rust `#[register]` macro and the TypeScript `defineQueries` bundle are the *authoring* paths — calling a registered function (Rust) or `queries.call.*` (TS) yields a `DynamicQueryRequest` you POST to `/v1/query`. They organize and type queries; they do not remove the dynamic route's per-request parse cost.
+
+Query warming (`X-Helix-Warm: true` header) is read-only — it pre-runs the query without returning rows, populating caches. Returns `204 No Content`. Writes with the warm header are rejected. Warming is supported on the dynamic route.
 
 ---
 
 ## 17. Cross-skill references
 
-- `../helix-query-rust/SKILL.md` — Rust DSL authoring guide; use when writing or revising stored Rust queries.
+- `../helix-query-rust/SKILL.md` — Rust DSL authoring guide; use when writing or revising Rust DSL queries.
 - `../helix-query-rust/REFERENCE.md` — full Rust DSL builder catalog including signatures and typestate.
 - `../helix-query-typescript/SKILL.md` / `REFERENCE.md` — the TypeScript DSL equivalents.
 - `../helix-query-json-dynamic/SKILL.md` — dynamic JSON request guide.

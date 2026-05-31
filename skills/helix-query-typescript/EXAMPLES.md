@@ -2,7 +2,7 @@
 
 Each numbered scenario corresponds 1:1 with `../helix-query-rust/EXAMPLES.md` and `../helix-query-json-dynamic/EXAMPLES.md`. When moving between TypeScript, Rust, and inline JSON, open the same scenario in each file.
 
-All snippets assume `import { ... } from "@helix-db/helix-db";`. Query builders are plain functions returning a `ReadBatch`/`WriteBatch`. Produce a dynamic request with `builder().toDynamicJson(params, values)` (or `.toDynamicJson()` when there are no parameters), or register the builder in `defineQueries({...})` for a stored bundle.
+All snippets assume `import { ... } from "@helix-db/helix-db";`. Query builders are plain functions returning a `ReadBatch`/`WriteBatch`. Produce a dynamic request with `builder().toDynamicJson(params, values)` (or `.toDynamicJson()` when there are no parameters), or register the builder in `defineQueries({...})` for a query bundle. To run a request against a Helix instance, hand `builder().toDynamicRequest(params, values)` to the built-in `Client`: `await new Client(url).withApiKey(key).query<R>().dynamic(req).send()` (see REFERENCE.md → "Client").
 
 ---
 
@@ -408,25 +408,25 @@ Drop an index with `g().dropIndex(IndexSpec....)`. The convenience methods (`cre
 
 ## 17. Warm a read route
 
-Warming uses the *same* query body; the header (`X-Helix-Warm: true`) is applied on the HTTP client. Build the request and let callers decide to warm:
+Warming uses the *same* query; `.warmOnly()` sets the `X-Helix-Warm: true` header on the client. Build the request and let callers decide to warm:
 
 ```ts
-const body = userById().toDynamicJson(userByIdParams, { userId: "u-42" });
-// Send via fetch / curl / etc:
-//   POST /v1/query
-//   X-Helix-Warm: true
-//   Content-Type: application/json
-//   <body>
-// A successful warm returns 204 No Content. Writes reject warming.
+import { Client } from "@helix-db/helix-db";
+
+const client = new Client("https://helix.example.com").withApiKey(apiKey);
+const request = userById().toDynamicRequest(userByIdParams, { userId: "u-42" });
+
+// .warmOnly() sets X-Helix-Warm: true. A successful warm returns 204 No Content; writes reject warming.
+await client.query().warmOnly().dynamic(request).send();
 ```
 
 Warming is strictly read-only; a `WriteBatch` with `X-Helix-Warm: true` is rejected by the gateway.
 
 ---
 
-## Registering a stored bundle
+## Registering a bundle
 
-Any of the parameterized builders above can be registered into a `queries.json` bundle instead of (or in addition to) being called dynamically:
+Any of the parameterized builders above can be registered into a `queries.json` bundle in addition to being called dynamically:
 
 ```ts
 export const queries = defineQueries({

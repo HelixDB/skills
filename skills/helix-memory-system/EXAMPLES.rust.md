@@ -1,6 +1,6 @@
 # Helix Memory System — Rust Examples
 
-The same lifecycle patterns as `EXAMPLES.md`, in the Rust DSL. Use this when the app/runtime is Rust or the team ships Rust stored routes. TypeScript is the default for Node/TS services.
+The same lifecycle patterns as `EXAMPLES.md`, in the Rust DSL. Use this when the app/runtime is Rust or the team ships Rust queries. TypeScript is the default for Node/TS services.
 
 Each query is a `#[register]` function. Parameters are bound by name, and calling the generated route yields a request that can be sent to Helix. Data model and indexes are in `REFERENCE.md`. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model. The examples also filter user-private memories and chunks by `userId`; replace that with `containerId`, `scopeId`, or app ACL filtering for project/team/workspace memory.
 

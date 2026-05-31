@@ -757,11 +757,11 @@ write_batch()
 
 ---
 
-## 11. Stored vs dynamic + warming
+## 11. Warming
 
-Use a stored route for steady traffic; warm the cache at startup.
+Warm the cache for hot read routes at startup.
 
-### Stored route (Rust DSL, `#[register]`)
+### Rust DSL query (`#[register]`)
 
 ```rust
 #[register]
@@ -782,7 +782,7 @@ pub fn user_by_id(userId: String) -> ReadBatch {
 }
 ```
 
-The `#[register]` macro publishes the route once at compile time; no per-request AST parse / validation.
+Calling `user_by_id("u-42".into())` returns a `DynamicQueryRequest` you POST to `/v1/query`; the `#[register]` macro derives the parameter types from the function signature at author time.
 
 ### Dynamic warming request (read-only)
 

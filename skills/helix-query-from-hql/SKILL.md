@@ -23,7 +23,7 @@ logic into application code — never invent a fake DSL shape.
 Use this skill when the task is to:
 
 - translate an HQL query or a `.hx` file into the Rust DSL or the TypeScript DSL
-- port a stored HelixQL route into the v2 code-native DSL
+- port a HelixQL route into the v2 code-native DSL
 - decide how an HQL construct (traversal, filter, projection, search, write) maps to a DSL builder
 - identify which parts of an HQL query cannot be expressed in the DSL and must move to app code
 
@@ -51,7 +51,7 @@ Before translating:
 1. **Header → batch + params.** `QUERY Foo(p: T) =>` becomes a `read_batch()`/`write_batch()` expression (Rust)
    or a `readBatch()`/`writeBatch()` builder with `defineParams` (TS). Reference each HQL parameter explicitly:
    Rust `Predicate::eq_param("p","p")` / `NodeRef::param("p")` / `Expr::param("p")`; TS `Predicate.eqParam`,
-   `NodeRef.param`, `Expr.param`. (To bundle a Rust query as a stored route, wrap the body in a `#[register] fn`
+   `NodeRef.param`, `Expr.param`. (To bundle a Rust query into `queries.json`, wrap the body in a `#[register] fn`
    and run `generate()`.) HQL integer widths (`U8`/`I32`/`U64`/…) all become `i64` / `param.i64()`; `ID` becomes
    `String` / `param.string()`; `[F64]` becomes `Vec<f64>` / `param.array(param.f64())`.
 2. **Anchor.** Translate the first source to the narrowest form: `N<T>(id)` → `g().n(NodeRef::id/param(..))`;

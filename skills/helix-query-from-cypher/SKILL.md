@@ -1,6 +1,6 @@
 ---
 name: helix-query-from-cypher
-description: Translate Cypher and Neo4j-style queries into HelixDB Rust DSL stored queries. Use when the input contains Cypher, Neo4j, MATCH, OPTIONAL MATCH, WHERE, RETURN, ORDER BY, LIMIT, DISTINCT, MERGE, CASE, UNWIND, FOREACH, DETACH DELETE, IS NULL, or variable-length path patterns and the goal is to produce an equivalent Helix Rust query.
+description: Translate Cypher and Neo4j-style queries into HelixDB Rust DSL queries. Use when the input contains Cypher, Neo4j, MATCH, OPTIONAL MATCH, WHERE, RETURN, ORDER BY, LIMIT, DISTINCT, MERGE, CASE, UNWIND, FOREACH, DETACH DELETE, IS NULL, or variable-length path patterns and the goal is to produce an equivalent Helix Rust query.
 license: MIT
 metadata:
   author: HelixDB
@@ -16,7 +16,7 @@ Translate Cypher into Helix Rust DSL by mapping patterns into explicit anchors, 
 Use this skill when the task is to:
 
 - translate a Cypher query into Helix Rust DSL
-- port a Neo4j query into a stored Helix route
+- port a Neo4j query into a Helix query
 - replace `MATCH`, `OPTIONAL MATCH`, `WHERE`, `RETURN`, `DISTINCT`, `ORDER BY`, `LIMIT`, `MERGE`, `CASE`, `UNWIND`, `FOREACH`, or `DETACH DELETE` with Helix DSL equivalents
 - explain how a Cypher graph pattern should be expressed in Helix Rust
 

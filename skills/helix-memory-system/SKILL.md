@@ -1,6 +1,6 @@
 ---
 name: helix-memory-system
-description: Design and operate an advanced AI agent memory system on HelixDB using hybrid graph + vector + BM25 search. Use when building long-term memory, user profiles, document/chunk RAG, recall/remember features, memory extraction, deduplication, consolidation, versioning, updating, forgetting/deletion, categorisation, or connector-backed ingestion. Covers tenant-safe Helix data modeling, modality decision rules, the full write/maintain lifecycle, and the product layers an agent must implement around Helix. TypeScript-first (@helixdb/enterprise-ql); a Rust DSL variant is in EXAMPLES.rust.md.
+description: Design and operate an advanced AI agent memory system on HelixDB using hybrid graph + vector + BM25 search. Use when building long-term memory, user profiles, document/chunk RAG, recall/remember features, memory extraction, deduplication, consolidation, versioning, updating, forgetting/deletion, categorisation, or connector-backed ingestion. Covers tenant-safe Helix data modeling, modality decision rules, the full write/maintain lifecycle, and the product layers an agent must implement around Helix. TypeScript-first (@helix-db/helix-db); a Rust DSL variant is in EXAMPLES.rust.md.
 license: MIT
 metadata:
   author: HelixDB
@@ -28,7 +28,7 @@ Do **not** use this skill for generic query syntax questions. For builder/method
 ## First Steps
 
 1. Inspect the target repo for existing labels, edges, properties, indexes, and route style. Reuse exact casing if present.
-2. **Default to the TypeScript DSL** (`@helixdb/enterprise-ql`) so the app can keep query generation near service code. Use `EXAMPLES.rust.md` only if the runtime is Rust or the team explicitly ships Rust stored routes.
+2. **Default to the TypeScript DSL** (`@helix-db/helix-db`) so the app can keep query generation near service code. Use `EXAMPLES.rust.md` only if the runtime is Rust or the team explicitly ships Rust queries.
 3. Decide the tenancy boundary before modeling anything. The canonical tenant property is **`tenant_id`** because tenant-partitioned Helix text indexes currently require that name. Attach `tenant_id` to every tenant-owned node and edge.
 4. Decide the memory visibility boundary separately from tenancy. In most apps, `tenant_id` partitions indexes while `userId`, `containerId`, `projectId`, or an app ACL decides which memories can be recalled. Default examples use `userId` as the second-level scope.
 5. Reuse the canonical model below before inventing labels. Adapt names, not the shape.
@@ -232,6 +232,6 @@ Before finishing:
 ## Reference Files
 
 - `REFERENCE.md` — full data-model spec, tenant rules, indexes, modality cheat-sheet, embedding guidance, fusion/re-ranking formula, and TypeScript ↔ Rust API mapping.
-- `EXAMPLES.md` — lifecycle scenarios as `@helixdb/enterprise-ql` TypeScript snippets. **Default.**
+- `EXAMPLES.md` — lifecycle scenarios as `@helix-db/helix-db` TypeScript snippets. **Default.**
 - `EXAMPLES.rust.md` — the same scenarios in the Rust DSL.
 - Adjacent skills: `helix-query-typescript`, `helix-query-rust`, `helix-query-json-dynamic`, `helix-query-optimize`.

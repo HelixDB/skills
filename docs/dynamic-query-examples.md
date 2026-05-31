@@ -93,7 +93,7 @@ Important:
 
 Do not:
 
-- send a stored query name to `POST /v1/query` instead of an inline `query` object
+- put a query name string under `query` instead of the inline `query` object
 - send the full `queries.json` bundle under `query`
 - use `mcp` as `request_type`
 - assume `DateTime` will coerce correctly without `parameter_types`

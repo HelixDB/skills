@@ -282,7 +282,7 @@ Helix can express these as `where(Predicate.and([...]))` after a vector/text sea
 - Embed the same text stored in `content` or a deterministic normalised version.
 - Deterministic token-hash embeddings are acceptable for local smoke tests and UI demos only. Do not use them for production recall quality, MemoryBench-style evaluations, or threshold tuning.
 - Similarity/dedup thresholds are model-specific. Retune thresholds after changing embedding model, dimension, normalisation, or chunk/memory text format.
-- For stored Rust enterprise routes, a server-side embedding model may be configured with route-specific features when supported. Keep the default guidance as client-side embeddings unless the target repo already uses server-side embedding routes.
+- For Rust enterprise queries, a server-side embedding model may be configured with query-specific features when supported. Keep the default guidance as client-side embeddings unless the target repo already uses server-side embedding routes.
 
 ## Contextual Memory Extraction
 
@@ -418,7 +418,7 @@ Never include embedding arrays in normal responses.
 
 ## TypeScript ↔ Rust API Mapping
 
-| TypeScript (`@helixdb/enterprise-ql`) | Rust DSL | Notes |
+| TypeScript (`@helix-db/helix-db`) | Rust DSL | Notes |
 |---|---|---|
 | `readBatch()` / `writeBatch()` | `read_batch()` / `write_batch()` | |
 | `g()` | `g()` | empty traversal source |

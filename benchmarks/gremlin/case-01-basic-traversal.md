@@ -2,7 +2,7 @@
 
 ## Prompt
 
-Translate this Gremlin traversal into a Helix Rust DSL stored query:
+Translate this Gremlin traversal into a Helix Rust DSL query:
 
 ```gremlin
 g.V().hasLabel('User').has('userId', userId).out('FOLLOWS').has('status', status).order().by('createdAt', desc).limit(limit).valueMap('userId', 'name', 'status', 'createdAt')

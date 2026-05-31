@@ -2,7 +2,7 @@
 
 ## Prompt
 
-Translate this Cypher query into a Helix Rust DSL stored query:
+Translate this Cypher query into a Helix Rust DSL query:
 
 ```cypher
 MATCH (u:User {userId: $userId})

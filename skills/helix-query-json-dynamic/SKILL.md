@@ -32,16 +32,15 @@ Use this skill when the task is to:
 - use query warming on a dynamic read
 - translate a Rust DSL query you already have into its JSON form
 
-Do not use this skill as the main guide for writing stored DSL query functions. Use `helix-query-rust` (Rust) or `helix-query-typescript` (TypeScript) for that.
+Do not use this skill as the main guide for writing DSL query functions. Use `helix-query-rust` (Rust) or `helix-query-typescript` (TypeScript) for that.
 
 ## First Steps
 
 Before writing the payload:
 
-1. Decide whether this should really be a stored route instead of a dynamic route. If the request is part of steady-state application traffic, prefer a stored route.
-2. Confirm whether the request is a read or a write. A query that contains any mutation step (`AddN`, `AddE`, `SetProperty`, `RemoveProperty`, `Drop`, `DropEdge`, `DropEdgeLabeled`, `DropEdgeById`, or any `Create*Index` / `DropIndex`) must use `request_type: "write"`.
-3. Confirm whether the inline `query` object already exists in code, a test, or a serialized payload — prefer copying a known-good shape.
-4. Identify any parameters that need explicit typing, especially `DateTime` and typed arrays.
+1. Confirm whether the request is a read or a write. A query that contains any mutation step (`AddN`, `AddE`, `SetProperty`, `RemoveProperty`, `Drop`, `DropEdge`, `DropEdgeLabeled`, `DropEdgeById`, or any `Create*Index` / `DropIndex`) must use `request_type: "write"`.
+2. Confirm whether the inline `query` object already exists in code, a test, or a serialized payload — prefer copying a known-good shape.
+3. Identify any parameters that need explicit typing, especially `DateTime` and typed arrays.
 
 ## Required Envelope Rules
 
@@ -266,7 +265,7 @@ Do not send `Bytes` parameters through the JSON dynamic route. The builder raise
 - `request_type: "read"` — no mutation / index step may appear anywhere in the AST.
 - `request_type: "write"` — allowed to mix read steps and mutation / index steps in the same batch.
 
-Dynamic requests do not support a `"mcp"` request type. That's only for the stored-route / MCP tool surface.
+Dynamic requests do not support a `"mcp"` request type. That's only for the MCP tool surface.
 
 If the inline AST contains a write step, the request must also be marked `"write"` — the gateway uses `request_type` to pick the transaction kind.
 
@@ -284,14 +283,15 @@ Rules:
 - rejected for writes
 - successful warm requests return `204 No Content`
 
+Setting this header (and `Authorization: Bearer`) by hand is only needed on this raw JSON route — the TS/Rust SDK clients set them for you via `.warmOnly()` / `.warm_only()` and `.withApiKey()` / `.with_api_key()` (see `helix-query-typescript` / `helix-query-rust`).
+
 ## Practical Workflow
 
-1. Prefer a stored route if the query is stable and production-facing.
-2. If using the dynamic route, locate or generate the exact inline `query` AST first — either serialize from a Rust `DynamicQueryRequest::read(...).to_json_string()` or copy from a test fixture.
-3. Add `parameters` only for the names the AST expects.
-4. Add `parameter_types` for `DateTime`, typed arrays, and any other parameters needing schema-aware coercion.
-5. Validate that the body contains one inline route object, not a full query bundle.
-6. If warming, ensure the request is read-only and add `X-Helix-Warm: true`.
+1. Locate or generate the exact inline `query` AST first — either serialize from a Rust `DynamicQueryRequest::read(...).to_json_string()` or copy from a test fixture.
+2. Add `parameters` only for the names the AST expects.
+3. Add `parameter_types` for `DateTime`, typed arrays, and any other parameters needing schema-aware coercion.
+4. Validate that the body contains one inline route object, not a full query bundle.
+5. If warming, ensure the request is read-only and add `X-Helix-Warm: true`.
 
 ## Anti-Patterns
 
