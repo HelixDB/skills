@@ -178,6 +178,8 @@ Each comparison **auto-routes** by argument type. A literal keeps the plain vari
 
 **Not available** at source position: `is_null`, `is_not_null`, `contains[_param]`, `ends_with`, `is_in*`, `not`, `compare`. Push those into a following `.where_(Predicate::...)`.
 
+Property-name strings in filters can be dotted object paths, for example `Predicate::eq("metadata.externalID", "crm-42")`. Lookup is exact-first: a top-level property named `metadata.externalID` wins before walking the `metadata` object. Dotted paths are scan-only in V1; secondary, text, and vector indexes remain top-level only. Arrays are opaque and do not support `tags.0` syntax.
+
 ### `CompareOp`
 
 ```rust
@@ -203,6 +205,7 @@ Expr::case(when_then: Vec<(Predicate, Expr)>, else_expr: Option<Expr>)
 Typical uses:
 
 - `Predicate::compare(Expr::prop("age"), CompareOp::Gte, Expr::param("minAge"))` — property-to-parameter comparison with typed coercion.
+- `Expr::prop("metadata.score")` — nested object field lookup with the same exact-first dotted-path rules as filters.
 - `ExprProjection::new("age_plus_one", Expr::prop("age").add(Expr::val(1i64)))` — computed column.
 - `PropertyInput::from(Expr::timestamp())` inside `add_n("Foo", vec![("createdAt", Expr::timestamp())])` — server-side timestamp stamp.
 
@@ -245,6 +248,8 @@ Cross-entry references use `NodeRef::var(name)`, `EdgeRef::var(name)`, `NodeRef:
 .order_by(property, order: Order)                       // Order::{Asc, Desc}
 .order_by_multiple(vec![(prop1, Order::Desc), (prop2, Order::Asc)])
 ```
+
+Dotted paths such as `metadata.score` are valid for fallback ordering, but V1 range indexes cannot accelerate nested paths.
 
 ---
 
@@ -321,6 +326,7 @@ Projection::expr("alias", expr)
 ```
 
 `PropertyProjection` and `ExprProjection` both implement `Into<Projection>`, so you can mix them freely in `.project(vec![...])`.
+Filtered `values(...)`, filtered `value_map(...)`, `PropertyProjection::source`, and `Expr::prop(...)` accept dotted object paths. `value_map(None)` returns all top-level stored properties as-is and does not flatten nested objects.
 
 ---
 
@@ -368,6 +374,7 @@ Key `PropertyInput` shortcuts:
 PropertyInput::from("literal")              // wraps as Value(PropertyValue)
 PropertyInput::from(Expr::timestamp())      // wraps Expr
 PropertyInput::param("userId")              // wraps Expr::Param("userId")
+PropertyInput::from(PropertyValue::object(vec![("externalID", PropertyValue::from("crm-42"))]))
 ```
 
 ---
@@ -403,6 +410,8 @@ IndexSpec::node_text(label, property, tenant_property)
 IndexSpec::edge_vector(label, property, tenant_property)
 IndexSpec::edge_text(label, property, tenant_property)
 ```
+
+Index properties are top-level only in V1. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
 
 ---
 

@@ -110,6 +110,7 @@ PropertyValue.from(input)         // smart conversion from PropertyValueInput
 ```
 
 `PropertyValueInput` (`src/index.ts:307`) is the union accepted wherever a literal is allowed: `null | boolean | number | bigint | string | Uint8Array | DateTime | PropertyValue | arrays | { object: ... }`.
+Objects and generic arrays are stored as property values. Homogeneous primitive arrays may use the typed array variants (`I64Array`, `F64Array`, `StringArray`); mixed or nested arrays use `PropertyValue.array(...)`.
 
 ### `PropertyInput`  (`src/index.ts:431`)  — value-or-expression
 
@@ -243,6 +244,8 @@ SourcePredicate.eq / neq / gt / gte / lt / lte / between / hasKey / startsWith /
 
 Each comparison **auto-routes** by argument type: a literal keeps the plain variant (`SourcePredicate.eq("u","alice")` → `{"Eq": ["u", {"String": "alice"}]}`); an `Expr`/`ParamRef` routes to the `*Expr` variant (`SourcePredicate.eq("u", Expr.param("name"))` → `{"EqExpr": ["u", {"Param": "name"}]}`). `.toPredicate()` converts `*Expr` variants to `Compare`. Not available at source position: `isNull`, `isNotNull`, `contains[Param]`, `endsWith`, `isIn*`, `not`, `compare` — push those into a following `.where(Predicate....)`.
 
+Property-name strings in filters can be dotted object paths, for example `Predicate.eq("metadata.externalID", "crm-42")`. Lookup is exact-first: a top-level property named `metadata.externalID` wins before walking the `metadata` object. Dotted paths are scan-only in V1; secondary, text, and vector indexes remain top-level only. Arrays are opaque and do not support `tags.0` syntax.
+
 ### `CompareOp`  (`src/index.ts:517`)
 
 ```ts
@@ -269,6 +272,7 @@ Expr.case(whenThen: [Predicate, Expr][], elseExpr?: Expr | null)
 Typical uses:
 
 - `Predicate.compare(Expr.prop("age"), CompareOp.Gte, Expr.param("minAge"))` — property-to-parameter comparison.
+- `Expr.prop("metadata.score")` — nested object field lookup with the same exact-first dotted-path rules as filters.
 - `ExprProjection.new("age2", Expr.prop("age").add(Expr.val(1)))` — computed column.
 - `g().addN("Foo", { createdAt: PropertyInput.expr(Expr.timestamp()) })` — server-side timestamp.
 
@@ -312,6 +316,7 @@ Cross-entry references: `NodeRef.var(name)`, `EdgeRef.var(name)`, `NodeRef.param
 ```
 
 `Order` at `src/index.ts:525`.
+Dotted paths such as `metadata.score` are valid for fallback ordering, but V1 range indexes cannot accelerate nested paths.
 
 ---
 
@@ -386,6 +391,7 @@ Projection.from(value)
 ```
 
 Mix `PropertyProjection` and `ExprProjection` freely in `.project([...])`.
+Filtered `values(...)`, filtered `valueMap(...)`, `PropertyProjection.source`, and `Expr.prop(...)` accept dotted object paths. `valueMap(null)` returns all top-level stored properties as-is and does not flatten nested objects.
 
 ---
 
@@ -419,7 +425,7 @@ Node-state mutations (→ `Traversal<"nodes", "write">`):
 .dropEdge(to)              .dropEdgeLabeled(to, label)        .dropEdgeById(edges)
 ```
 
-`addN`/`addE` properties accept an object (`{ name: "Alice" }`) or an array of tuples (`[["name", "Bob"]]`); values may be raw literals, `PropertyInput.param(...)`, or a `ParamRef`. On the wire each becomes `["name", {"Value": {"String": "Alice"}}]`.
+`addN`/`addE` properties accept an object (`{ name: "Alice" }`) or an array of tuples (`[["name", "Bob"]]`); values may be raw literals, nested objects/arrays, `PropertyInput.param(...)`, or a `ParamRef`. On the wire each becomes `["name", {"Value": {"String": "Alice"}}]` or, for nested values, a tagged `{"Object": ...}` / `{"Array": ...}` `PropertyValue`.
 
 ---
 
@@ -451,6 +457,7 @@ IndexSpec.edgeText(label, property, tenantProperty?)
 ```
 
 `createVectorIndexNodes(...)` serializes identically to `createIndexIfNotExists(IndexSpec.nodeVector(...))` — `{"CreateIndex": {"spec": {"NodeVector": {...}}, "if_not_exists": true}}`.
+Index properties are top-level only in V1. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
 
 ---
 

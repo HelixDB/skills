@@ -580,7 +580,67 @@ Inside `body`, the fields of each object (`externalId`, `embedding`) are availab
 
 ---
 
-## 15. Write: typed-array parameter + `DateTime` parameter
+## 15. Nested object properties + dotted-path reads
+
+**Goal:** write nested metadata, return one nested field, then filter by that field with a dotted path.
+
+```json
+{
+  "request_type": "write",
+  "query": {
+    "queries": [
+      {"Query": {
+        "name": "user",
+        "steps": [
+          {"AddN": {
+            "label": "User",
+            "properties": [
+              ["userId", {"Value": {"String": "u-42"}}],
+              ["metadata", {"Value": {"Object": {
+                "externalID": {"String": "crm-42"},
+                "score": {"I64": 20},
+                "tags": {"Array": [{"String": "trial"}, {"I64": 7}]}
+              }}}]
+            ]
+          }},
+          {"ValueMap": ["userId", "metadata.externalID"]}
+        ],
+        "condition": null
+      }}
+    ],
+    "returns": ["user"]
+  }
+}
+```
+
+```json
+{
+  "request_type": "read",
+  "query": {
+    "queries": [
+      {"Query": {
+        "name": "users",
+        "steps": [
+          {"NWhere": {"Eq": ["$label", {"String": "User"}]}},
+          {"Where": {"Eq": ["metadata.externalID", {"String": "crm-42"}]}},
+          {"Project": [
+            {"source": "userId", "alias": "userId"},
+            {"source": "metadata.externalID", "alias": "external_id"}
+          ]}
+        ],
+        "condition": null
+      }}
+    ],
+    "returns": ["users"]
+  }
+}
+```
+
+Dotted property lookup is exact-first and scan-only in V1. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
+
+---
+
+## 16. Write: typed-array parameter + `DateTime` parameter
 
 **Goal:** restrict to users whose status is in a list and were created after a datetime.
 
@@ -621,7 +681,7 @@ Inside `body`, the fields of each object (`externalId`, `embedding`) are availab
 
 ---
 
-## 16. Write: `CreateIndex` / `DropIndex` (equality + vector + text)
+## 17. Write: `CreateIndex` / `DropIndex` (equality + vector + text)
 
 **Goal:** bootstrap a new label with an equality index on `userId`, a multitenant vector index on `embedding`, and a multitenant text index on `body`.
 
@@ -674,7 +734,7 @@ To drop instead, replace each `CreateIndex` with:
 
 ---
 
-## 17. Warm a read route
+## 18. Warm a read route
 
 **Goal:** prefetch caches for a recurring read without retrieving rows. (From the TS/Rust SDKs use the client's `.warmOnly()` / `.warm_only()` instead of setting the header by hand — see `helix-query-typescript` / `helix-query-rust` §17.)
 

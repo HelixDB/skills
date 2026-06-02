@@ -107,6 +107,12 @@ Used everywhere inside the AST where a literal appears (e.g. `Predicate::Eq`, `S
 | `Array(Vec<PropertyValue>)` | heterogeneous | `{"Array": [{"I64": 1}, {"String": "a"}]}` |
 | `Object(BTreeMap<String, PropertyValue>)` | | `{"Object": {"k": {"I64": 1}}}` |
 
+`Array` and `Object` are stored property values. Object fields can be read later with dotted
+property paths such as `metadata.externalID` in property-name slots. Lookup is exact-first: a
+top-level property literally named `metadata.externalID` wins before walking the nested
+`metadata` object. Dotted paths only walk object values; arrays are opaque and do not support
+index syntax such as `tags.0`.
+
 ### `PropertyInput`  (`sdks/rust/src/dsl.rs:1197`)
 
 Used in mutation step property lists (`AddN`, `AddE`, `SetProperty`, `EdgeHas`) and in `VectorSearchNodes.query_vector` / `VectorSearchEdges.query_vector` / `tenant_value`.
@@ -261,6 +267,10 @@ Unit variants as bare strings: `"Eq"`, `"Neq"`, `"Gt"`, `"Gte"`, `"Lt"`, `"Lte"`
 | `Not(p)` | `{"Not": <Predicate>}` |
 | `Compare { left, op, right }` | `{"Compare": {"left": <Expr>, "op": <CompareOp>, "right": <Expr>}}` |
 
+Every `<prop>` string in this table may be a dotted object path such as
+`metadata.externalID`. Dotted predicates are scan-only in V1; pair them with indexed top-level
+anchors such as label, tenant, status, or id when possible.
+
 `Predicate::eq_param("prop", "param")` is syntactic sugar for:
 
 ```json
@@ -369,6 +379,8 @@ Used wherever an inner traversal is needed: `Union`, `Choose.then_traversal`, `C
 
 - `NodeEquality.unique` defaults to `false`. When `true`, insert / update of duplicate non-null values is rejected.
 - `tenant_property` — if set, creates a multitenant index partitioned by that property.
+- Index properties are top-level only in V1. Do not declare `metadata.externalID` as a secondary,
+  vector, or text index; store indexed/searchable values as explicit top-level properties.
 
 ---
 
@@ -451,6 +463,9 @@ All Step variants (`sdks/rust/src/dsl.rs:2606-3062`) grouped by category. **TS**
 | `OrderBy(String, Order)` | `{"OrderBy": ["<prop>", "Desc"]}` |
 | `OrderByMultiple(Vec<(String, Order)>)` | `{"OrderByMultiple": [["priority","Desc"],["name","Asc"]]}` |
 
+`<prop>` may be a dotted object path for fallback ordering, but nested paths are not backed by
+range indexes in V1.
+
 ### Aggregation (TS: `N`)
 
 | Step | JSON |
@@ -482,6 +497,10 @@ All Step variants (`sdks/rust/src/dsl.rs:2606-3062`) grouped by category. **TS**
 | `ValueMap(Option<Vec<String>>)` | `{"ValueMap": ["$id", "name"]}` or `{"ValueMap": null}` |
 | `Project(Vec<Projection>)` | `{"Project": [<Projection>, ...]}` — Projection entries are **untagged** |
 | `EdgeProperties` (TS: `X`) | `"EdgeProperties"` |
+
+Filtered `Values`, filtered `ValueMap`, `Project.source`, and `Expr.Property` accept dotted object
+paths. `ValueMap: null` returns top-level stored properties as-is and does not flatten nested
+objects.
 
 ### Terminals (scalar result)
 

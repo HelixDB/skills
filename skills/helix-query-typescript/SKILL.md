@@ -140,6 +140,7 @@ Route names must be unique across read and write routes — duplicates throw `Ge
 - Use `bigint` (`25n`) or `i64(...)` for full `i64` range; plain `number` is accepted only for safe integers when an integer is required.
 - Serialize bigint-bearing payloads with `toJsonString()` / `stringifyJson()` / `serializeQueryBundle()`, **never** raw `JSON.stringify`.
 - `DateTime` stores epoch milliseconds (negative allowed): `DateTime.fromMillis(ms)`, `DateTime.parseRfc3339(s)`, `.toRfc3339()`. Declare the parameter as `param.dateTime()`; dynamic request values render as UTC RFC3339 with millisecond precision.
+- Nested object/array property values are supported through normal object and array inputs or `PropertyValue.object/array`. Read nested object fields with dotted property strings such as `metadata.externalID`; lookup is exact-first and scan-only in V1.
 
 ## Builder Surface At A Glance
 
@@ -148,17 +149,17 @@ Route names must be unique across read and write routes — duplicates throw `Ge
 | Entry points | `g()`, `sub()`, `readBatch()`, `writeBatch()` | `g()` starts a `Traversal<"empty","read">`. |
 | Sources | `n`, `nWhere`, `nWithLabel`, `nWithLabelWhere`, `e`, `eWhere`, `eWithLabel`, `eWithLabelWhere`, `vectorSearchNodes[With]`, `textSearchNodes[With]`, `vectorSearchEdges[With]`, `textSearchEdges[With]` | Anchor narrowly. `*With` variants accept params/exprs. |
 | Traversal | `out`, `in`, `both`, `outE`, `inE`, `bothE`, `outN`, `inN`, `otherN` | Label arg is optional (`out("FOLLOWS")` or `out()`). `*E` switch to the edge stream. |
-| Filters | `has`, `hasLabel`, `hasKey`, `where`, `dedup`, `within`, `without`, `edgeHas`, `edgeHasLabel` | `Predicate.*` + `Predicate.*Param`; `SourcePredicate.*` at source position. |
+| Filters | `has`, `hasLabel`, `hasKey`, `where`, `dedup`, `within`, `without`, `edgeHas`, `edgeHasLabel` | `Predicate.*` + `Predicate.*Param`; dotted paths like `metadata.externalID` are scan-only. |
 | Limits | `limit`, `skip`, `range` | Accept `number`, `bigint`, `Expr`, `ParamRef`, or `StreamBound`. |
 | Variables | `as`, `store`, `select`, `inject` | Cross-entry refs via `NodeRef.var/param`, `EdgeRef.var/param`. |
 | Ordering | `orderBy`, `orderByMultiple` | `Order.Asc` / `Order.Desc`. |
 | Aggregation | `count`, `exists`, `group`, `groupCount`, `aggregateBy` | `AggregateFunction.{Count,Sum,Min,Max,Mean}`. |
 | Branching | `union`, `choose`, `coalesce`, `optional` | Each arm is a `sub()` sub-traversal. |
 | Repeat | `repeat(RepeatConfig.new(sub).times(n).until(pred).emitAfter().maxDepth(100))` | Bound with `times`/`until`; default `maxDepth` 100. |
-| Projection | `values`, `valueMap`, `project`, `edgeProperties` | `project` mixes `PropertyProjection` (incl. `renamed`) and `ExprProjection`. |
+| Projection | `values`, `valueMap`, `project`, `edgeProperties` | `project` mixes `PropertyProjection` (incl. `renamed`) and `ExprProjection`; filtered outputs accept dotted paths. |
 | Expressions | `Expr.prop/val/id/timestamp/datetime/param`, `.add/.sub/.mul/.div/.modulo/.neg`, `Expr.case` | `Expr.timestamp()` writes server UTC millis; `Expr.datetime()` writes typed datetime. |
 | Mutations | `addN`, `addE`, `setProperty`, `removeProperty`, `drop`, `dropEdge`, `dropEdgeLabeled`, `dropEdgeById` | `dropEdgeById` is multigraph-safe. |
-| Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/edgeEquality/edgeRange/nodeVector/nodeText/edgeVector/edgeText` | All write-only (terminal). |
+| Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/edgeEquality/edgeRange/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. |
 | Output | `toJsonString`, `toDynamicJson`, `toDynamicRequest`, `toDynamicBytes` | Dynamic forms take `(params, values)` unless the query has no parameters. |
 | Client / transport | `new Client(url)`, `.withApiKey`, `.query<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.body`, `.dynamic`/`.stored`, `.send()` | Sends to `POST /v1/query`; `send()` resolves parsed JSON on 200, else throws `HelixError`. |
 | Bundles | `defineParams`, `param.*`, `registerRead`, `registerWrite`, `defineQueries`, `serializeQueryBundle`, `.buildQueryBundle()`, `.generate()` | `QUERY_BUNDLE_VERSION = 4`. |

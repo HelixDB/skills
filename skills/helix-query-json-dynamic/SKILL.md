@@ -30,6 +30,7 @@ Use this skill when the task is to:
 - send `DateTime` or typed-array parameters correctly
 - understand read versus write behavior on the dynamic route
 - use query warming on a dynamic read
+- store nested object/array properties or read object fields with dotted paths
 - translate a Rust DSL query you already have into its JSON form
 
 Do not use this skill as the main guide for writing DSL query functions. Use `helix-query-rust` (Rust) or `helix-query-typescript` (TypeScript) for that.
@@ -104,11 +105,13 @@ Every encoding in `REFERENCE.md` follows these rules. Internalize them or the re
 
 4. **Optional fields may be omitted or set to `null`.** `tenant_value`, `condition`, `else_traversal`, `emit_predicate`, and similar all serialize via `skip_serializing_if = "Option::is_none"` when unset, but the server accepts explicit `null`.
 
-5. **`PropertyValue` is distinct from `DynamicQueryValue`.** Inside the AST (literals in `Has`, `Eq`, `AddN` properties wrapped in `PropertyInput::Value`, etc.) values are *tagged*: `{"String": "..."}`, `{"I64": 42}`, `{"Bool": true}`, `{"F64": 3.14}`, `{"F64Array": [0.1, 0.2]}`, `{"Null": null}` is wrong — use the bare string `"Null"` for the unit variant. At *parameter-value position* (top-level `parameters` map) values are untagged bare JSON.
+5. **`PropertyValue` is distinct from `DynamicQueryValue`.** Inside the AST (literals in `Has`, `Eq`, `AddN` properties wrapped in `PropertyInput::Value`, etc.) values are *tagged*: `{"String": "..."}`, `{"I64": 42}`, `{"Bool": true}`, `{"F64": 3.14}`, `{"F64Array": [0.1, 0.2]}`, `{"Array": [{"String": "x"}]}`, `{"Object": {"k": {"I64": 1}}}`, `{"Null": null}` is wrong — use the bare string `"Null"` for the unit variant. At *parameter-value position* (top-level `parameters` map) values are untagged bare JSON.
 
 6. **`DateTime` over JSON:** supply an RFC3339 string *or* epoch-millis integer as the parameter value, and declare `parameter_types: {"p": "DateTime"}`. No implicit coercion — a plain string parameter without the type declaration is just a string.
 
 7. **`Bytes` is not round-trippable.** The builder raises `UnsupportedBytesParameter`. Do not send `Bytes` parameters through the JSON dynamic route.
+
+8. **Dotted property names are property paths at read time.** Property-name slots such as `Has`, `Predicate`, `Expr.Property`, `Values`, `ValueMap`, `Project.source`, and `OrderBy` accept names like `metadata.externalID`. Lookup is exact-first: a top-level property literally named `metadata.externalID` wins before walking the nested `metadata` object. Dotted paths are scan-only in V1; secondary, text, and vector indexes remain top-level only. Arrays are opaque, so no `tags.0` syntax.
 
 ## Envelope Decision Table
 
@@ -118,7 +121,7 @@ Every encoding in `REFERENCE.md` follows these rules. Internalize them or the re
 | Conditional step after prior step | `"read"` or `"write"` | `{"Query": {..., "condition": {"VarNotEmpty": "prev"}}}` | Conditions: `VarNotEmpty`, `VarEmpty`, `VarMinSize`, `PrevNotEmpty` |
 | Single mutation | `"write"` | `{"Query": {...}}` with a mutation step | See EXAMPLES.md §Write |
 | Upsert | `"write"` | Multi-entry: load → `VarNotEmpty` update → `VarEmpty` create | See EXAMPLES.md §Upsert |
-| Per-row iteration over a param | `"read"` or `"write"` | `{"ForEach": {"param": "items", "body": [...]}}` | `param` must be typed `["Array", "Object"]` |
+| Per-row iteration over a param | `"read"` or `"write"` | `{"ForEach": {"param": "items", "body": [...]}}` | `param` must be typed `{"Array": "Object"}` |
 | Warm a read | `"read"` | normal body + header `X-Helix-Warm: true` | Returns `204 No Content` on success |
 
 ## AST Quick-Map
@@ -139,6 +142,7 @@ Step categories and their JSON form (one-liners). Full signatures in `REFERENCE.
 
 **Filters:**
 - `{"Has": ["prop", {"String": "v"}]}` — property equals
+- `{"Where": {"Eq": ["metadata.externalID", {"String": "crm-42"}]}}` — dotted object path filter, scan-only
 - `{"HasLabel": "User"}`, `{"HasKey": "email"}`
 - `{"Where": <Predicate>}` — full predicate
 - `"Dedup"` — unit variant
@@ -156,6 +160,7 @@ Step categories and their JSON form (one-liners). Full signatures in `REFERENCE.
 
 **Ordering:**
 - `{"OrderBy": ["created_at", "Desc"]}` — single property
+- `{"OrderBy": ["metadata.score", "Desc"]}` — dotted path ordering, fallback scan/sort only
 - `{"OrderByMultiple": [["priority", "Desc"], ["name", "Asc"]]}`
 
 **Aggregation:**
@@ -174,7 +179,7 @@ Step categories and their JSON form (one-liners). Full signatures in `REFERENCE.
 
 **Projections (terminal):**
 - `{"Values": ["name", "email"]}`
-- `{"ValueMap": ["$id", "name"]}` or `{"ValueMap": null}` for all
+- `{"ValueMap": ["$id", "name", "metadata.externalID"]}` or `{"ValueMap": null}` for all top-level stored properties
 - `{"Project": [{"source":"name","alias":"name"}, {"alias":"age_plus_one","expr":{"Add":[{"Property":"age"},{"Constant":{"I64":1}}]}}]}` — **no `{"Property":...}` / `{"Expr":...}` wrapper** (untagged)
 - `"EdgeProperties"` — unit variant
 

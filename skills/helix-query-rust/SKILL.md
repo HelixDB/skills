@@ -137,6 +137,8 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 
 See `REFERENCE.md` for signatures and typestate constraints.
 
+Nested object/array property values are supported with `PropertyValue::object(...)` and `PropertyValue::array(...)`. Read nested object fields with dotted property strings such as `metadata.externalID` in predicates, `Expr::prop`, `values`, `value_map`, `project`, and `order_by`. Dotted paths are exact-first and scan-only in V1; indexes remain top-level only.
+
 ## Canonical Examples
 
 ### Read By Indexed Identifier

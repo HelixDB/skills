@@ -118,7 +118,7 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 | `embeddingModel` | String | — | Optional per-record audit value, e.g. `openai:text-embedding-3-small`. Usually also stored in app config. |
 | `embeddingDim` | I64 | — | Optional per-record audit value. Default `1536`. |
 | `ordinal` | I64 | range optional | Position in document. |
-| `metadataJson` | String | — | Flattened metadata when complex metadata is needed. Helix properties are flat. |
+| `metadata` | Object | — | Non-indexed source metadata, connector payload details, or display/audit fields. Keep frequently filtered/searchable fields top-level or model them as graph edges. |
 | `createdAt` / `updatedAt` | DateTime | — | Lifecycle timestamps. |
 | `deletedAt` | DateTime | — | Soft-delete tombstone. |
 

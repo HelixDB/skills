@@ -41,6 +41,8 @@ Before suggesting any change:
 
 Do not suggest optimizations before you understand the anchor, the label scope, and the index inventory.
 
+Nested dotted paths such as `metadata.externalID` are scan-only in V1. If a route filters or orders on one, optimize by adding an indexed top-level anchor first, or duplicate the frequently queried value onto a top-level indexed property.
+
 ## The Seven Levers
 
 ### 1. Anchor on an index-eligible predicate
@@ -128,6 +130,7 @@ Do not:
 - omit `tenant_value` on tenant-scoped vector/text search
 - traverse off the hit stream (`out`/`in_`/`both`) before projecting `$distance` / `$score`
 - expect `OrderBy` to be cheap without a range index
+- expect dotted nested paths to use secondary, vector, or text indexes
 - write `Repeat` without `max_depth`
 - order `Coalesce` branches by intuition rather than cost
 - use `value_map(None)` on nodes that store embeddings or other large fields

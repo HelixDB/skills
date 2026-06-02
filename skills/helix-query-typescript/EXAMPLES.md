@@ -360,7 +360,48 @@ Inside `body`, parameter names resolve against each object's fields. `param.arra
 
 ---
 
-## 15. Typed-array parameter + `DateTime` parameter
+## 15. Nested object properties + dotted paths
+
+```ts
+function createUserWithMetadata() {
+  return writeBatch()
+    .varAs(
+      "user",
+      g()
+        .addN("User", {
+          userId: "u-42",
+          metadata: {
+            externalID: "crm-42",
+            score: 20,
+            tags: ["trial", 7],
+          },
+        })
+        .valueMap(["userId", "metadata.externalID"]),
+    )
+    .returning(["user"]);
+}
+
+function usersByExternalId() {
+  return readBatch()
+    .varAs(
+      "users",
+      g()
+        .nWithLabel("User")
+        .where(Predicate.eq("metadata.externalID", "crm-42"))
+        .project([
+          PropertyProjection.new("userId"),
+          PropertyProjection.renamed("metadata.externalID", "external_id"),
+        ]),
+    )
+    .returning(["users"]);
+}
+```
+
+Dotted property lookup is exact-first and scan-only in V1. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
+
+---
+
+## 16. Typed-array parameter + `DateTime` parameter
 
 ```ts
 const filteredParams = defineParams({
@@ -390,7 +431,7 @@ const body = usersFiltered().toDynamicJson(filteredParams, {
 
 ---
 
-## 16. Write: index management
+## 17. Write: index management
 
 ```ts
 function bootstrapIndexes() {
@@ -406,7 +447,7 @@ Drop an index with `g().dropIndex(IndexSpec....)`. The convenience methods (`cre
 
 ---
 
-## 17. Warm a read route
+## 18. Warm a read route
 
 Warming uses the *same* query; `.warmOnly()` sets the `X-Helix-Warm: true` header on the client. Build the request and let callers decide to warm:
 

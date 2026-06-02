@@ -161,7 +161,7 @@ Helix has **no native TTL or decay**. Forgetting is explicit write queries the a
 - Store display categories as `Category` nodes scoped by `tenant_id` and a unique `categoryKey` such as `${tenant_id}:${normalisedName}`.
 - Store entities as `Entity` nodes scoped by `tenant_id` and a unique `entityKey` such as `${tenant_id}:${normalisedName}`.
 - Prefer edges over arrays when you will traverse, aggregate, or recall by the tag/entity.
-- Use array/string metadata only for flat display filters that do not need graph expansion.
+- Use nested object metadata for display/audit fields that do not need graph expansion. Keep frequently filtered fields top-level, and prefer edges when you will traverse, aggregate, or recall by the tag/entity.
 
 ### 5. Profile Maintenance
 

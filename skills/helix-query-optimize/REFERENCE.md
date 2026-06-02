@@ -29,6 +29,8 @@ Tenant-scoping for vector/text is via the `tenant_property` field on the `IndexS
 
 There is no explicit "unique" enforcement at the equality-index layer — the DSL exposes a `unique: bool` field on `IndexSpec::NodeEquality` but uniqueness checks happen at write time, not at read time. Read-time equality lookup returns a roaring set regardless of cardinality.
 
+Index properties are top-level only in V1. Dotted object paths such as `metadata.externalID` are valid scan-time property lookups, but they are not secondary, vector, or text index keys. Store frequently queried nested metadata as explicit top-level properties when it needs index acceleration.
+
 ---
 
 ## 2. `SourcePredicate` vs `Predicate`
@@ -109,6 +111,7 @@ Predicates that are **never** index-resolvable:
 - `Not(predicate)` — set complement is not in the dispatcher.
 - `Or(children)` where *any* child is non-index-resolvable — the `Or` arm requires every child to return `Complete`, otherwise it bails to `Ok(None)` (`interpreter.rs:2917-2920`).
 - `Compare` where the right side is not param-resolvable to a literal.
+- Dotted object paths such as `metadata.externalID` — valid as property lookups, but scan-only in V1 even when the predicate shape would otherwise be index-eligible.
 
 When `try_resolve_predicate_from_indexes` returns `None`:
 
@@ -309,7 +312,7 @@ A `ReadBatch` / `WriteBatch` is a list of `BatchEntry::Query` or `BatchEntry::Fo
 - `VarMinSize(name, n)` — true when the named variable has at least `n` items
 - `PrevNotEmpty` — true when the immediately preceding entry produced a non-empty result
 
-`for_each_param(param_name, body)` iterates over `param_name` (must be typed `["Array", "Object"]` in `parameter_types`) and runs `body` once per row, with the row's fields bound as scoped parameters inside the body. Cost: O(rows × body cost). Use for small bounded inputs (tens to low hundreds); large arrays are better handled by issuing parallel client-side requests.
+`for_each_param(param_name, body)` iterates over `param_name` (must be typed `{"Array": "Object"}` in `parameter_types`) and runs `body` once per row, with the row's fields bound as scoped parameters inside the body. Cost: O(rows × body cost). Use for small bounded inputs (tens to low hundreds); large arrays are better handled by issuing parallel client-side requests.
 
 Variable reuse:
 

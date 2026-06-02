@@ -414,7 +414,59 @@ Inside `body`, the parameter names resolve against each object's fields. Registe
 
 ---
 
-## 15. Typed-array parameter + `DateTime` parameter
+## 15. Nested object properties + dotted paths
+
+```rust
+#[register]
+pub fn create_user_with_metadata() -> WriteBatch {
+    let metadata = PropertyValue::object(vec![
+        ("externalID", PropertyValue::from("crm-42")),
+        ("score", PropertyValue::from(20i64)),
+        (
+            "tags",
+            PropertyValue::array(vec![
+                PropertyValue::from("trial"),
+                PropertyValue::from(7i64),
+            ]),
+        ),
+    ]);
+
+    write_batch()
+        .var_as(
+            "user",
+            g().add_n(
+                "User",
+                vec![
+                    ("userId", PropertyInput::from("u-42")),
+                    ("metadata", PropertyInput::from(metadata)),
+                ],
+            )
+            .value_map(Some(vec!["userId", "metadata.externalID"])),
+        )
+        .returning(["user"])
+}
+
+#[register]
+pub fn users_by_external_id() -> ReadBatch {
+    read_batch()
+        .var_as(
+            "users",
+            g().n_with_label("User")
+                .where_(Predicate::eq("metadata.externalID", "crm-42"))
+                .project(vec![
+                    PropertyProjection::new("userId"),
+                    PropertyProjection::renamed("metadata.externalID", "external_id"),
+                ]),
+        )
+        .returning(["users"])
+}
+```
+
+Dotted property lookup is exact-first and scan-only in V1. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
+
+---
+
+## 16. Typed-array parameter + `DateTime` parameter
 
 ```rust
 #[register]
@@ -441,7 +493,7 @@ The macro records `statuses` as `{"Array": "String"}` and `since` as `"DateTime"
 
 ---
 
-## 16. Write: index management
+## 17. Write: index management
 
 ```rust
 #[register]
@@ -475,7 +527,7 @@ Drop an index with `g().drop_index(IndexSpec::...)`. The convenience methods (`c
 
 ---
 
-## 17. Warm a read route
+## 18. Warm a read route
 
 Warming uses the *same* query; `.warm_only()` sets the `X-Helix-Warm: true` header on the client. Build the request and let callers decide to warm:
 
