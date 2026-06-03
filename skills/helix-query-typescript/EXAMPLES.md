@@ -2,7 +2,7 @@
 
 Each numbered scenario corresponds 1:1 with `../helix-query-rust/EXAMPLES.md` and `../helix-query-json-dynamic/EXAMPLES.md`. When moving between TypeScript, Rust, and inline JSON, open the same scenario in each file.
 
-All snippets assume `import { ... } from "@helix-db/helix-db";`. Query builders are plain functions returning a `ReadBatch`/`WriteBatch`. Produce a dynamic request with `builder().toDynamicJson(params, values)` (or `.toDynamicJson()` when there are no parameters), or register the builder in `defineQueries({...})` for a query bundle. To run a request against a Helix instance, hand `builder().toDynamicRequest(params, values)` to the built-in `Client`: `await new Client(url).withApiKey(key).query<R>().dynamic(req).send()` (see REFERENCE.md → "Client").
+All snippets assume `import { ... } from "@helix-db/helix-db";`. Query builders are plain functions returning a `ReadBatch`/`WriteBatch`. Produce a dynamic request with `builder().toDynamicJson(params, values, { queryName: "route_name" })` (or `.toDynamicJson({ queryName: "route_name" })` when there are no parameters), or register the builder in `defineQueries({...})` for a query bundle. To run a request against a Helix instance, hand `builder().toDynamicRequest(params, values, { queryName: "route_name" })` to the built-in `Client`: `await new Client(url).withApiKey(key).query<R>().dynamic(req).send()` (see REFERENCE.md → "Client"). Unnamed direct requests serialize `query_name: null`; `queries.call.*` sets `query_name` to the registered route key automatically.
 
 ---
 
@@ -481,7 +481,7 @@ export const queries = defineQueries({
   },
 });
 
-queries.call.user_by_id({ userId: "u-42" }); // -> DynamicQueryRequest
+queries.call.user_by_id({ userId: "u-42" }); // -> DynamicQueryRequest with query_name="user_by_id"
 await queries.generate("queries.json");       // bundle, version 4
 ```
 

@@ -2,7 +2,7 @@
 
 Exhaustive variant catalog for the `POST /v1/query` inline AST. Every variant shows its Rust signature, its JSON encoding, and a one-line semantics note. Organized for grep: each category header is a stable anchor.
 
-Rust signatures and line numbers cite the canonical AST source — the `helix-db` crate at `sdks/rust/src/dsl.rs` (re-exported at the crate root via `pub use dsl::*`). The TypeScript DSL (`@helix-db/helix-db`) emits structurally identical JSON. Both DSLs can produce these bodies: Rust `DynamicQueryRequest::{read,write}(batch).to_json_string()` (see `../helix-query-rust/`), TypeScript `batch.toDynamicJson(params, values)` (see `../helix-query-typescript/`).
+Rust signatures and line numbers cite the canonical AST source — the `helix-db` crate at `sdks/rust/src/dsl.rs` (re-exported at the crate root via `pub use dsl::*`). The TypeScript DSL (`@helix-db/helix-db`) emits structurally identical JSON. Both DSLs can produce these bodies: Rust `DynamicQueryRequest::{read,write}(batch).with_query_name("route").to_json_string()` (see `../helix-query-rust/`), TypeScript `batch.toDynamicJson(params, values, { queryName: "route" })` (see `../helix-query-typescript/`).
 
 Conventions used below:
 
@@ -18,11 +18,12 @@ Conventions used below:
 
 ## 1. Envelope
 
-### `DynamicQueryRequest`  (`sdks/rust/src/dsl.rs:4479`)
+### `DynamicQueryRequest`  (`sdks/rust/src/dsl.rs:4480`)
 
 ```json
 {
   "request_type": "read" | "write",
+  "query_name": "<name>" | null,
   "query": <BatchQuery>,
   "parameters": { "<name>": <DynamicQueryValue>, ... } | null,
   "parameter_types": { "<name>": <QueryParamType>, ... } | null
@@ -30,6 +31,7 @@ Conventions used below:
 ```
 
 - `request_type` — `#[serde(rename_all = "lowercase")]`. Only `"read"` / `"write"`.
+- `query_name` — optional top-level operational name used by gateway logs and slow-query diagnostics. Missing or `null` falls back to `__dynamic__`; blank/whitespace-only strings are rejected. Use exactly `query_name`; `name` and `queryName` are rejected aliases. This is distinct from `NamedQuery.name` inside `query.queries[*]`, which names result variables.
 - `parameters` / `parameter_types` — both optional; serialize via `skip_serializing_if = "Option::is_none"`. Server accepts `null` or omission.
 
 ### `BatchQuery`  (`sdks/rust/src/dsl.rs:4365`)  —  `#[serde(untagged)]`

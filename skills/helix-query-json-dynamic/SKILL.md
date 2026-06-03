@@ -1,6 +1,6 @@
 ---
 name: helix-query-json-dynamic
-description: Build and validate HelixDB dynamic inline-query requests for POST /v1/query. Use when the task involves dynamic queries, inline query JSON, the inline AST (steps, predicates, expressions, projections), parameter_types, DateTime coercion, query warming, or debugging a request body sent directly to the Helix gateway. See REFERENCE.md for every AST variant and EXAMPLES.md for copy-pasteable payloads.
+description: Build and validate HelixDB dynamic inline-query requests for POST /v1/query. Use when the task involves dynamic queries, inline query JSON, query_name, the inline AST (steps, predicates, expressions, projections), parameter_types, DateTime coercion, query warming, or debugging a request body sent directly to the Helix gateway. See REFERENCE.md for every AST variant and EXAMPLES.md for copy-pasteable payloads.
 license: MIT
 metadata:
   author: HelixDB
@@ -25,6 +25,7 @@ The inline `query` body is a JSON serialization of the Rust DSL AST. Every varia
 Use this skill when the task is to:
 
 - build a dynamic Helix request body
+- name a dynamic request for gateway logs or query diagnostics with `query_name`
 - debug a failing `POST /v1/query` call
 - add `parameter_types` to a dynamic request
 - send `DateTime` or typed-array parameters correctly
@@ -40,13 +41,16 @@ Do not use this skill as the main guide for writing DSL query functions. Use `he
 Before writing the payload:
 
 1. Confirm whether the request is a read or a write. A query that contains any mutation step (`AddN`, `AddE`, `SetProperty`, `RemoveProperty`, `Drop`, `DropEdge`, `DropEdgeLabeled`, `DropEdgeById`, or any `Create*Index` / `DropIndex`) must use `request_type: "write"`.
-2. Confirm whether the inline `query` object already exists in code, a test, or a serialized payload — prefer copying a known-good shape.
-3. Identify any parameters that need explicit typing, especially `DateTime` and typed arrays.
+2. Choose a `query_name` if logs or diagnostics should identify this inline query; omit it or set it to `null` only for ad-hoc requests that can aggregate under `__dynamic__`.
+3. Confirm whether the inline `query` object already exists in code, a test, or a serialized payload — prefer copying a known-good shape.
+4. Identify any parameters that need explicit typing, especially `DateTime` and typed arrays.
 
 ## Required Envelope Rules
 
 - send requests to `POST /v1/query`
 - `request_type` must be `"read"` or `"write"` (**lowercase** — the enum uses `#[serde(rename_all = "lowercase")]`)
+- `query_name` is optional top-level operational metadata for gateway logs and slow-query diagnostics; use exactly `query_name`, never `name` or `queryName`
+- `query_name: null` or a missing `query_name` falls back to `__dynamic__`; a blank or whitespace-only `query_name` is rejected
 - `query` must be a single inline route object (a `ReadBatch` or `WriteBatch`), **not** the full `queries.json` bundle
 - `parameters` is optional
 - `parameter_types` is optional until you need schema-aware coercion (see Parameter Typing)
@@ -57,6 +61,7 @@ Before writing the payload:
 ```json
 {
   "request_type": "read",
+  "query_name": "node_exists",
   "query": {
     "queries": [
       {
@@ -82,6 +87,7 @@ Before writing the payload:
 
 Notes on the shape:
 
+- `query_name` names the whole dynamic request for observability. It is unrelated to `Query.name` inside `query.queries[*]`, which names result variables.
 - `query` contains a `ReadBatch` (or `WriteBatch`); both have `{ "queries": [...], "returns": [...] }`.
 - Each element of `queries` is a `BatchEntry` — either `{"Query": {...}}` or `{"ForEach": {...}}`.
 - `"steps": ["Count"]` is a valid step list: `Count` is a unit variant so it serializes as a bare string. Data-carrying variants are wrapped: `{"Limit": 10}`, `{"Has": ["name", {"String": "Alice"}]}`, etc.
@@ -103,7 +109,7 @@ Every encoding in `REFERENCE.md` follows these rules. Internalize them or the re
 
 3. **`DynamicQueryRequestType` is `rename_all = "lowercase"`**: use `"read"` / `"write"`, never `"Read"` / `"Write"`.
 
-4. **Optional fields may be omitted or set to `null`.** `tenant_value`, `condition`, `else_traversal`, `emit_predicate`, and similar all serialize via `skip_serializing_if = "Option::is_none"` when unset, but the server accepts explicit `null`.
+4. **Optional fields may be omitted or set to `null`.** Top-level `query_name` may be omitted or set to `null` to use the `__dynamic__` fallback. `tenant_value`, `condition`, `else_traversal`, `emit_predicate`, and similar all serialize via `skip_serializing_if = "Option::is_none"` when unset, but the server accepts explicit `null`.
 
 5. **`PropertyValue` is distinct from `DynamicQueryValue`.** Inside the AST (literals in `Has`, `Eq`, `AddN` properties wrapped in `PropertyInput::Value`, etc.) values are *tagged*: `{"String": "..."}`, `{"I64": 42}`, `{"Bool": true}`, `{"F64": 3.14}`, `{"F64Array": [0.1, 0.2]}`, `{"Array": [{"String": "x"}]}`, `{"Object": {"k": {"I64": 1}}}`, `{"Null": null}` is wrong — use the bare string `"Null"` for the unit variant. At *parameter-value position* (top-level `parameters` map) values are untagged bare JSON.
 
@@ -293,16 +299,19 @@ Setting this header (and `Authorization: Bearer`) by hand is only needed on this
 ## Practical Workflow
 
 1. Locate or generate the exact inline `query` AST first — either serialize from a Rust `DynamicQueryRequest::read(...).to_json_string()` or copy from a test fixture.
-2. Add `parameters` only for the names the AST expects.
-3. Add `parameter_types` for `DateTime`, typed arrays, and any other parameters needing schema-aware coercion.
-4. Validate that the body contains one inline route object, not a full query bundle.
-5. If warming, ensure the request is read-only and add `X-Helix-Warm: true`.
+2. Add `query_name` if the query should appear by name in logs and diagnostics.
+3. Add `parameters` only for the names the AST expects.
+4. Add `parameter_types` for `DateTime`, typed arrays, and any other parameters needing schema-aware coercion.
+5. Validate that the body contains one inline route object, not a full query bundle.
+6. If warming, ensure the request is read-only and add `X-Helix-Warm: true`.
 
 ## Anti-Patterns
 
 Do not:
 
 - send the full `queries.json` file under `query` — send a single route (the `ReadBatch` / `WriteBatch` inline)
+- use `name` or `queryName` for request naming — the gateway only accepts top-level `query_name`
+- send a blank or whitespace-only `query_name`
 - use `"mcp"` as the dynamic request type
 - capitalize `"Read"` / `"Write"` in `request_type` — the enum is lowercase
 - rely on implicit `DateTime` parsing without `parameter_types`
@@ -319,6 +328,7 @@ Before finishing:
 
 - [ ] target endpoint is `POST /v1/query`
 - [ ] `request_type` is `"read"` or `"write"` (lowercase)
+- [ ] `query_name`, if present, is the exact top-level field name, non-blank, and not an alias such as `name` or `queryName`
 - [ ] `query` is a single inline route object (a `ReadBatch` or `WriteBatch`), not a bundle
 - [ ] `queries[*]` entries are `{"Query": {...}}` or `{"ForEach": {...}}`, each `Query` has `name`, `steps`, `condition`
 - [ ] unit-variant steps are encoded as bare strings (`"Count"`, `"Dedup"`, `"Exists"`, `"Id"`, `"Label"`, `"OutN"`, `"InN"`, `"OtherN"`, `"EdgeProperties"`, `"Drop"`)
@@ -346,6 +356,6 @@ Authoritative source files (for when the reference answer is ambiguous). The can
 - `sdks/rust/src/dsl.rs:2427` — `IndexSpec`
 - `sdks/rust/src/dsl.rs:4142` / `:4168` / `:4156` — `BatchCondition`, `BatchEntry`, `NamedQuery`
 - `sdks/rust/src/dsl.rs:4190` / `:4280` / `:4365` — `ReadBatch` / `WriteBatch` / `BatchQuery` (untagged)
-- `sdks/rust/src/dsl.rs:4448` / `:4458` / `:4479` — `DynamicQueryRequestType` (lowercase), `DynamicQueryValue` (untagged), `DynamicQueryRequest`
+- `sdks/rust/src/dsl.rs:4448` / `:4458` / `:4480` — `DynamicQueryRequestType` (lowercase), `DynamicQueryValue` (untagged), `DynamicQueryRequest`
 - `sdks/rust/src/query_generator.rs:10` — `QueryParamType`
 - `sdks/rust/src/dsl.rs:4593` and `sdks/rust/src/lib.rs:200` (`mod tests`), `sdks/typescript/test/basic.test.ts` — ground-truth serialized examples

@@ -65,10 +65,10 @@ writeBatch(): WriteBatch
 .returning(vars: Iterable<string>)                              // restrict response variables
 .toJsonString(): string                                         // raw batch JSON (inline query body)
 .toJsonBytes(): Uint8Array
-.toDynamicJson(): string                                        // no-param dynamic request JSON
-.toDynamicJson(params: DefinedParams<T>, values: ParamInputs<T>): string
-.toDynamicRequest(...): DynamicQueryRequest
-.toDynamicBytes(...): Uint8Array
+.toDynamicJson(options?: DynamicQueryOptions): string           // no-param dynamic request JSON
+.toDynamicJson(params: DefinedParams<T>, values: ParamInputs<T>, options?: DynamicQueryOptions): string
+.toDynamicRequest(..., options?: DynamicQueryOptions): DynamicQueryRequest
+.toDynamicBytes(..., options?: DynamicQueryOptions): Uint8Array
 ```
 
 ### `BatchCondition`  (`src/index.ts:1779`)
@@ -507,7 +507,7 @@ const queries = defineQueries({                       // src/index.ts:2416
   write: { route_b: registerWrite(builderB, paramsB) },
 });
 
-queries.call.route_a({ ... })       // -> DynamicQueryRequest (typed input; unknown keys throw TypeError)
+queries.call.route_a({ ... })       // -> DynamicQueryRequest with query_name="route_a" (typed input; unknown keys throw TypeError)
 queries.buildQueryBundle()          // -> QueryBundle (version 4)
 await queries.generate("queries.json")  // write bundle to path
 
@@ -522,15 +522,20 @@ deserializeQueryBundle(json)        // src/index.ts:2443  (validates version)
 ## Dynamic Requests
 
 ```ts
-DynamicQueryRequest.read(batch: ReadBatch)     // src/index.ts:2191
-DynamicQueryRequest.write(batch: WriteBatch)
+type DynamicQueryOptions = { queryName?: string | null }
+
+DynamicQueryRequest.read(batch: ReadBatch, queryName?: string | null)     // src/index.ts:2191
+DynamicQueryRequest.write(batch: WriteBatch, queryName?: string | null)
 req.insertParameterValue(name, value)   req.insertParameterType(name, ty)
 req.withParameterValue(name, value)      req.withParameterType(name, ty)
+req.setQueryName(name)                   req.clearQueryName()
+req.withQueryName(name)
 req.toJsonString()   req.toJsonBytes()
 // req.requestType -> "read" | "write"   (DynamicQueryRequestType, src/index.ts:2174, lowercase on the wire)
+// req.queryName -> string | null         (serialized as top-level query_name)
 ```
 
-Most code reaches dynamic requests through `batch.toDynamicJson(params, values)` / `.toDynamicRequest(...)` or `queries.call.route(...)`, which fill `parameters` and `parameter_types` automatically.
+Most code reaches dynamic requests through `batch.toDynamicJson(params, values, { queryName })` / `.toDynamicRequest(...)` or `queries.call.route(...)`, which fill `parameters` and `parameter_types` automatically. Direct unnamed requests serialize `query_name: null`; `queries.call.route(...)` sets `query_name` to the registered route key automatically.
 
 `DynamicQueryValue` (`src/index.ts:2179`) provides bare-JSON value helpers (`.null/.bool/.i64/.f64/.f32/.string/.array/.object`) for the top-level `parameters` map — these are untagged, distinct from the tagged `PropertyValue` used inside the AST.
 
@@ -616,7 +621,7 @@ DynamicQueryRequestType.{Read, Write}                // src/index.ts:2174 (lower
 | `Predicate::eq_param(...)` | `Predicate.eqParam(...)` |
 | `vector_search_nodes_with(...)` | `vectorSearchNodesWith(...)` |
 | `#[register] fn` + fn params | `defineParams(...)` + `registerRead/registerWrite` |
-| `DynamicQueryRequest::read(b).to_json_string()` | `batch.toDynamicJson(params, values)` |
+| `DynamicQueryRequest::read(b).with_query_name("route").to_json_string()` | `batch.toDynamicJson(params, values, { queryName: "route" })` |
 | `Client::new(Some(url))?` / `.with_api_key(...)` | `new Client(url)` / `.withApiKey(...)` |
 | `client.query().warm_only().dynamic(r).send()` | `client.query().warmOnly().dynamic(r).send()` |
 

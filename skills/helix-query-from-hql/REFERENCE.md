@@ -228,9 +228,10 @@ clearly during migration and **move the logic into application code** — do not
 
 1. **Compile.** Rust: `cargo build` / `cargo test` — the typestate checker rejects write ops in a `ReadBatch`
    and non-`SourcePredicate` at a source. TS: `tsc` — the type system rejects a write traversal in `readBatch`.
-2. **AST parity.** Generate the JSON for both languages (`req.to_json_string()` `dsl.rs:4549` /
-   `batch.toDynamicJson(params, values)` `index.ts:1870`, or full bundles via `generate()` →
-   `queries.json`). Diff the JSON. **Identical AST = the Rust and TS migrations agree** and match the wire format.
+2. **AST parity.** Generate raw batch JSON for both languages, or generate full dynamic envelopes only after setting
+   the same Rust `query_name` / TS `{ queryName }` (`req.to_json_string()` /
+   `batch.toDynamicJson(params, values, { queryName })`, or full bundles via `generate()` → `queries.json`). Diff the
+   JSON. **Identical AST = the Rust and TS migrations agree** and match the wire format.
 3. **Run.** Deploy both bundles (or POST the dynamic JSON to a test Helix instance at `POST /v1/query`) on the
    same dataset the HQL query ran on. Compare row counts, ordering, and projected fields against the HQL output.
 

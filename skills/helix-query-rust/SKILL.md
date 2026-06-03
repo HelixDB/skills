@@ -132,7 +132,7 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 | Expressions | `Expr::prop`, `Expr::val`, `Expr::id`, `Expr::timestamp`, `Expr::datetime`, `Expr::param`, `.add/.sub/.mul/.div/.modulo/.neg`, `Expr::case` | `Expr::Timestamp` writes server UTC millis; `Expr::DateTimeNow` writes typed datetime. |
 | Mutations | `add_n`, `add_e`, `set_property`, `remove_property`, `drop`, `drop_edge`, `drop_edge_labeled`, `drop_edge_by_id` | `drop_edge_by_id` is multigraph-safe. |
 | Indexes | `IndexSpec::node_equality / node_range / edge_equality / edge_range / node_vector / node_text / edge_vector / edge_text` plus `create_index` / `drop_index`; convenience: `create_vector_index_nodes`, `create_text_index_nodes`, edge variants | Use `.create_index(spec)` from a write batch. |
-| Transport | `DynamicQueryRequest::{read,write}(batch).with_parameter_value(...).with_parameter_type(...).to_json_string()` | Bridge from Rust DSL to the JSON payload (`helix-query-json-dynamic`). |
+| Transport | `DynamicQueryRequest::{read,write}(batch).with_query_name("name").with_parameter_value(...).with_parameter_type(...).to_json_string()` | Bridge from Rust DSL to the JSON payload (`helix-query-json-dynamic`). Direct unnamed requests serialize `query_name: null`; `#[register]` callable helpers set `query_name` to the Rust function name. |
 | Client | `Client::new(Some(url))?.with_api_key(...).query().writer_only()/.warm_only()/.should_await_durability(b).dynamic(req)/.stored(name).send().await` | Sends to `POST /v1/query`; `send()` yields `R` on 200, else `HelixError`. See REFERENCE.md → "Client". |
 
 See `REFERENCE.md` for signatures and typestate constraints.

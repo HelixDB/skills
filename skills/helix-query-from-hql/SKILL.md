@@ -246,9 +246,10 @@ The fidelity check is **compile → AST parity → run**:
 
 1. **Compile.** Rust: `cargo build` / `cargo test` — the typestate checker rejects write ops in a `ReadBatch` and
    non-`SourcePredicate` at a source. TS: `tsc` — the type system rejects a write traversal inside `readBatch`.
-2. **AST parity.** Emit the JSON for both languages (`req.to_json_string()` /
-   `batch.toDynamicJson(params, values)`, or full bundles via `generate()` → `queries.json`) and diff them.
-   Identical JSON means the Rust and TS migrations agree and match the wire format.
+2. **AST parity.** Emit raw batch JSON for both languages, or emit full dynamic envelopes only after setting the same
+   Rust `query_name` / TS `{ queryName }` (`req.to_json_string()` / `batch.toDynamicJson(params, values, { queryName })`,
+   or full bundles via `generate()` → `queries.json`) and diff them. Identical JSON means the Rust and TS migrations
+   agree and match the wire format.
 3. **Run.** Deploy both bundles (or POST the dynamic JSON to a test Helix instance at `POST /v1/query`) on the
    **same dataset** the original HQL ran on, and compare row counts, ordering, and projected fields against the
    HQL output. If the `helixdb-docs` MCP tools or a `helix` CLI are available, use them to sanity-check builder

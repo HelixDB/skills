@@ -1,6 +1,6 @@
 # Helix Dynamic Query — JSON Examples
 
-Copy the closest scenario and adapt labels, properties, and parameters. Every example is a complete body for `POST /v1/query`. Encoding rules are in `REFERENCE.md`; authoring style rules are in `SKILL.md`.
+Copy the closest scenario and adapt labels, properties, and parameters. Every example is a complete body for `POST /v1/query`. Add a top-level `query_name` string when logs or diagnostics should identify the inline query; omit it or set it to `null` only for ad-hoc requests that can aggregate under `__dynamic__`. Encoding rules are in `REFERENCE.md`; authoring style rules are in `SKILL.md`.
 
 ---
 
@@ -11,6 +11,7 @@ Copy the closest scenario and adapt labels, properties, and parameters. Every ex
 ```json
 {
   "request_type": "read",
+  "query_name": "active_user_count",
   "query": {
     "queries": [
       {"Query": {

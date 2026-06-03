@@ -429,7 +429,7 @@ Emit the corresponding steps but have no effect in the current interpreter. Safe
 
 ## `#[register]` Macro & Dynamic Transport
 
-`sdks/rust/helix-dsl-macros/src/lib.rs`. Apply to a top-level function returning `ReadBatch` or `WriteBatch`; the macro generates a wrapper that constructs a `DynamicQueryRequest` with the function's arguments as typed parameters.
+`sdks/rust/helix-dsl-macros/src/lib.rs`. Apply to a top-level function returning `ReadBatch` or `WriteBatch`; the macro generates a wrapper that constructs a `DynamicQueryRequest` with the function's arguments as typed parameters and sets top-level `query_name` to the Rust function name.
 
 ```rust
 #[register]
@@ -449,6 +449,8 @@ pub fn find_user(tenant_id: String, limit: i64) -> ReadBatch {
 let req = find_user("acme".to_string(), 25)?;  // Result<DynamicQueryRequest, DynamicQueryError>
 let json = req.to_json_string()?;
 ```
+
+The serialized request from the registered helper includes `"query_name":"find_user"`, so gateway logs and slow-query diagnostics can group this inline request by name.
 
 Supported param types: primitives (`bool`, `i64`, `f64`, `f32`, `String`, `DateTime`), `PropertyValue`, `ParamValue`, `ParamObject`, `Vec<T>` (any supported `T`), `BTreeMap<String, T>`, `HashMap<String, T>`, `Vec<u8>` (bytes — **not supported** over the dynamic JSON route, raises `DynamicQueryError::UnsupportedBytesParameter`).
 
@@ -473,11 +475,16 @@ Wire format version: `QUERY_BUNDLE_VERSION = 4`. `deserialize_query_bundle` reje
 ```rust
 DynamicQueryRequest::read(batch: ReadBatch)
 DynamicQueryRequest::write(batch: WriteBatch)
+req.set_query_name("find_users")
+req.clear_query_name()
+req.with_query_name("find_users")
 req.with_parameter_value(name, DynamicQueryValue::String("x".into()))
 req.with_parameter_type(name, QueryParamType::DateTime)
 req.to_json_string()   // Result<String, DynamicQueryError>
 req.to_json_bytes()
 ```
+
+Direct requests built with `DynamicQueryRequest::read/write` serialize `query_name: null` until a name is set. Missing or `null` falls back to `__dynamic__` at the gateway; blank names are rejected.
 
 For the JSON wire encoding this produces, see `../helix-query-json-dynamic/REFERENCE.md`.
 

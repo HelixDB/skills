@@ -4,6 +4,8 @@ Each numbered scenario corresponds 1:1 with `../helix-query-typescript/EXAMPLES.
 
 All snippets assume `use helix_db::dsl::prelude::*;`.
 
+Calling a public `#[register]` function returns a `DynamicQueryRequest` whose top-level `query_name` is the Rust function name. Direct `DynamicQueryRequest::read/write` builders serialize `query_name: null` until `.with_query_name(...)` or `.set_query_name(...)` is used.
+
 ---
 
 ## 1. Count nodes matching label + predicate

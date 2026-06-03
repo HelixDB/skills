@@ -2,7 +2,7 @@
 
 Complete `@helix-db/helix-db` snippets for a tenant-safe memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`. The model and indexes are in `REFERENCE.md`.
 
-Each query function is plain; call it and `.toDynamicRequest(params, values)` for a request, then run it with the built-in client — `await new Client(url).withApiKey(key).query<R>().dynamic(req).send()` — or `.toDynamicJson(params, values)` for the raw `POST /v1/query` body. Embeddings are produced by the application and passed as numeric arrays. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model. Every tenant-owned node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant value. The default examples also filter user-private memories and chunks by `userId`; replace that with `containerId`, `scopeId`, or app ACL filtering for project/team/workspace memory.
+Each query function is plain; call it and `.toDynamicRequest(params, values, { queryName: "route_name" })` for a request, then run it with the built-in client — `await new Client(url).withApiKey(key).query<R>().dynamic(req).send()` — or `.toDynamicJson(params, values, { queryName: "route_name" })` for the raw `POST /v1/query` body. Embeddings are produced by the application and passed as numeric arrays. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model. Every tenant-owned node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant value. The default examples also filter user-private memories and chunks by `userId`; replace that with `containerId`, `scopeId`, or app ACL filtering for project/team/workspace memory.
 
 ```ts
 import {

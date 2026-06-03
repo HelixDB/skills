@@ -114,10 +114,10 @@ function findUsers(p = params) {
 
 ### 9. Choose The Output Path
 
-- **Dynamic request:** `findUsers().toDynamicJson(params, { tenantId: "acme", limit: 25n })` → request JSON string for `POST /v1/query`. Use `toDynamicRequest(...)` for the object, `toDynamicBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toDynamicJson()`.
+- **Dynamic request:** `findUsers().toDynamicJson(params, { tenantId: "acme", limit: 25n }, { queryName: "find_users" })` → request JSON string for `POST /v1/query`. Use `toDynamicRequest(...)` for the object, `toDynamicBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toDynamicJson({ queryName: "count_users" })`. Unnamed requests serialize `query_name: null`, which the gateway records as `__dynamic__`.
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
 - **Bundle:** register queries and generate a `queries.json` (see Rule 10).
-- **Send it with the client:** `new Client(url).withApiKey(key).query<R>().dynamic(findUsers().toDynamicRequest(params, values)).send()` POSTs to `/v1/query` and returns the parsed JSON on HTTP 200, else throws `HelixError`. Add `.warmOnly()` / `.writerOnly()` / `.shouldAwaitDurability(b)` for the matching request headers; use `.stored(name).body(x)` for a deployed named route. See REFERENCE.md → "Client".
+- **Send it with the client:** `new Client(url).withApiKey(key).query<R>().dynamic(findUsers().toDynamicRequest(params, values, { queryName: "find_users" })).send()` POSTs to `/v1/query` and returns the parsed JSON on HTTP 200, else throws `HelixError`. Add `.warmOnly()` / `.writerOnly()` / `.shouldAwaitDurability(b)` for the matching request headers; use `.stored(name).body(x)` for a deployed named route. See REFERENCE.md → "Client".
 
 ### 10. Bundles: `registerRead` / `registerWrite` / `defineQueries`
 
@@ -129,7 +129,7 @@ export const queries = defineQueries({
   write: { add_user: registerWrite(addUser, addUserParams) },
 });
 
-queries.call.find_users({ tenantId: "acme", limit: 25n }); // -> DynamicQueryRequest
+queries.call.find_users({ tenantId: "acme", limit: 25n }); // -> DynamicQueryRequest with query_name="find_users"
 await queries.generate("queries.json");                    // bundle, version 4
 ```
 
@@ -160,7 +160,7 @@ Route names must be unique across read and write routes — duplicates throw `Ge
 | Expressions | `Expr.prop/val/id/timestamp/datetime/param`, `.add/.sub/.mul/.div/.modulo/.neg`, `Expr.case` | `Expr.timestamp()` writes server UTC millis; `Expr.datetime()` writes typed datetime. |
 | Mutations | `addN`, `addE`, `setProperty`, `removeProperty`, `drop`, `dropEdge`, `dropEdgeLabeled`, `dropEdgeById` | `dropEdgeById` is multigraph-safe. |
 | Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/edgeEquality/edgeRange/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. |
-| Output | `toJsonString`, `toDynamicJson`, `toDynamicRequest`, `toDynamicBytes` | Dynamic forms take `(params, values)` unless the query has no parameters. |
+| Output | `toJsonString`, `toDynamicJson`, `toDynamicRequest`, `toDynamicBytes` | Dynamic forms take `(params, values, options)` unless the query has no parameters; pass `{ queryName }` to set top-level `query_name`. |
 | Client / transport | `new Client(url)`, `.withApiKey`, `.query<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.body`, `.dynamic`/`.stored`, `.send()` | Sends to `POST /v1/query`; `send()` resolves parsed JSON on 200, else throws `HelixError`. |
 | Bundles | `defineParams`, `param.*`, `registerRead`, `registerWrite`, `defineQueries`, `serializeQueryBundle`, `.buildQueryBundle()`, `.generate()` | `QUERY_BUNDLE_VERSION = 4`. |
 
