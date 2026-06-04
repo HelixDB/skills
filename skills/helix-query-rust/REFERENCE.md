@@ -138,6 +138,11 @@ Pass `None::<&str>` to skip label filtering: `.out(None::<&str>)`.
 .edge_has_label(label)                             // Edges only
 ```
 
+On edge streams, generic `.has`, `.has_label`, `.has_key`, and `.where_` filter
+stored edge properties plus virtual fields `$id`, `$label`, `$from`, `$to`,
+`$distance`, and `$score`. Keep `.edge_has` for edge filters whose right-hand
+side must be a `PropertyInput` expression or runtime parameter.
+
 ### `Predicate`  (enum `sdks/rust/src/dsl.rs:1564`, impl `:1811`)
 
 Literal constructors:

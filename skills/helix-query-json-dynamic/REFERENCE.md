@@ -438,6 +438,11 @@ All Step variants (`sdks/rust/src/dsl.rs:2606-3062`) grouped by category. **TS**
 | `EdgeHas(String, PropertyInput)` | `{"EdgeHas": ["<prop>", <PropertyInput>]}` (TS: `X`) |
 | `EdgeHasLabel(String)` | `{"EdgeHasLabel": "<L>"}` (TS: `X`) |
 
+`Has`, `HasLabel`, `HasKey`, and `Where` are valid on node and edge streams. On
+edge streams they evaluate stored edge properties plus virtual fields `$id`,
+`$label`, `$from`, `$to`, `$distance`, and `$score`. Use `EdgeHas` when the
+right-hand side must be a `PropertyInput` expression or runtime parameter.
+
 ### Limits (TS: `N` or `X`)
 
 | Step | JSON |
@@ -563,6 +568,7 @@ Available in `Values`, `ValueMap`, `Project` (as a `PropertyProjection.source`),
 | `$id` | any node or edge stream | the element's id |
 | `$label` | any node or edge stream | the element's label |
 | `$distance` | direct hits from `VectorSearchNodes`/`VectorSearchEdges`/`TextSearchNodes`/`TextSearchEdges` | ascending = closer; lost after `Out`/`In`/`Both`/`OutN`/`InN`/`OtherN` |
+| `$score` | direct ranked text/vector hits when populated by the engine | ranking score metadata; lost after traversal steps that change stream |
 | `$from`, `$to` | edge streams, including `EdgeProperties` and edge vector/text hits | source and target node ids |
 
 **Rule:** if you need `$distance` in the result, include it in the first terminal projection *before* any traversal step that changes the stream.

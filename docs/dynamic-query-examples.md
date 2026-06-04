@@ -109,4 +109,4 @@ If the exact encoded nested type shape is unclear in your environment, verify it
 
 - `docs/source-canon.md`
 - `docs/dsl-cheatsheet.md`
-- `https://docs.helix-db.com/enterprise/introduction`
+- `https://docs.helix-db.com/database/working-with-enterprise`

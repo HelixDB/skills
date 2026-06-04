@@ -18,7 +18,19 @@ This ordering is intentional. The skills in this repo may document supported Hel
 
 Use these for product semantics and supported behavior:
 
-- `https://docs.helix-db.com/enterprise/introduction`
+- `https://docs.helix-db.com/database/working-with-enterprise`
+- `https://docs.helix-db.com/database/local-development`
+- `https://docs.helix-db.com/database/go-project-setup`
+- `https://docs.helix-db.com/database/querying`
+- `https://docs.helix-db.com/database/querying-guide/overview`
+- `https://docs.helix-db.com/database/querying-guide/reading-nodes`
+- `https://docs.helix-db.com/database/querying-guide/traversals`
+- `https://docs.helix-db.com/database/querying-guide/filtering`
+- `https://docs.helix-db.com/database/querying-guide/projections`
+- `https://docs.helix-db.com/database/querying-guide/mutations`
+- `https://docs.helix-db.com/database/querying-guide/search`
+- `https://docs.helix-db.com/database/querying-guide/advanced`
+- `https://docs.helix-db.com/database/querying-guide/parameters-bundles`
 - `https://docs.helix-db.com/documentation/hql/traversals`
 - `https://docs.helix-db.com/documentation/hql/conditionals`
 - `https://docs.helix-db.com/documentation/hql/result_ops`
@@ -36,6 +48,7 @@ Use these for skill packaging and discovery behavior:
 Use these as the main references inside this published skills repo:
 
 - `docs/dsl-cheatsheet.md`
+- `docs/go-dsl-cheatsheet.md`
 - `docs/cypher-rosetta.md`
 - `docs/gremlin-rosetta.md`
 - `docs/dynamic-query-examples.md`

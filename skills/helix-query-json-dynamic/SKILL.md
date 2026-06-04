@@ -154,6 +154,7 @@ Step categories and their JSON form (one-liners). Full signatures in `REFERENCE.
 - `"Dedup"` — unit variant
 - `{"Within": "var"}`, `{"Without": "var"}` — set ops against a stored variable
 - `{"EdgeHas": ["weight", {"Value": {"I64": 1}}]}`, `{"EdgeHasLabel": "KNOWS"}`
+- Generic `Has` / `HasLabel` / `HasKey` / `Where` work on edge streams too; use `EdgeHas` when the RHS must be a `PropertyInput` expression or parameter.
 
 **Limits:**
 - `{"Limit": 10}`, `{"Skip": 5}`, `{"Range": [0, 25]}` — literal
@@ -212,6 +213,7 @@ Available in projections, `value_map`, and `Has` predicates without being declar
 - `$id` — node or edge id
 - `$label` — node or edge label
 - `$distance` — on vector / text search hits; order is ascending (smaller = closer)
+- `$score` — on ranked text/vector hits when the engine provides a score
 - `$from`, `$to` — on edge streams (including `edge_properties`) and edge vector/text hits
 
 **Distance lifecycle:** `$distance` is present on the direct hit stream produced by `VectorSearchNodes` / `VectorSearchEdges` / `TextSearchNodes` / `TextSearchEdges`. It is *lost* once traversal steps off the hit stream (`Out`, `In`, `Both`, `OutN`, `InN`, `OtherN`). Project the distance before navigating if you need to keep it.

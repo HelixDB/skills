@@ -89,7 +89,7 @@ These are the primary references the skills should cite and draw examples from.
 
 - `https://skills.sh/docs`
 - `https://opencode.ai/docs/skills`
-- `https://docs.helix-db.com/enterprise/introduction`
+- `https://docs.helix-db.com/database/working-with-enterprise`
 - `https://docs.helix-db.com/documentation/hql/traversals`
 - `https://docs.helix-db.com/documentation/hql/conditionals`
 - `https://docs.helix-db.com/documentation/hql/result_ops`
@@ -280,7 +280,7 @@ Primary sources:
 - `docs/optimization-checklist.md`
 - `examples/optimization-patterns.md`
 - `examples/search-patterns.md`
-- `https://docs.helix-db.com/enterprise/introduction`
+- `https://docs.helix-db.com/database/working-with-enterprise`
 
 ### `helix-query-json-dynamic`
 
@@ -303,7 +303,7 @@ Primary sources:
 
 - `docs/dynamic-query-examples.md`
 - `docs/source-canon.md`
-- `https://docs.helix-db.com/enterprise/introduction`
+- `https://docs.helix-db.com/database/working-with-enterprise`
 
 ## Shared Supporting Docs
 

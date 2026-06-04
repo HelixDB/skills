@@ -5,6 +5,7 @@ Hosted `skills.sh` repository for HelixDB agent skills.
 These skills are for agents that need to:
 
 - write Helix queries in the Rust DSL
+- write dynamic-first Helix queries in Go
 - translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
 - build correct dynamic `POST /v1/query` payloads
@@ -20,6 +21,9 @@ Available now:
 - `helix-query-from-hql`
 - `helix-query-json-dynamic`
 - `helix-query-optimize`
+- `helix-query-rust`
+- `helix-query-typescript`
+- `helix-query-go`
 - `helix-memory-system`
 
 Planned next:
@@ -65,6 +69,18 @@ It teaches agents to:
 - add `parameter_types` when typed coercion matters
 - send `DateTime` values correctly
 - avoid malformed bundle-shaped payloads
+
+### `helix-query-go`
+
+Use this skill when an agent needs to write or revise HelixDB queries with the Go SDK.
+
+It teaches agents to:
+
+- write normal Go functions returning `helix.Request`
+- set query names with `helix.ReadQuery` and `helix.WriteQuery`
+- declare runtime params inline with `q.ParamString`, `q.ParamI64`, `q.ParamDateTime`, and related helpers
+- execute dynamic requests with `client.Exec(ctx, request, &out)`
+- avoid `.With(...)`, `WithQueryName(...)`, and stored-query bundle workflows for Go v1
 
 ### `helix-query-from-cypher`
 
@@ -130,6 +146,7 @@ Start here when working on the next skills:
 
 - `docs/source-canon.md`
 - `docs/dsl-cheatsheet.md`
+- `docs/go-dsl-cheatsheet.md`
 - `docs/cypher-rosetta.md`
 - `docs/gremlin-rosetta.md`
 - `docs/dynamic-query-examples.md`

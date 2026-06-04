@@ -212,6 +212,11 @@ The label argument is optional; omit it (`out()`) or pass a string (`out("FOLLOW
 .edgeHasLabel(label)                                        // edge streams
 ```
 
+On edge streams, generic `.has`, `.hasLabel`, `.hasKey`, and `.where` filter
+stored edge properties plus virtual fields `$id`, `$label`, `$from`, `$to`,
+`$distance`, and `$score`. Keep `.edgeHas` for edge filters whose right-hand
+side must be a `PropertyInput` expression or runtime parameter.
+
 ### `Predicate`  (`src/index.ts:624`)
 
 Literal constructors:

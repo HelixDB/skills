@@ -1,0 +1,215 @@
+# Helix Query Authoring - Go Examples
+
+All snippets assume:
+
+```go
+import helix "github.com/helixdb/helix-db/sdks/go"
+```
+
+## 1. Count Nodes Matching A Label And Predicate
+
+```go
+func ActiveUserCount() helix.Request {
+	return helix.ReadQuery("active_user_count").
+		VarAs("active_count", helix.G().NWithLabel("User").Where(helix.PredEq("status", "active")).Count()).
+		Returning("active_count")
+}
+```
+
+## 2. Read Users With Inline Params
+
+```go
+type UserRow struct {
+	ID       int64  `json:"$id"`
+	Name     string `json:"name"`
+	TenantID string `json:"tenantId"`
+}
+
+type FindUsersResponse struct {
+	Users []UserRow `json:"users"`
+}
+
+func FindUsers(tenantID string, limit int64) helix.Request {
+	q := helix.ReadQuery("find_users")
+
+	tenant := q.ParamString("tenant_id", tenantID)
+	maxRows := q.ParamI64("limit", limit)
+
+	return q.
+		VarAs("users",
+			helix.G().
+				NWithLabel("User").
+				Where(helix.PredEq("tenantId", tenant)).
+				Limit(maxRows).
+				Project(
+					helix.ProjectPropAs("$id", "id"),
+					helix.ProjectPropAs("name", "name"),
+					helix.ProjectPropAs("tenantId", "tenantId"),
+				),
+		).
+		Returning("users")
+}
+```
+
+## 3. Execute A Query
+
+```go
+func ListUsers(ctx context.Context, client *helix.Client, tenantID string, limit int64) (FindUsersResponse, error) {
+	var out FindUsersResponse
+	err := client.Exec(ctx, FindUsers(tenantID, limit), &out)
+	return out, err
+}
+```
+
+## 4. Create A Node
+
+```go
+type CreateUserResponse struct {
+	User []UserRow `json:"user"`
+}
+
+func CreateUser(name string, tenantID string) helix.Request {
+	q := helix.WriteQuery("create_user")
+
+	nameParam := q.ParamString("name", name)
+	tenant := q.ParamString("tenant_id", tenantID)
+
+	return q.
+		VarAs("user",
+			helix.G().AddN("User", helix.Props{
+				helix.Prop("name", nameParam),
+				helix.Prop("tenantId", tenant),
+			}),
+		).
+		Returning("user")
+}
+
+var created CreateUserResponse
+err := client.Exec(ctx, CreateUser("Alice", "acme"), &created, helix.WriterOnly(), helix.AwaitDurability(true))
+```
+
+## 5. Explicit Create Or Update
+
+```go
+func UpsertUser(userID string, name string) helix.Request {
+	q := helix.WriteQuery("upsert_user")
+
+	id := q.ParamString("user_id", userID)
+	nameParam := q.ParamString("name", name)
+
+	return q.
+		VarAs("existing", helix.G().NWithLabel("User").Where(helix.PredEq("userId", id))).
+		VarAsIf("updated", helix.VarNotEmpty("existing"), helix.G().N(helix.NodeVar("existing")).SetProperty("name", nameParam)).
+		VarAsIf("created", helix.VarEmpty("existing"), helix.G().AddN("User", helix.Props{
+			helix.Prop("userId", id),
+			helix.Prop("name", nameParam),
+		})).
+		Returning("updated", "created")
+}
+```
+
+## 6. Vector Search With Tenant Scope
+
+```go
+func NearestDocuments(tenantID string, queryVector []float32, limit int64) helix.Request {
+	q := helix.ReadQuery("nearest_documents")
+
+	tenant := q.ParamString("tenant_id", tenantID)
+	vector := q.ParamArray("query_vector", queryVector, helix.ParamTypeF32())
+	k := q.ParamI64("limit", limit)
+	tenantInput := tenant.Input()
+
+	return q.
+		VarAs("hits",
+			helix.G().
+				VectorSearchNodesWith("Document", "embedding", vector.Input(), k.Bound(), &tenantInput).
+				Project(
+					helix.ProjectPropAs("$id", "id"),
+					helix.ProjectPropAs("title", "title"),
+					helix.ProjectPropAs("$distance", "distance"),
+				),
+		).
+		Returning("hits")
+}
+```
+
+Project `$distance` before navigating off the search hit stream.
+
+## 7. Text Search
+
+```go
+func SearchDocuments(tenantID string, query string) helix.Request {
+	q := helix.ReadQuery("search_documents")
+
+	tenant := q.ParamString("tenant_id", tenantID)
+	text := q.ParamString("query", query)
+	tenantInput := tenant.Input()
+
+	return q.
+		VarAs("results",
+			helix.G().
+				TextSearchNodesWith("Document", "body", text.Input(), helix.BoundLiteral(50), &tenantInput).
+				Where(helix.PredEq("published", true)).
+				Limit(10).
+				Project(
+					helix.ProjectPropAs("$id", "id"),
+					helix.ProjectPropAs("title", "title"),
+					helix.ProjectPropAs("$distance", "score"),
+				),
+		).
+		Returning("results")
+}
+```
+
+## 8. Repeat And Branching
+
+```go
+func FriendsAndFollowers(userID int64) helix.Request {
+	q := helix.ReadQuery("friends_and_followers")
+
+	start := q.ParamArray("user_ids", []int64{userID}, helix.ParamTypeI64())
+
+	return q.
+		VarAs("network",
+			helix.G().
+				N(helix.NodeParam(start.Name)).
+				Repeat(helix.Repeat(helix.Sub().Out("FOLLOWS")).WithTimes(2).EmitAll().WithMaxDepth(4)).
+				Union(helix.Sub().Out("FOLLOWS"), helix.Sub().In("FOLLOWS")).
+				Dedup().
+				ValueMap("$id", "name"),
+		).
+		Returning("network")
+}
+```
+
+## 9. For Each Param Writes
+
+```go
+func CreateEvents(rows []map[string]any) helix.Request {
+	q := helix.WriteQuery("create_events")
+
+	q.ParamArray("rows", rows, helix.ParamTypeObject())
+
+	body := helix.Write().VarAs("created", helix.G().AddN("Event", helix.Props{
+		helix.Prop("eventId", helix.ParamInput("eventId")),
+		helix.Prop("kind", helix.ParamInput("kind")),
+		helix.Prop("score", helix.ParamInput("score")),
+	}))
+
+	return q.ForEachParam("rows", body).Returning("created")
+}
+```
+
+## 10. Inspect Request JSON In A Test
+
+```go
+func TestFindUsersRequest(t *testing.T) {
+	body, err := helix.MarshalRequest(FindUsers("acme", 25))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte(`"query_name":"find_users"`)) {
+		t.Fatalf("missing query name: %s", body)
+	}
+}
+```
