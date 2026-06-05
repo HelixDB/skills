@@ -32,6 +32,8 @@ func Query(args ...) helix.Request {
 }
 ```
 
+Pass explicit names to `.Returning(...)` for every response variable that should be decoded. Zero-arg `.Returning()` is valid only for intentional empty responses and serializes as `"returns":[]`.
+
 ## Query Builders
 
 Both read and write builders support:
@@ -72,6 +74,14 @@ Each returns `helix.ParamRef`:
 ref.Expr()  // helix.Expr
 ref.Input() // helix.PropertyInput
 ref.Bound() // helix.StreamBound
+```
+
+Direct Go values are literals in the inline AST. `helix.SourceEq("id", "foo")` and `helix.PredEq("id", "foo")` embed `"foo"` directly and do not create parameters. For request-specific values, declare a `q.Param*` value and pass the returned ref so the request body has a stable query shape and runtime value metadata:
+
+```go
+id := q.ParamString("id", userID)
+helix.G().NWhere(helix.SourceEq("id", id))
+helix.G().NWithLabel("User").Where(helix.PredEq("id", id))
 ```
 
 Parameter type constructors:
@@ -294,6 +304,8 @@ Source predicates use `SourceEq`, `SourceNeq`, `SourceGt`, `SourceGte`, `SourceL
 `SourceLte`, `SourceHasKey`, `SourceStartsWith`, `SourceBetween`, `SourceAnd`, and
 `SourceOr` with the same expression promotion rules.
 
+Passing a direct string, number, bool, or `helix.PropertyValue` to a predicate inlines it. Passing a `helix.ParamRef` parameterizes it.
+
 Expressions:
 
 ```go
@@ -336,3 +348,18 @@ helix.AwaitDurability(true)
 ```
 
 `Exec` posts to `/v1/query`, serializes the request internally, and decodes responses with `json.Decoder.UseNumber()`.
+
+Remote errors are returned as `*helix.HelixError` with `Kind: helix.ErrorRemote`, `Details`, and `StatusCode` set. `helix.IsConflict(err)` and `errors.Is(err, helix.ErrConflict)` detect HTTP 409 conflicts. The SDK does not retry conflicts automatically; callers should retry only when the operation is safe to replay.
+
+```go
+func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func() helix.Request, out any) error {
+	for attempt := 0; attempt < 3; attempt++ {
+		err := client.Exec(ctx, build(), out)
+		if err == nil || !helix.IsConflict(err) || attempt == 2 {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+	}
+	return nil
+}
+```

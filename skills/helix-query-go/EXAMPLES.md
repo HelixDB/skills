@@ -18,6 +18,8 @@ func ActiveUserCount() helix.Request {
 
 ## 2. Read Users With Inline Params
 
+Declare request-specific values with `q.Param*`. Passing a direct value such as `helix.SourceEq("tenantId", "acme")` or `helix.PredEq("tenantId", "acme")` inlines the literal into the AST instead of parameterizing it.
+
 ```go
 type UserRow struct {
 	ID       int64  `json:"$id"`
@@ -50,6 +52,8 @@ func FindUsers(tenantID string, limit int64) helix.Request {
 		Returning("users")
 }
 ```
+
+Use explicit names in `.Returning(...)` for values that should appear in the response. Zero-arg `.Returning()` is only for intentional empty responses.
 
 ## 3. Execute A Query
 
@@ -211,5 +215,22 @@ func TestFindUsersRequest(t *testing.T) {
 	if !bytes.Contains(body, []byte(`"query_name":"find_users"`)) {
 		t.Fatalf("missing query name: %s", body)
 	}
+}
+```
+
+## 11. Caller-Owned Conflict Retry
+
+`Client.Exec` returns HTTP 409 as a `*helix.HelixError` with `StatusCode` set and `helix.ErrConflict` wrapped. It does not retry automatically; retry only when the operation is safe to replay.
+
+```go
+func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func() helix.Request, out any) error {
+	for attempt := 0; attempt < 3; attempt++ {
+		err := client.Exec(ctx, build(), out)
+		if err == nil || !helix.IsConflict(err) || attempt == 2 {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+	}
+	return nil
 }
 ```

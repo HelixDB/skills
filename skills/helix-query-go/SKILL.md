@@ -81,11 +81,28 @@ since := q.ParamDateTime("created_after", sinceValue)
 
 Parameter refs can be passed to predicates, bounds, property inputs, and search inputs where supported.
 
+Important: direct Go values are inlined into the serialized AST. `helix.SourceEq("id", "foo")` and `helix.PredEq("id", "foo")` embed the string literal `"foo"`; they do not create runtime parameters and can miss server-cache hits across otherwise identical requests. For request-specific values, declare a builder parameter and pass the returned `ParamRef`:
+
+```go
+id := q.ParamString("id", userID)
+helix.G().NWhere(helix.SourceEq("id", id))
+```
+
 For vector search request parameters, prefer `q.ParamArray("query_vector", values, helix.ParamTypeF32())` with `[]float32`; Helix vector values normalize to float32.
 
 Do not add a `.With(...)` step. The runtime values and `parameter_types` metadata are inserted by the inline param methods.
 
-### 4. Execute With `Client.Exec`
+### 4. Return Explicit Variables
+
+Always pass explicit response variable names to `.Returning(...)` when rows should be decoded:
+
+```go
+return q.VarAs("users", traversal).Returning("users")
+```
+
+Use zero-arg `.Returning()` only for intentional empty responses. The SDK serializes it as `"returns":[]`, but explicit names are clearer and avoid mismatched response structs.
+
+### 5. Execute With `Client.Exec`
 
 ```go
 client, err := helix.NewClient("https://helix.example.com", helix.WithAPIKey("hx_secret"))
@@ -106,15 +123,17 @@ err = client.Exec(ctx, CreateUser("Alice", "acme"), &created,
 )
 ```
 
-### 5. Keep JSON Conversion Secondary
+`Client.Exec` does not retry HTTP 409 conflicts. Application code owns retry policy and idempotency. Remote errors carry `StatusCode`, and `helix.IsConflict(err)` or `errors.Is(err, helix.ErrConflict)` detects 409 conflicts without parsing error text.
+
+### 6. Keep JSON Conversion Secondary
 
 Use `helix.MarshalRequest(req)` only for tests, parity fixtures, or debugging. Do not make application code call `ToJSON`, `ToJSONString`, or equivalent helpers.
 
-### 6. Respect Sub-Traversal Limits
+### 7. Respect Sub-Traversal Limits
 
 `helix.Sub()` is for branch bodies inside `Repeat`, `Union`, `Choose`, `Coalesce`, and `Optional`. It currently supports walk/filter/bound operations such as `Out`, `In`, `Both`, `Where`, `Limit`, and `Count`. Put shared terminal projections like `ValueMap` or `Project` after the parent branch step.
 
-### 7. Avoid Go v1 Non-Goals
+### 8. Avoid Go v1 Non-Goals
 
 Do not use stored-query registration, query bundles, `defineQueries`, `registerRead`, `registerWrite`, or Rust-style `#[register]` patterns in Go v1.
 
@@ -124,9 +143,10 @@ Before finishing:
 
 - verify read queries use `ReadQuery` and writes use `WriteQuery`
 - verify write traversals are not placed in read queries
-- verify params are declared inline and passed by ref
+- verify request-specific values use `q.Param*` refs instead of direct literals in predicates, source predicates, limits, inputs, or search arguments
 - verify response structs match `.Returning(...)` names and projected fields
 - verify vector/text search preserves tenant scope where the index is scoped
+- verify conflict retries, if any, are explicit in application code and gated by `helix.IsConflict(err)`
 - run `go test ./...` in the Go module when editing SDK or query code
 
 ## Companion Files

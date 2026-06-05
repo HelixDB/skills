@@ -36,6 +36,21 @@ Planned next:
 npx skills add HelixDB/skills
 ```
 
+## Running queries (prerequisites)
+
+These skills cover **authoring** Helix queries; they assume you already have a Helix instance to run them against. To stand one up locally — no Cloud login required:
+
+1. Install the [Helix CLI](https://docs.helix-db.com/cli/getting-started): `curl -sSL "https://install.helix-db.com" | bash`.
+2. Make sure **Docker or Podman is installed _and running_** — the local instance runs in a container (`docker info` should succeed).
+3. Scaffold and start a local instance:
+   ```bash
+   helix init local
+   helix start dev          # `helix run` is kept as an alias
+   ```
+4. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
+
+The skills are SDK- and instance-agnostic: they produce query code and `POST /v1/query` payloads for a running instance reachable at a gateway URL (plus an API key for Helix Cloud). There is no `helix compile`/`helix check` step — queries are validated server-side when sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and the non-interactive/agent path.
+
 ## Repository Layout
 
 - `skills/` contains the published skills
@@ -79,7 +94,9 @@ It teaches agents to:
 - write normal Go functions returning `helix.Request`
 - set query names with `helix.ReadQuery` and `helix.WriteQuery`
 - declare runtime params inline with `q.ParamString`, `q.ParamI64`, `q.ParamDateTime`, and related helpers
+- avoid accidentally inlining request-specific literals in predicates and source predicates
 - execute dynamic requests with `client.Exec(ctx, request, &out)`
+- handle HTTP 409 conflicts explicitly with caller-owned retries
 - avoid `.With(...)`, `WithQueryName(...)`, and stored-query bundle workflows for Go v1
 
 ### `helix-query-from-cypher`
