@@ -515,6 +515,8 @@ Client::new(url: Option<&str>) -> Result<Self, HelixError>   // default "http://
 request.send().await -> Result<R, HelixError>                // 200 -> R; any other status -> HelixError::RemoteError
 ```
 
+Prefer `.should_await_durability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
+
 `HelixError` variants: `ReqwestError` (transport), `RemoteError { details }` (non-200), `SerializationError`, `InvalidURL`. Build the `DynamicQueryRequest` from a registered fn call (`count_users()`) or `DynamicQueryRequest::read(batch)`.
 
 ---

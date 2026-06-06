@@ -117,7 +117,7 @@ function findUsers(p = params) {
 - **Dynamic request:** `findUsers().toDynamicJson(params, { tenantId: "acme", limit: 25n }, { queryName: "find_users" })` → request JSON string for `POST /v1/query`. Use `toDynamicRequest(...)` for the object, `toDynamicBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toDynamicJson({ queryName: "count_users" })`. Unnamed requests serialize `query_name: null`, which the gateway records as `__dynamic__`.
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
 - **Bundle:** register queries and generate a `queries.json` (see Rule 10).
-- **Send it with the client:** `new Client(url).withApiKey(key).query<R>().dynamic(findUsers().toDynamicRequest(params, values, { queryName: "find_users" })).send()` POSTs to `/v1/query` and returns the parsed JSON on HTTP 200, else throws `HelixError`. Add `.warmOnly()` / `.writerOnly()` / `.shouldAwaitDurability(b)` for the matching request headers; use `.stored(name).body(x)` for a deployed named route. See REFERENCE.md → "Client".
+- **Send it with the client:** `new Client(url).withApiKey(key).query<R>().dynamic(findUsers().toDynamicRequest(params, values, { queryName: "find_users" })).send()` POSTs to `/v1/query` and returns the parsed JSON on HTTP 200, else throws `HelixError`. Add `.warmOnly()` / `.writerOnly()` / `.shouldAwaitDurability(b)` for the matching request headers; use `.stored(name).body(x)` for a deployed named route. Prefer `.shouldAwaitDurability(true)` on writes — under concurrent writers it reduces HTTP 409 write conflicts (callers still own retry). See REFERENCE.md → "Client".
 
 ### 10. Bundles: `registerRead` / `registerWrite` / `defineQueries`
 

@@ -349,6 +349,8 @@ helix.AwaitDurability(true)
 
 `Exec` posts to `/v1/query`, serializes the request internally, and decodes responses with `json.Decoder.UseNumber()`.
 
+Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more likely to hit HTTP 409 write conflicts, and awaiting durability reduces them. It does not eliminate conflicts, so callers still own retry policy.
+
 Remote errors are returned as `*helix.HelixError` with `Kind: helix.ErrorRemote`, `Details`, and `StatusCode` set. `helix.IsConflict(err)` and `errors.Is(err, helix.ErrConflict)` detect HTTP 409 conflicts. The SDK does not retry conflicts automatically; callers should retry only when the operation is safe to replay.
 
 ```go

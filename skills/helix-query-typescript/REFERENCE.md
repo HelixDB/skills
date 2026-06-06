@@ -568,6 +568,8 @@ new Client(url?: string | null)          // default "http://localhost:6969"; thr
 await request.send(): Promise<R>           // 200 -> parsed JSON (parseJsonStructural); any other status -> throws HelixError
 ```
 
+Prefer `.shouldAwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
+
 ```ts
 import { Client, HelixError } from "@helix-db/helix-db";
 

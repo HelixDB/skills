@@ -123,7 +123,7 @@ err = client.Exec(ctx, CreateUser("Alice", "acme"), &created,
 )
 ```
 
-`Client.Exec` does not retry HTTP 409 conflicts. Application code owns retry policy and idempotency. Remote errors carry `StatusCode`, and `helix.IsConflict(err)` or `errors.Is(err, helix.ErrConflict)` detects 409 conflicts without parsing error text.
+Prefer `helix.AwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them. Leaving it off is fine for low-concurrency or read paths. Either way, `Client.Exec` does not retry HTTP 409 conflicts. Application code owns retry policy and idempotency. Remote errors carry `StatusCode`, and `helix.IsConflict(err)` or `errors.Is(err, helix.ErrConflict)` detects 409 conflicts without parsing error text.
 
 ### 6. Keep JSON Conversion Secondary
 

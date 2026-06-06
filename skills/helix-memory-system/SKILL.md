@@ -145,6 +145,7 @@ Relationship: UPDATES the previous next-April timing memory and invalidates the 
 - **Derive:** link inferred facts with `DERIVES` edges to supporting memories and mark them as inferred with confidence metadata.
 - If `content` changes, re-embed and update `embedding` in the same write. Content and vector must never drift.
 - Keep lifecycle validity (`validFrom`, `validTo`, `deletedAt`) separate from real-world event time (`eventStartAt`, `eventEndAt`, `temporalText`). Updating a memory because a fact changed should invalidate the old record even if both facts refer to future or past dates.
+- **Await durability on writes.** Updating/versioning is read-then-write and often runs concurrently across sessions, which raises the chance of HTTP 409 write conflicts. Await durability on the write to reduce conflicts (`.shouldAwaitDurability(true)` in TypeScript, `.should_await_durability(true)` in Rust, `helix.AwaitDurability(true)` in Go) and still handle any 409 with a caller-owned retry. See the `helix-query-{typescript,rust,go}` skills for the SDK flag.
 
 ### 3. Deletion / Forgetting
 

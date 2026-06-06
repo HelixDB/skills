@@ -15,6 +15,7 @@ These skills are for agents that need to:
 
 Available now:
 
+- `helix-cli`
 - `helix-query-authoring`
 - `helix-query-from-cypher`
 - `helix-query-from-gremlin`
@@ -60,6 +61,20 @@ The skills are SDK- and instance-agnostic: they produce query code and `POST /v1
 - `helix-skills-repo-plan.md` is the working implementation plan and checklist
 
 ## Current Skills
+
+### `helix-cli`
+
+Use this skill when an agent needs to drive the `helix` CLI itself — run, query, and deploy Helix instances — rather than author the query bodies.
+
+It teaches agents to:
+
+- use the v3 mental model: a runtime orchestrator, not a compiler (no `helix compile`/`helix check`, no `.hx` workflow)
+- run the local dev loop (`helix init local` → `start` → `query` → `stop`) with Docker/Podman, including in-memory vs `--disk` persistence
+- send dynamic queries to `POST /v1/query` via `helix query` (`--file`/`--json`/`-e` TypeScript DSL/`--ts-file`)
+- operate on Helix Cloud (`helix auth`, `push`, `sync`, `workspace`/`project`/`cluster`)
+- read and edit `helix.toml` and the `~/.helix/*` state files
+
+It points to the `helix-query-*` skills for the query bodies themselves; see its `REFERENCE.md` for the full command catalog and `EXAMPLES.md` for end-to-end sessions.
 
 ### `helix-query-authoring`
 
