@@ -4,7 +4,7 @@ Hosted `skills.sh` repository for HelixDB agent skills.
 
 These skills are for agents that need to:
 
-- write Helix queries in the Rust DSL
+- write Helix queries in the Rust, TypeScript, Python, and Go SDK DSLs
 - write dynamic-first Helix queries in Go
 - translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
@@ -25,6 +25,7 @@ Available now:
 - `helix-query-rust`
 - `helix-query-typescript`
 - `helix-query-go`
+- `helix-query-python`
 - `helix-memory-system`
 
 Planned next:
@@ -113,6 +114,19 @@ It teaches agents to:
 - execute dynamic requests with `client.Exec(ctx, request, &out)`
 - handle HTTP 409 conflicts explicitly with caller-owned retries
 - avoid `.With(...)`, `WithQueryName(...)`, and stored-query bundle workflows for Go v1
+
+### `helix-query-python`
+
+Use this skill when an agent needs to write or revise HelixDB queries with the Python SDK.
+
+It teaches agents to:
+
+- write Pythonic query builders with `read_batch`, `write_batch`, `g`, and snake_case traversal methods
+- declare runtime params with `define_params` and `param.*`
+- produce dynamic requests with `to_dynamic_request` / `to_dynamic_json`
+- execute requests with `Client(...).query().dynamic(request).send()` or `.stored(name)`
+- generate `queries.json` bundles with `define_queries`, `register_read`, and `register_write`
+- keep Python queries structurally identical to the Rust/TypeScript/Go JSON AST
 
 ### `helix-query-from-cypher`
 

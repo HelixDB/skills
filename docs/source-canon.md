@@ -21,6 +21,7 @@ Use these for product semantics and supported behavior:
 - `https://docs.helix-db.com/database/working-with-enterprise`
 - `https://docs.helix-db.com/database/local-development`
 - `https://docs.helix-db.com/database/go-project-setup`
+- `https://docs.helix-db.com/database/python-project-setup`
 - `https://docs.helix-db.com/database/querying`
 - `https://docs.helix-db.com/database/querying-guide/overview`
 - `https://docs.helix-db.com/database/querying-guide/reading-nodes`
