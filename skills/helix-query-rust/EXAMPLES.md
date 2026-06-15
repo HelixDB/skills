@@ -321,6 +321,41 @@ pub fn total_revenue() -> ReadBatch {
 
 ---
 
+## Edge Endpoint Projection
+
+Use this when an edge list needs stable source/target resource ids. It keeps one
+output row per edge and avoids traversing to every endpoint node.
+
+```rust
+#[register]
+pub fn list_describes_relationships() -> ReadBatch {
+    read_batch()
+        .var_as(
+            "relationships",
+            g().e_with_label("DESCRIBES").project(vec![
+                Projection::from_endpoint("resource_id", "from_id"),
+                Projection::to_endpoint("resource_id", "to_id"),
+                Projection::property("$id", "edge_id"),
+                Projection::property("confidence", "confidence"),
+            ]),
+        )
+        .returning(["relationships"])
+}
+```
+
+Wire format:
+
+```json
+{"Project": [
+  {"source": "$from.resource_id", "alias": "from_id"},
+  {"source": "$to.resource_id", "alias": "to_id"},
+  {"source": "$id", "alias": "edge_id"},
+  {"source": "confidence", "alias": "confidence"}
+]}
+```
+
+---
+
 ## 12. Write: `add_n` + `add_e` in one batch with cross-entry `Var` reference
 
 ```rust

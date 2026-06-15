@@ -87,6 +87,9 @@ Use:
 - `project(...)` for stable service-facing response shapes
 - `value_map(...)` when returning all or many properties is acceptable
 - `edge_properties()` for edge streams
+- For edge endpoint properties, prefer edge-stream `project(...)` with
+  `Projection::from_endpoint(prop, alias)` / `Projection::to_endpoint(prop,
+  alias)` instead of traversing to every endpoint first.
 
 Do not return oversized properties like embeddings unless the caller explicitly needs them.
 
@@ -128,7 +131,7 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 | Aggregation | `count`, `exists`, `group`, `group_count`, `aggregate_by` | `AggregateFunction::{Count,Sum,Min,Max,Mean}`. |
 | Branching | `union`, `choose`, `coalesce`, `optional` | Each arm is a `sub()` sub-traversal. |
 | Repeat | `repeat(RepeatConfig::new(sub).times(n).until(pred).emit_all().max_depth(100))` | Always bound with `times` or `until`; default `max_depth` is 100. |
-| Projection | `values`, `value_map`, `project`, `edge_properties` | `project` mixes `PropertyProjection` (incl. renames) and `ExprProjection`. |
+| Projection | `values`, `value_map`, `project`, `edge_properties` | `project` mixes `PropertyProjection` (incl. renames) and `ExprProjection`; edge streams can project endpoint fields with `Projection::from_endpoint` / `Projection::to_endpoint`. |
 | Expressions | `Expr::prop`, `Expr::val`, `Expr::id`, `Expr::timestamp`, `Expr::datetime`, `Expr::param`, `.add/.sub/.mul/.div/.modulo/.neg`, `Expr::case` | `Expr::Timestamp` writes server UTC millis; `Expr::DateTimeNow` writes typed datetime. |
 | Mutations | `add_n`, `add_e`, `set_property`, `remove_property`, `drop`, `drop_edge`, `drop_edge_labeled`, `drop_edge_by_id` | `drop_edge_by_id` is multigraph-safe. |
 | Indexes | `IndexSpec::node_equality / node_range / edge_equality / edge_range / node_vector / node_text / edge_vector / edge_text` plus `create_index` / `drop_index`; convenience: `create_vector_index_nodes`, `create_text_index_nodes`, edge variants | Use `.create_index(spec)` from a write batch. |

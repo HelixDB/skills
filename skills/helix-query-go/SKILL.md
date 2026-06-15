@@ -133,6 +133,11 @@ Use `helix.MarshalRequest(req)` only for tests, parity fixtures, or debugging. D
 
 `helix.Sub()` is for branch bodies inside `Repeat`, `Union`, `Choose`, `Coalesce`, and `Optional`. It currently supports walk/filter/bound operations such as `Out`, `In`, `Both`, `Where`, `Limit`, and `Count`. Put shared terminal projections like `ValueMap` or `Project` after the parent branch step.
 
+For edge endpoint properties, prefer edge-stream `.Project(...)` with
+`helix.ProjectFromEndpoint(prop, alias)` / `helix.ProjectToEndpoint(prop, alias)`
+instead of traversing to every endpoint first. Keep `.EdgeProperties()` for full
+edge maps and internal `$from` / `$to` node ids.
+
 ### 8. Avoid Go v1 Non-Goals
 
 Do not use stored-query registration, query bundles, `defineQueries`, `registerRead`, `registerWrite`, or Rust-style `#[register]` patterns in Go v1.

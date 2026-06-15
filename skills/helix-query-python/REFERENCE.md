@@ -227,10 +227,20 @@ Terminals and projections:
 .value_map(None)  # all properties
 .project([
     Projection.property("$id", "id"),
+    Projection.from_endpoint("resource_id", "from_id"),
+    Projection.to_endpoint("resource_id", "to_id"),
     Projection.expr("score_plus_one", Expr.prop("score").add(Expr.val(1))),
 ])
 .edge_properties()
 ```
+
+On edge streams, `Projection.from_endpoint(prop, alias)` serializes to
+`{"source":"$from.<prop>","alias":"<alias>"}` and
+`Projection.to_endpoint(prop, alias)` serializes to
+`{"source":"$to.<prop>","alias":"<alias>"}`. Use these to return source/target
+node properties such as resource ids without traversing from every edge to its
+endpoints. Keep `.edge_properties()` for full edge maps and the internal `$from`
+/ `$to` node ids.
 
 Ordering and aggregation:
 

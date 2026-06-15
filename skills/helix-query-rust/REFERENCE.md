@@ -328,10 +328,20 @@ PropertyProjection::renamed("$distance", "distance")
 ExprProjection::new("age_plus_one", Expr::prop("age").add(Expr::val(1i64)))
 Projection::property("source", "alias")
 Projection::expr("alias", expr)
+Projection::from_endpoint("resource_id", "from_id")
+Projection::to_endpoint("resource_id", "to_id")
 ```
 
 `PropertyProjection` and `ExprProjection` both implement `Into<Projection>`, so you can mix them freely in `.project(vec![...])`.
 Filtered `values(...)`, filtered `value_map(...)`, `PropertyProjection::source`, and `Expr::prop(...)` accept dotted object paths. `value_map(None)` returns all top-level stored properties as-is and does not flatten nested objects.
+
+On edge streams, `Projection::from_endpoint(prop, alias)` serializes to
+`{"source":"$from.<prop>","alias":"<alias>"}` and
+`Projection::to_endpoint(prop, alias)` serializes to
+`{"source":"$to.<prop>","alias":"<alias>"}`. Use these to return source/target
+node properties such as resource ids without traversing from every edge to its
+endpoints. Keep `.edge_properties()` for full edge maps and the internal `$from`
+/ `$to` node ids.
 
 ---
 

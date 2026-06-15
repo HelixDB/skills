@@ -297,6 +297,12 @@ Strict subset of `Predicate`. Same JSON shape for the shared variants; the follo
 
 Both fields required; set them equal for no-rename. Virtual fields (`$id`, `$label`, `$distance`, `$from`, `$to`) are legal `source` values.
 
+On edge streams, endpoint-qualified sources read properties from the endpoint
+nodes without an explicit traversal: `"$from.resource_id"` projects the source
+node's `resource_id`, and `"$to.resource_id"` projects the target node's
+`resource_id`. These are still plain `PropertyProjection` objects; do not invent
+an `EdgeEndpointProperties` or `EndpointProjection` AST variant.
+
 ### `ExprProjection`  (`sdks/rust/src/dsl.rs:2016`)
 
 ```json
@@ -509,6 +515,10 @@ Filtered `Values`, filtered `ValueMap`, `Project.source`, and `Expr.Property` ac
 paths. `ValueMap: null` returns top-level stored properties as-is and does not flatten nested
 objects.
 
+On edge streams, `Project.source` may also use endpoint-qualified sources such
+as `"$from.resource_id"` and `"$to.resource_id"` to project source/target node
+properties while preserving one output row per edge.
+
 ### Terminals (scalar result)
 
 | Step | JSON |
@@ -570,6 +580,7 @@ Available in `Values`, `ValueMap`, `Project` (as a `PropertyProjection.source`),
 | `$distance` | direct hits from `VectorSearchNodes`/`VectorSearchEdges`/`TextSearchNodes`/`TextSearchEdges` | ascending = closer; lost after `Out`/`In`/`Both`/`OutN`/`InN`/`OtherN` |
 | `$score` | direct ranked text/vector hits when populated by the engine | ranking score metadata; lost after traversal steps that change stream |
 | `$from`, `$to` | edge streams, including `EdgeProperties` and edge vector/text hits | source and target node ids |
+| `$from.<prop>`, `$to.<prop>` | `Project.source` on edge streams | source/target endpoint node property; cheaper than traversing to every endpoint |
 
 **Rule:** if you need `$distance` in the result, include it in the first terminal projection *before* any traversal step that changes the stream.
 

@@ -601,7 +601,37 @@ g().vector_search_nodes_with(...)
 ]
 ```
 
-The runtime still loads all properties from storage for `Project` — the saving is the response payload size and the serialization cost. To avoid loading entirely, return only the count or the id list (`count()`, `id()`).
+For ordinary node property output, the runtime still loads all properties from storage for `Project` — the saving is the response payload size and the serialization cost. To avoid loading entirely, return only the count or the id list (`count()`, `id()`).
+
+Edge endpoint properties are the exception. If a large edge stream needs source
+and target resource ids, project endpoint fields directly instead of traversing
+to both endpoint nodes for every edge.
+
+### Weaker
+
+```json
+[
+  {"EWhere": {"Eq": ["$label", {"String": "DESCRIBES"}]}},
+  "EdgeProperties"
+]
+```
+
+Then doing endpoint traversals for each `$from` / `$to` id turns a large edge
+list into many node property reads.
+
+### Stronger
+
+```json
+[
+  {"EWhere": {"Eq": ["$label", {"String": "DESCRIBES"}]}},
+  {"Project": [
+    {"source": "$from.resource_id", "alias": "from_id"},
+    {"source": "$to.resource_id", "alias": "to_id"},
+    {"source": "$id", "alias": "edge_id"},
+    {"source": "confidence", "alias": "confidence"}
+  ]}
+]
+```
 
 ---
 

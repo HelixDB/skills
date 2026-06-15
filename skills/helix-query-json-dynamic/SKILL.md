@@ -117,7 +117,7 @@ Every encoding in `REFERENCE.md` follows these rules. Internalize them or the re
 
 7. **`Bytes` is not round-trippable.** The builder raises `UnsupportedBytesParameter`. Do not send `Bytes` parameters through the JSON dynamic route.
 
-8. **Dotted property names are property paths at read time.** Property-name slots such as `Has`, `Predicate`, `Expr.Property`, `Values`, `ValueMap`, `Project.source`, and `OrderBy` accept names like `metadata.externalID`. Lookup is exact-first: a top-level property literally named `metadata.externalID` wins before walking the nested `metadata` object. Dotted paths are scan-only in V1; secondary, text, and vector indexes remain top-level only. Arrays are opaque, so no `tags.0` syntax.
+8. **Dotted property names are property paths at read time.** Property-name slots such as `Has`, `Predicate`, `Expr.Property`, `Values`, `ValueMap`, `Project.source`, and `OrderBy` accept names like `metadata.externalID`. Lookup is exact-first: a top-level property literally named `metadata.externalID` wins before walking the nested `metadata` object. Dotted paths are scan-only in V1; secondary, text, and vector indexes remain top-level only. Arrays are opaque, so no `tags.0` syntax. On edge streams, `Project.source` also accepts endpoint-qualified sources such as `"$from.resource_id"` and `"$to.resource_id"`; these are still plain untagged `Projection` entries, not a separate AST variant.
 
 ## Envelope Decision Table
 
@@ -187,7 +187,7 @@ Step categories and their JSON form (one-liners). Full signatures in `REFERENCE.
 **Projections (terminal):**
 - `{"Values": ["name", "email"]}`
 - `{"ValueMap": ["$id", "name", "metadata.externalID"]}` or `{"ValueMap": null}` for all top-level stored properties
-- `{"Project": [{"source":"name","alias":"name"}, {"alias":"age_plus_one","expr":{"Add":[{"Property":"age"},{"Constant":{"I64":1}}]}}]}` — **no `{"Property":...}` / `{"Expr":...}` wrapper** (untagged)
+- `{"Project": [{"source":"name","alias":"name"}, {"source":"$from.resource_id","alias":"from_id"}, {"alias":"age_plus_one","expr":{"Add":[{"Property":"age"},{"Constant":{"I64":1}}]}}]}` — **no `{"Property":...}` / `{"Expr":...}` wrapper** (untagged)
 - `"EdgeProperties"` — unit variant
 
 **Terminals (scalar result):**

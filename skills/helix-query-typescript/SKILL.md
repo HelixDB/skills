@@ -79,6 +79,9 @@ Prefer this anchor order: node/edge ID → unique property lookup → equality-i
 - `.project([...])` for stable service-facing response shapes (mix `PropertyProjection` and `ExprProjection`).
 - `.valueMap(["$id", "name"])` (or `.valueMap(null)` for all) when returning many properties is acceptable.
 - `.edgeProperties()` for edge streams.
+- For edge endpoint properties, prefer edge-stream `.project([...])` with
+  `Projection.fromEndpoint(prop, alias)` / `Projection.toEndpoint(prop, alias)`
+  instead of traversing to every endpoint first.
 
 Do not return oversized properties like embeddings unless the caller explicitly needs them.
 
@@ -156,7 +159,7 @@ Route names must be unique across read and write routes — duplicates throw `Ge
 | Aggregation | `count`, `exists`, `group`, `groupCount`, `aggregateBy` | `AggregateFunction.{Count,Sum,Min,Max,Mean}`. |
 | Branching | `union`, `choose`, `coalesce`, `optional` | Each arm is a `sub()` sub-traversal. |
 | Repeat | `repeat(RepeatConfig.new(sub).times(n).until(pred).emitAfter().maxDepth(100))` | Bound with `times`/`until`; default `maxDepth` 100. |
-| Projection | `values`, `valueMap`, `project`, `edgeProperties` | `project` mixes `PropertyProjection` (incl. `renamed`) and `ExprProjection`; filtered outputs accept dotted paths. |
+| Projection | `values`, `valueMap`, `project`, `edgeProperties` | `project` mixes `PropertyProjection` (incl. `renamed`) and `ExprProjection`; filtered outputs accept dotted paths; edge streams can project endpoint fields with `Projection.fromEndpoint` / `Projection.toEndpoint`. |
 | Expressions | `Expr.prop/val/id/timestamp/datetime/param`, `.add/.sub/.mul/.div/.modulo/.neg`, `Expr.case` | `Expr.timestamp()` writes server UTC millis; `Expr.datetime()` writes typed datetime. |
 | Mutations | `addN`, `addE`, `setProperty`, `removeProperty`, `drop`, `dropEdge`, `dropEdgeLabeled`, `dropEdgeById` | `dropEdgeById` is multigraph-safe. |
 | Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/edgeEquality/edgeRange/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. |

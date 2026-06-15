@@ -228,6 +228,30 @@ def friends_and_followers(p=friends_params):
     )
 ```
 
+## Edge Endpoint Projection
+
+Use this when an edge list needs stable source/target resource ids. It keeps one
+output row per edge and avoids traversing to every endpoint node.
+
+```python
+def list_describes_relationships():
+    return (
+        read_batch()
+        .var_as(
+            "relationships",
+            g()
+            .e_with_label("DESCRIBES")
+            .project([
+                Projection.from_endpoint("resource_id", "from_id"),
+                Projection.to_endpoint("resource_id", "to_id"),
+                Projection.property("$id", "edge_id"),
+                Projection.property("confidence", "confidence"),
+            ]),
+        )
+        .returning(["relationships"])
+    )
+```
+
 ## 9. For Each Param Writes
 
 ```python

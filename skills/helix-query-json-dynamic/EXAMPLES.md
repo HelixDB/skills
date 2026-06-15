@@ -641,6 +641,41 @@ Dotted property lookup is exact-first and scan-only in V1. Keep indexed/searchab
 
 ---
 
+## Edge Endpoint Projection
+
+Project endpoint properties from an edge stream with `$from.<property>` and
+`$to.<property>`. These are normal `Project` entries; do not add an
+`EdgeEndpointProperties` step.
+
+```json
+{
+  "request_type": "read",
+  "query": {
+    "queries": [
+      {"Query": {
+        "name": "relationships",
+        "steps": [
+          {"EWhere": {"Eq": ["$label", {"String": "DESCRIBES"}]}},
+          {"Project": [
+            {"source": "$from.resource_id", "alias": "from_id"},
+            {"source": "$to.resource_id", "alias": "to_id"},
+            {"source": "$id", "alias": "edge_id"},
+            {"source": "confidence", "alias": "confidence"}
+          ]}
+        ],
+        "condition": null
+      }}
+    ],
+    "returns": ["relationships"]
+  }
+}
+```
+
+This preserves one output row per edge and avoids `OutN` / `InN` endpoint
+traversals for large edge lists.
+
+---
+
 ## 16. Write: typed-array parameter + `DateTime` parameter
 
 **Goal:** restrict to users whose status is in a list and were created after a datetime.

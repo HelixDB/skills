@@ -186,6 +186,28 @@ func FriendsAndFollowers(userID int64) helix.Request {
 }
 ```
 
+## Edge Endpoint Projection
+
+Use this when an edge list needs stable source/target resource ids. It keeps one
+output row per edge and avoids traversing to every endpoint node.
+
+```go
+func ListDescribesRelationships() helix.Request {
+	return helix.ReadQuery("list_describes_relationships").
+		VarAs("relationships",
+			helix.G().
+				EWithLabel("DESCRIBES").
+				Project(
+					helix.ProjectFromEndpoint("resource_id", "from_id"),
+					helix.ProjectToEndpoint("resource_id", "to_id"),
+					helix.ProjectPropAs("$id", "edge_id"),
+					helix.ProjectPropAs("confidence", "confidence"),
+				),
+		).
+		Returning("relationships")
+}
+```
+
 ## 9. For Each Param Writes
 
 ```go

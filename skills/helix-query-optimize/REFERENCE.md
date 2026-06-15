@@ -256,7 +256,7 @@ Two paths, depending on whether a range index is available for the ordering prop
 
 ## 10. Projection and `value_map`
 
-The interpreter has **no** storage-level field projection — `value_map(None)` calls `tx.get_node_properties(id)` (`interpreter.rs:9664`) which loads all stored properties for each id, then `props_to_map(&props, filter)` filters in memory based on the projection list (`interpreter.rs:9932-9946`).
+For ordinary node property output, the interpreter has **no** storage-level field projection — `value_map(None)` calls `tx.get_node_properties(id)` (`interpreter.rs:9664`) which loads all stored properties for each id, then `props_to_map(&props, filter)` filters in memory based on the projection list (`interpreter.rs:9932-9946`).
 
 Implications:
 
@@ -267,6 +267,14 @@ Implications:
 - For id-only outputs, `id()` returns the id list; no property load.
 
 The right way to slim payloads is therefore at the **projection list**, not at the storage layer. The first thing to remove is embeddings on search routes that don't need to display the vector.
+
+Edge streams have one important optimization path: `Project.source` values of
+`$from.<prop>` and `$to.<prop>` fetch endpoint node properties directly and keep
+one row per edge. Use those for source/target resource ids instead of
+`EdgeProperties` followed by `OutN` / `InN` per edge. In SDKs, use
+`Projection::from_endpoint`, `Projection.fromEndpoint`,
+`Projection.from_endpoint`, or `helix.ProjectFromEndpoint` and the matching
+`to` helper.
 
 ---
 

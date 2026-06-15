@@ -228,9 +228,22 @@ Terminals and projection:
 .Values("$id", "name")
 .ValueMap("$id", "name")
 .ValueMapAll()
-.Project(helix.ProjectPropAs("$id", "id"), helix.ProjectExpr("age2", expr))
+.Project(
+    helix.ProjectPropAs("$id", "id"),
+    helix.ProjectFromEndpoint("resource_id", "from_id"),
+    helix.ProjectToEndpoint("resource_id", "to_id"),
+    helix.ProjectExpr("age2", expr),
+)
 .EdgeProperties()
 ```
+
+On edge streams, `helix.ProjectFromEndpoint(prop, alias)` serializes to
+`{"source":"$from.<prop>","alias":"<alias>"}` and
+`helix.ProjectToEndpoint(prop, alias)` serializes to
+`{"source":"$to.<prop>","alias":"<alias>"}`. Use these to return source/target
+node properties such as resource ids without traversing from every edge to its
+endpoints. Keep `.EdgeProperties()` for full edge maps and the internal `$from`
+/ `$to` node ids.
 
 Writes:
 

@@ -392,11 +392,21 @@ PropertyProjection.renamed("$distance", "distance")  // {source:"$distance", ali
 ExprProjection.new("age2", Expr.prop("age").add(Expr.val(1)))   // {alias:"age2", expr:{...}}
 Projection.property("source", "alias")
 Projection.expr("alias", expr)
+Projection.fromEndpoint("resource_id", "from_id")
+Projection.toEndpoint("resource_id", "to_id")
 Projection.from(value)
 ```
 
 Mix `PropertyProjection` and `ExprProjection` freely in `.project([...])`.
 Filtered `values(...)`, filtered `valueMap(...)`, `PropertyProjection.source`, and `Expr.prop(...)` accept dotted object paths. `valueMap(null)` returns all top-level stored properties as-is and does not flatten nested objects.
+
+On edge streams, `Projection.fromEndpoint(prop, alias)` serializes to
+`{"source":"$from.<prop>","alias":"<alias>"}` and
+`Projection.toEndpoint(prop, alias)` serializes to
+`{"source":"$to.<prop>","alias":"<alias>"}`. Use these to return source/target
+node properties such as resource ids without traversing from every edge to its
+endpoints. Keep `.edgeProperties()` for full edge maps and the internal `$from`
+/ `$to` node ids.
 
 ---
 

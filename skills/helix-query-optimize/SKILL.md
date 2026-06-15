@@ -90,6 +90,12 @@ Steps that **preserve** ranking: `As`, `Store`, `Select`, plus terminal projecti
 
 **Fix.** Project before traversing. If you need both the distance and the post-traversal node, store the hit ids first: `vector_search_nodes_with(...).as_("hits").project(vec![..., PropertyProjection::renamed("$distance", "distance")])`, then in a separate variable do the traversal.
 
+For large edge streams that need endpoint resource ids, project endpoint fields
+directly from the edge stream with `$from.<prop>` / `$to.<prop>` (SDK helpers:
+`Projection::from_endpoint`, `Projection.fromEndpoint`,
+`Projection.from_endpoint`, `helix.ProjectFromEndpoint`) instead of doing
+`out_n` / `in_n` per edge.
+
 ### 6. Pair `Limit` with `Dedup` (and `OrderBy` with a range index)
 
 **Why it matters.** The interpreter peeks one step ahead via `consume_limit_after` (`interpreter.rs:787-827`) to detect `step → Limit/Range/LimitBy/RangeBy` and `step → Dedup → Limit` patterns; when matched it sets `LimitPushdown { limit, dedup }` and threads it into source/traversal collection (`collect_set_limited`). Without that exact lookahead, the interpreter materializes the full result set then trims. Limit pushdown is **disabled** for edge-side filters (`EWhere`, `EdgeHas`, `EdgeHasLabel` — `interpreter.rs:807-812`).

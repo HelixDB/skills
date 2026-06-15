@@ -131,6 +131,9 @@ Prefer `should_await_durability(True)` on writes. It reduces HTTP 409 conflicts 
 
 - Use `.project([...])` for stable service-facing response shapes.
 - Use `.value_map(["$id", "name"])` when returning selected properties is fine.
+- For edge endpoint properties, prefer edge-stream `.project([...])` with
+  `Projection.from_endpoint(prop, alias)` / `Projection.to_endpoint(prop,
+  alias)` instead of traversing to every endpoint first.
 - Avoid returning large properties such as embeddings unless the caller needs them.
 - Match `.returning([...])` names to the response keys your application expects.
 

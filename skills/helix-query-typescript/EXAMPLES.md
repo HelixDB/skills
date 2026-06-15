@@ -287,6 +287,42 @@ function totalRevenue() {
 
 ---
 
+## Edge Endpoint Projection
+
+Use this when an edge list needs stable source/target resource ids. It keeps one
+output row per edge and avoids traversing to every endpoint node.
+
+```ts
+function listDescribesRelationships() {
+  return readBatch()
+    .varAs(
+      "relationships",
+      g()
+        .eWithLabel("DESCRIBES")
+        .project([
+          Projection.fromEndpoint("resource_id", "from_id"),
+          Projection.toEndpoint("resource_id", "to_id"),
+          Projection.property("$id", "edge_id"),
+          Projection.property("confidence", "confidence"),
+        ]),
+    )
+    .returning(["relationships"]);
+}
+```
+
+Wire format:
+
+```json
+{"Project": [
+  {"source": "$from.resource_id", "alias": "from_id"},
+  {"source": "$to.resource_id", "alias": "to_id"},
+  {"source": "$id", "alias": "edge_id"},
+  {"source": "confidence", "alias": "confidence"}
+]}
+```
+
+---
+
 ## 12. Write: `addN` + `addE` in one batch with cross-entry `Var` reference
 
 ```ts
