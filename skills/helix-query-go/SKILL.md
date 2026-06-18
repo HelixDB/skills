@@ -4,7 +4,7 @@ description: Write and revise HelixDB queries with the Go SDK. Use when building
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.1
+  version: 0.1.2
 ---
 
 # Helix Query Authoring - Go

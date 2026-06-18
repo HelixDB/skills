@@ -376,9 +376,9 @@ Used wherever an inner traversal is needed: `Union`, `Choose.then_traversal`, `C
 
 ```json
 {"NodeEquality": {"label": "<L>", "property": "<p>", "unique": false}}
-{"NodeRange":    {"label": "<L>", "property": "<p>"}}
+{"NodeRange":    {"label": "<L>", "property": "<p>", "direction": "Asc" | "Desc"}}
 {"EdgeEquality": {"label": "<L>", "property": "<p>"}}
-{"EdgeRange":    {"label": "<L>", "property": "<p>"}}
+{"EdgeRange":    {"label": "<L>", "property": "<p>", "direction": "Asc" | "Desc"}}
 {"NodeVector":   {"label": "<L>", "property": "<p>", "tenant_property": "<tp>" | null}}
 {"NodeText":     {"label": "<L>", "property": "<p>", "tenant_property": "<tp>" | null}}
 {"EdgeVector":   {"label": "<L>", "property": "<p>", "tenant_property": "<tp>" | null}}
@@ -386,6 +386,7 @@ Used wherever an inner traversal is needed: `Union`, `Choose.then_traversal`, `C
 ```
 
 - `NodeEquality.unique` defaults to `false`. When `true`, insert / update of duplicate non-null values is rejected.
+- `NodeRange.direction` / `EdgeRange.direction` defaults to `"Asc"`; omit it for ascending indexes or set `"Desc"` for descending physical order.
 - `tenant_property` — if set, creates a multitenant index partitioned by that property.
 - Index properties are top-level only in V1. Do not declare `metadata.externalID` as a secondary,
   vector, or text index; store indexed/searchable values as explicit top-level properties.

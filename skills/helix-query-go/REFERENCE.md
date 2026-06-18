@@ -282,11 +282,17 @@ Indexes:
 .CreateIndexIfNotExists(helix.NodeEqualityIndex("User", "externalId"))
 .CreateIndexIfNotExists(helix.NodeUniqueEqualityIndex("User", "email"))
 .CreateIndexIfNotExists(helix.NodeRangeIndex("User", "createdAt"))
+.CreateIndexIfNotExists(helix.NodeRangeDescIndex("User", "createdAt"))
+.CreateIndexIfNotExists(helix.NodeRangeIndexWithDirection("User", "createdAt", helix.RangeIndexDesc))
 .CreateIndexIfNotExists(helix.EdgeEqualityIndex("FOLLOWS", "since"))
+.CreateIndexIfNotExists(helix.EdgeRangeDescIndex("FOLLOWS", "since"))
+.CreateIndexIfNotExists(helix.EdgeRangeIndexWithDirection("FOLLOWS", "since", helix.RangeIndexDesc))
 .CreateVectorIndexNodes("Document", "embedding", "tenantId")
 .CreateTextIndexNodes("Document", "body", "tenantId")
 .DropIndex(helix.NodeRangeIndex("User", "createdAt"))
 ```
+
+Range indexes default to ascending physical order (`helix.RangeIndexAsc`). Use `helix.RangeIndexDesc` for descending indexes that primarily serve newest-first or high-score-first scans.
 
 ## Predicates And Expressions
 

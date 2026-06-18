@@ -717,9 +717,9 @@ traversals for large edge lists.
 
 ---
 
-## 17. Write: `CreateIndex` / `DropIndex` (equality + vector + text)
+## 17. Write: `CreateIndex` / `DropIndex` (equality + range + vector + text)
 
-**Goal:** bootstrap a new label with an equality index on `userId`, a multitenant vector index on `embedding`, and a multitenant text index on `body`.
+**Goal:** bootstrap labels with an equality index on `userId`, a descending range index on `createdAt`, a multitenant vector index on `embedding`, and a multitenant text index on `body`.
 
 ```json
 {
@@ -731,6 +731,16 @@ traversals for large edge lists.
         "steps": [
           {"CreateIndex": {
             "spec": {"NodeEquality": {"label": "User", "property": "userId", "unique": true}},
+            "if_not_exists": true
+          }}
+        ],
+        "condition": null
+      }},
+      {"Query": {
+        "name": "idx_createdAt_desc",
+        "steps": [
+          {"CreateIndex": {
+            "spec": {"NodeRange": {"label": "User", "property": "createdAt", "direction": "Desc"}},
             "if_not_exists": true
           }}
         ],
@@ -757,7 +767,7 @@ traversals for large edge lists.
         "condition": null
       }}
     ],
-    "returns": ["idx_userId", "idx_embedding", "idx_body"]
+    "returns": ["idx_userId", "idx_createdAt_desc", "idx_embedding", "idx_body"]
   }
 }
 ```

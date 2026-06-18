@@ -418,13 +418,19 @@ g().create_text_index_edges(label, property, tenant_property)
 IndexSpec::node_equality(label, property)               // unique = false
 IndexSpec::node_unique_equality(label, property)        // unique = true
 IndexSpec::node_range(label, property)
+IndexSpec::node_range_desc(label, property)
+IndexSpec::node_range_with_direction(label, property, RangeIndexDirection::Desc)
 IndexSpec::edge_equality(label, property)
 IndexSpec::edge_range(label, property)
+IndexSpec::edge_range_desc(label, property)
+IndexSpec::edge_range_with_direction(label, property, RangeIndexDirection::Desc)
 IndexSpec::node_vector(label, property, tenant_property: Option<impl Into<String>>)
 IndexSpec::node_text(label, property, tenant_property)
 IndexSpec::edge_vector(label, property, tenant_property)
 IndexSpec::edge_text(label, property, tenant_property)
 ```
+
+Range indexes default to ascending physical order. Use `RangeIndexDirection::Desc` for descending indexes that primarily serve newest-first or high-score-first scans.
 
 Index properties are top-level only in V1. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
 

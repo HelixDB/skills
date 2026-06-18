@@ -10,7 +10,7 @@ All signatures come from `sdks/typescript/src/index.ts`; line numbers are cited 
 import { g, sub, readBatch, writeBatch, NodeRef, EdgeRef, Predicate, SourcePredicate,
          PropertyValue, PropertyInput, Expr, StreamBound, PropertyProjection, ExprProjection,
          Projection, RepeatConfig, IndexSpec, Order, EmitBehavior, AggregateFunction, CompareOp,
-         BatchCondition, DateTime, defineParams, param, registerRead, registerWrite, defineQueries,
+         BatchCondition, DateTime, RangeIndexDirection, defineParams, param, registerRead, registerWrite, defineQueries,
          serializeQueryBundle, stringifyJson, i64, f32, f64, bytes, dateTime } from "@helix-db/helix-db";
 ```
 
@@ -463,13 +463,19 @@ g().createTextIndexEdges(label, property, tenantProperty?)
 IndexSpec.nodeEquality(label, property)         // unique = false
 IndexSpec.nodeUniqueEquality(label, property)   // unique = true
 IndexSpec.nodeRange(label, property)
+IndexSpec.nodeRangeDesc(label, property)
+IndexSpec.nodeRangeWithDirection(label, property, RangeIndexDirection.Desc)
 IndexSpec.edgeEquality(label, property)
 IndexSpec.edgeRange(label, property)
+IndexSpec.edgeRangeDesc(label, property)
+IndexSpec.edgeRangeWithDirection(label, property, RangeIndexDirection.Desc)
 IndexSpec.nodeVector(label, property, tenantProperty?)
 IndexSpec.nodeText(label, property, tenantProperty?)
 IndexSpec.edgeVector(label, property, tenantProperty?)
 IndexSpec.edgeText(label, property, tenantProperty?)
 ```
+
+Range indexes default to ascending physical order. Use `RangeIndexDirection.Desc` for descending indexes that primarily serve newest-first or high-score-first scans.
 
 `createVectorIndexNodes(...)` serializes identically to `createIndexIfNotExists(IndexSpec.nodeVector(...))` — `{"CreateIndex": {"spec": {"NodeVector": {...}}, "if_not_exists": true}}`.
 Index properties are top-level only in V1. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.

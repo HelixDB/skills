@@ -18,6 +18,7 @@ from helixdb import (
     Projection,
     PropertyInput,
     PropertyValue,
+    RangeIndexDirection,
     RepeatConfig,
     SourcePredicate,
     define_params,
@@ -279,10 +280,16 @@ Indexes:
 
 ```python
 g().create_index_if_not_exists(IndexSpec.node_unique_equality("User", "userId"))
+g().create_index_if_not_exists(IndexSpec.node_range_desc("User", "createdAt"))
+g().create_index_if_not_exists(IndexSpec.node_range_with_direction("User", "createdAt", RangeIndexDirection.DESC))
+g().create_index_if_not_exists(IndexSpec.edge_range_desc("FOLLOWS", "since"))
+g().create_index_if_not_exists(IndexSpec.edge_range_with_direction("FOLLOWS", "since", RangeIndexDirection.DESC))
 g().drop_index(IndexSpec.node_range("User", "score"))
 g().create_vector_index_nodes("Document", "embedding", "tenantId")
 g().create_text_index_nodes("Document", "body", "tenantId")
 ```
+
+Range indexes default to ascending physical order (`RangeIndexDirection.ASC`). Use `RangeIndexDirection.DESC` for descending indexes that primarily serve newest-first or high-score-first scans.
 
 ## Predicates And Expressions
 
