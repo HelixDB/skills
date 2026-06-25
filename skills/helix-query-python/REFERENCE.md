@@ -373,4 +373,4 @@ bundle = queries.build_query_bundle()
 queries.generate("queries.json")
 ```
 
-Route names must be unique across read and write routes. Bundles serialize with `QUERY_BUNDLE_VERSION = 4`.
+Route names must be unique across read and write routes. The Python SDK serializes and reads **only** `QUERY_BUNDLE_VERSION = 4`. The Rust, TypeScript, and Go SDKs are at v5 (they read both v4 and v5); a v5 bundle — for example one using row bindings, which Python does not support — will not deserialize in the Python SDK.

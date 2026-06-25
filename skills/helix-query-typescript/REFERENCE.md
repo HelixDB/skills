@@ -27,12 +27,12 @@ empty  -- e,eWhere,eWithLabel[Where]                                         └
 empty  -- vectorSearchNodes[With], textSearchNodes[With]                     └─> nodes
 empty  -- vectorSearchEdges[With], textSearchEdges[With]                     └─> edges
 nodes  -- out, in, both, has, hasLabel, hasKey, where, dedup, within, without,
-          limit, skip, range, as, store, select, inject, orderBy[Multiple],
+          limit, skip, range, as, store, select, inject, bind, orderBy[Multiple],
           repeat, union, choose, coalesce, optional, path, simplePath,
           fold, unfold, withSack, sack*                                      ↻ nodes
 nodes  -- outE, inE, bothE                                                   └─> edges
-nodes  -- count, exists, id, label, values, valueMap, project, group,
-          groupCount, aggregateBy                                            └─> terminal
+nodes  -- count, exists, id, label, values, valueMap, project, projectBindings,
+          projectDistinctBindings, group, groupCount, aggregateBy            └─> terminal
 nodes("write") -- addE, setProperty, removeProperty, drop, dropEdge,
           dropEdgeLabeled, dropEdgeById                                      ↻ nodes
 edges  -- outN, inN, otherN                                                  └─> nodes
@@ -410,6 +410,71 @@ endpoints. Keep `.edgeProperties()` for full edge maps and the internal `$from`
 
 ---
 
+## Row bindings (multi-hop correlation)
+
+`.project(...)` only sees the final stream. When one output row must combine
+values captured at **different hops** of one path, tag elements with
+`.bind(name)` as you pass them, then assemble rows with `.projectBindings(...)`
+/ `.projectDistinctBindings(...)`.
+
+```ts
+.bind(name: string)                                ↻ same stream; enters row mode (throws on empty name)
+.projectBindings(projs: BindingProjection[])       -> Traversal<"terminal", M>  // preserves duplicate rows
+.projectDistinctBindings(projs: BindingProjection[])-> Traversal<"terminal", M> // dedups identical rows
+```
+
+`.bind()` does not change the stream — each path keeps its own row-local
+bindings, so hops inside `union` / `optional` / `choose` can still reference
+earlier captures. Available on `Traversal` (node and edge streams) and on
+`SubTraversal` inside branches (`src/index.ts` `bind`/`projectBindings` —
+`dsl.ts:1234,1258,1666,1693,1696,1866`).
+
+`BindingProjection` constructors (`dsl.ts:915-955`) — tagged on the wire by `kind`:
+
+```ts
+BindingProjection.current("$id", "current_id")              // read from current element
+BindingProjection.binding("service", "$id", "service_id")   // read from a named binding
+BindingProjection.property(BindingTarget.binding("svc"), "name", "svc_name")
+BindingProjection.coalesce([                                // first present non-null wins
+  BindingProjection.bindingRef("deployment", "$id"),
+  BindingProjection.bindingRef("owner", "$id"),
+], "workload_id")
+```
+
+`BindingTarget` is `"Current"` or `{ Binding: name }`
+(`BindingTarget.current()` / `BindingTarget.binding(name)`);
+`BindingValueRef = { target, source }` via
+`BindingProjection.currentRef(source)` / `.bindingRef(name, source)`.
+`source` accepts stored properties and the virtual fields `$id`, `$label`,
+`$from`, `$to`, `$distance`, `$score`.
+
+Worked example:
+
+```ts
+g().nWithLabel("Service")
+  .bind("service")
+  .out("ROUTES_TO").bind("pod")
+  .optional(sub().in("CREATES").bind("deployment"))
+  .union([
+    sub().in("MANAGES").bind("owner"),
+    sub().out("ROUTES_TO").bind("workload"),
+  ])
+  .projectDistinctBindings([
+    BindingProjection.binding("service", "$id", "service_id"),
+    BindingProjection.current("$id", "current_id"),
+    BindingProjection.coalesce([
+      BindingProjection.bindingRef("deployment", "$id"),
+      BindingProjection.bindingRef("owner", "$id"),
+    ], "workload_id"),
+  ]);
+```
+
+Emits a query bundle at **v5** (`QUERY_BUNDLE_VERSION = 5`, `dsl.ts:2447-2449`;
+v4 is still accepted on read via `SUPPORTED_QUERY_BUNDLE_VERSIONS`). See
+`../helix-query-json-dynamic/REFERENCE.md` for the JSON wire shape.
+
+---
+
 ## Terminals (metadata)
 
 ```ts
@@ -536,7 +601,7 @@ serializeQueryBundle(bundle)        // src/index.ts:2439  (pretty JSON string)
 deserializeQueryBundle(json)        // src/index.ts:2443  (validates version)
 ```
 
-`DefinedQueries` is at `src/index.ts:2329`; `QUERY_BUNDLE_VERSION = 4` at `src/index.ts:2250`; `QueryBundle` shape (`version`, `read_routes`, `write_routes`, `read_parameters`, `write_parameters`) at `src/index.ts:2252`. Route names must be unique across read + write — duplicates throw `GenerateError` (`src/index.ts:197`).
+`DefinedQueries` is at `src/index.ts:2329`; `QUERY_BUNDLE_VERSION = 5` (`dsl.ts:2447-2449`) — bundles serialize at v5; v4 is still accepted on read via `SUPPORTED_QUERY_BUNDLE_VERSIONS = [4, 5]`; `QueryBundle` shape (`version`, `read_routes`, `write_routes`, `read_parameters`, `write_parameters`). Route names must be unique across read + write — duplicates throw `GenerateError` (`src/index.ts:197`).
 
 ---
 
@@ -634,6 +699,10 @@ DynamicQueryRequestType.{Read, Write}                // src/index.ts:2174 (lower
 | `read_batch()` / `write_batch()` | `readBatch()` / `writeBatch()` |
 | `var_as(...)` / `var_as_if(...)` | `varAs(...)` / `varAsIf(...)` |
 | `for_each_param(...)` | `forEachParam(...)` |
+| `bind(...)` | `bind(...)` |
+| `project_bindings(...)` / `project_distinct_bindings(...)` | `projectBindings(...)` / `projectDistinctBindings(...)` |
+| `BindingProjection::binding(...)` / `::coalesce(...)` | `BindingProjection.binding(...)` / `.coalesce(...)` |
+| `BindingValueRef::binding(...)` | `BindingProjection.bindingRef(...)` |
 | `n_with_label[_where]` | `nWithLabel[Where]` |
 | `in_` | `in` |
 | `where_(...)` | `where(...)` |

@@ -208,6 +208,56 @@ func ListDescribesRelationships() helix.Request {
 }
 ```
 
+## Row Bindings: Multi-Hop Correlation
+
+Use this when one output row must combine values captured at **different hops**
+of a single path — `.Project(...)` only sees the final stream. Tag elements with
+`.Bind(name)` as you pass them, then assemble rows with
+`.ProjectDistinctBindings(...)` (or `.ProjectBindings(...)` to keep duplicates).
+
+```go
+func ServiceTopology() helix.Request {
+	return helix.ReadQuery("service_topology").
+		VarAs("rows",
+			helix.G().
+				NWithLabel("Service").
+				Bind("service").
+				Out("ROUTES_TO").Bind("pod").
+				Optional(helix.Sub().In("CREATES").Bind("deployment")).
+				Union(
+					helix.Sub().In("MANAGES").Bind("owner"),
+					helix.Sub().Out("ROUTES_TO").Bind("workload"),
+				).
+				ProjectDistinctBindings(
+					helix.ProjectNamedBinding("service", "$id", "service_id"),
+					helix.ProjectNamedBinding("pod", "name", "pod_name"),
+					helix.ProjectBindingCoalesce([]helix.BindingValueRef{
+						helix.NamedBindingValue("deployment", "$id"),
+						helix.NamedBindingValue("owner", "$id"),
+					}, "workload_id"),
+				),
+		).
+		Returning("rows")
+}
+```
+
+Wire format (each tag is a `Bind` step; the terminal is `ProjectBindings`):
+
+```json
+{"Bind": "service"}
+{"ProjectBindings": {
+  "projections": [
+    {"kind": "Property", "target": {"Binding": "service"}, "source": "$id", "alias": "service_id"},
+    {"kind": "Property", "target": {"Binding": "pod"}, "source": "name", "alias": "pod_name"},
+    {"kind": "Coalesce", "refs": [
+      {"target": {"Binding": "deployment"}, "source": "$id"},
+      {"target": {"Binding": "owner"}, "source": "$id"}
+    ], "alias": "workload_id"}
+  ],
+  "distinct": true
+}}
+```
+
 ## 9. For Each Param Writes
 
 ```go

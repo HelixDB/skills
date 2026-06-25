@@ -356,6 +356,66 @@ Wire format:
 
 ---
 
+## Row bindings: multi-hop correlation
+
+Use this when a single output row must combine values captured at **different
+hops** of one path — `.project(...)` only sees the final stream. Tag elements
+with `.bind(name)` as you pass them, then assemble rows with
+`.project_distinct_bindings(...)` (or `.project_bindings(...)` to keep
+duplicates). `coalesce` picks the first present non-null reference.
+
+```rust
+#[register]
+pub fn service_topology() -> ReadBatch {
+    read_batch()
+        .var_as(
+            "rows",
+            g().n_with_label("Service")
+                .bind("service")
+                .out(Some("ROUTES_TO")).bind("pod")
+                .optional(sub().in_(Some("CREATES")).bind("deployment"))
+                .union(vec![
+                    sub().in_(Some("MANAGES")).bind("owner"),
+                    sub().out(Some("ROUTES_TO")).bind("workload"),
+                ])
+                .project_distinct_bindings(vec![
+                    BindingProjection::binding("service", "$id", "service_id"),
+                    BindingProjection::binding("pod", "name", "pod_name"),
+                    BindingProjection::coalesce(
+                        vec![
+                            BindingValueRef::binding("deployment", "$id"),
+                            BindingValueRef::binding("owner", "$id"),
+                        ],
+                        "workload_id",
+                    ),
+                ]),
+        )
+        .returning(["rows"])
+}
+```
+
+Wire format (each tag is a `Bind` step; the terminal is `ProjectBindings`):
+
+```json
+{"Bind": "service"}
+{"ProjectBindings": {
+  "projections": [
+    {"kind": "Property", "target": {"Binding": "service"}, "source": "$id", "alias": "service_id"},
+    {"kind": "Property", "target": {"Binding": "pod"}, "source": "name", "alias": "pod_name"},
+    {"kind": "Coalesce", "refs": [
+      {"target": {"Binding": "deployment"}, "source": "$id"},
+      {"target": {"Binding": "owner"}, "source": "$id"}
+    ], "alias": "workload_id"}
+  ],
+  "distinct": true
+}}
+```
+
+This emits a **v5** query bundle. Not available in the Python SDK yet — use
+another SDK or hand-write the JSON for binding queries from Python.
+
+---
+
 ## 12. Write: `add_n` + `add_e` in one batch with cross-entry `Var` reference
 
 ```rust

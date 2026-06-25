@@ -165,7 +165,7 @@ Route names must be unique across read and write routes — duplicates throw `Ge
 | Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/nodeRangeDesc/nodeRangeWithDirection/edgeEquality/edgeRange/edgeRangeDesc/edgeRangeWithDirection/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. `RangeIndexDirection.Desc` sets descending physical order. |
 | Output | `toJsonString`, `toDynamicJson`, `toDynamicRequest`, `toDynamicBytes` | Dynamic forms take `(params, values, options)` unless the query has no parameters; pass `{ queryName }` to set top-level `query_name`. |
 | Client / transport | `new Client(url)`, `.withApiKey`, `.query<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.body`, `.dynamic`/`.stored`, `.send()` | Sends to `POST /v1/query`; `send()` resolves parsed JSON on 200, else throws `HelixError`. |
-| Bundles | `defineParams`, `param.*`, `registerRead`, `registerWrite`, `defineQueries`, `serializeQueryBundle`, `.buildQueryBundle()`, `.generate()` | `QUERY_BUNDLE_VERSION = 4`. |
+| Bundles | `defineParams`, `param.*`, `registerRead`, `registerWrite`, `defineQueries`, `serializeQueryBundle`, `.buildQueryBundle()`, `.generate()` | `QUERY_BUNDLE_VERSION = 5` (reads v4 + v5). |
 
 See `REFERENCE.md` for full signatures and typestate constraints.
 

@@ -676,6 +676,59 @@ traversals for large edge lists.
 
 ---
 
+## Row Bindings: multi-hop correlation
+
+**Goal:** return one row per path that combines values captured at different
+hops. Tag elements with `Bind` steps as the traversal passes them, then build
+the output rows with a `ProjectBindings` terminal. `Coalesce` picks the first
+present non-null reference. `distinct: true` deduplicates identical rows.
+
+```json
+{
+  "request_type": "read",
+  "query": {
+    "queries": [
+      {"Query": {
+        "name": "rows",
+        "steps": [
+          {"NWhere": {"Eq": ["$label", {"String": "Service"}]}},
+          {"Bind": "service"},
+          {"Out": "ROUTES_TO"},
+          {"Bind": "pod"},
+          {"Optional": [{"In": "CREATES"}, {"Bind": "deployment"}]},
+          {"Union": [
+            [{"In": "MANAGES"}, {"Bind": "owner"}],
+            [{"Out": "ROUTES_TO"}, {"Bind": "workload"}]
+          ]},
+          {"ProjectBindings": {
+            "projections": [
+              {"kind": "Property", "target": {"Binding": "service"}, "source": "$id", "alias": "service_id"},
+              {"kind": "Property", "target": {"Binding": "pod"}, "source": "name", "alias": "pod_name"},
+              {"kind": "Property", "target": "Current", "source": "$id", "alias": "current_id"},
+              {"kind": "Coalesce", "refs": [
+                {"target": {"Binding": "deployment"}, "source": "$id"},
+                {"target": {"Binding": "owner"}, "source": "$id"}
+              ], "alias": "workload_id"}
+            ],
+            "distinct": true
+          }}
+        ],
+        "condition": null
+      }}
+    ],
+    "returns": ["rows"]
+  }
+}
+```
+
+`source` accepts stored properties and the virtual fields `$id`, `$label`,
+`$from`, `$to`, `$distance`, `$score`. `Bind` names must be non-empty. This is
+the wire form the Rust/TypeScript/Go DSL `bind` + `project[_distinct]_bindings`
+builders emit; the Python SDK does not generate it yet, so hand-write this JSON
+for binding queries from Python.
+
+---
+
 ## 16. Write: typed-array parameter + `DateTime` parameter
 
 **Goal:** restrict to users whose status is in a list and were created after a datetime.

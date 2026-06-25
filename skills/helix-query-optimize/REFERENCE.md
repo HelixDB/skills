@@ -276,6 +276,17 @@ one row per edge. Use those for source/target resource ids instead of
 `Projection.from_endpoint`, or `helix.ProjectFromEndpoint` and the matching
 `to` helper.
 
+Row bindings (`bind` + `project_bindings` / `project_distinct_bindings`) avoid
+re-running a multi-hop traversal once per correlated column: tag elements with
+`Bind` as the single traversal passes them, then assemble rows from the named
+bindings at the terminal. The alternative — separate queries or repeated
+sub-traversals to recover earlier hops — multiplies read cost. Two cardinality
+notes: `project_bindings` emits one row per surviving path and **preserves
+duplicates**, so a fan-out through `union` / `repeat` can multiply row count;
+reach for `project_distinct_bindings` when identical projected rows should
+collapse (it dedups the projected tuple, not the underlying paths). Not available
+in the Python SDK.
+
 ---
 
 ## 11. Repeat semantics

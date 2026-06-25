@@ -137,6 +137,12 @@ Prefer `should_await_durability(True)` on writes. It reduces HTTP 409 conflicts 
 - Avoid returning large properties such as embeddings unless the caller needs them.
 - Match `.returning([...])` names to the response keys your application expects.
 
+> **Row bindings are not available in the Python SDK yet.** The `bind` /
+> `project_bindings` / `project_distinct_bindings` multi-hop correlation steps
+> exist in the Rust, TypeScript, and Go SDKs but not in Python. If you need them
+> from Python, hand-write the `Bind` / `ProjectBindings` JSON AST (see
+> `helix-query-json-dynamic`) or generate the query from another SDK.
+
 ### 7. Use Bundles Only When Needed
 
 Python supports the same bundle metadata shape as TypeScript:

@@ -323,6 +323,62 @@ Wire format:
 
 ---
 
+## Row bindings: multi-hop correlation
+
+Use this when one output row must combine values captured at **different hops**
+of a single path — `.project(...)` only sees the final stream. Tag elements with
+`.bind(name)` as you pass them, then assemble rows with
+`.projectDistinctBindings(...)` (or `.projectBindings(...)` to keep duplicates).
+`coalesce` picks the first present non-null reference.
+
+```ts
+function serviceTopology() {
+  return readBatch()
+    .varAs(
+      "rows",
+      g()
+        .nWithLabel("Service")
+        .bind("service")
+        .out("ROUTES_TO").bind("pod")
+        .optional(sub().in("CREATES").bind("deployment"))
+        .union([
+          sub().in("MANAGES").bind("owner"),
+          sub().out("ROUTES_TO").bind("workload"),
+        ])
+        .projectDistinctBindings([
+          BindingProjection.binding("service", "$id", "service_id"),
+          BindingProjection.binding("pod", "name", "pod_name"),
+          BindingProjection.coalesce([
+            BindingProjection.bindingRef("deployment", "$id"),
+            BindingProjection.bindingRef("owner", "$id"),
+          ], "workload_id"),
+        ]),
+    )
+    .returning(["rows"]);
+}
+```
+
+Wire format (each tag is a `Bind` step; the terminal is `ProjectBindings`):
+
+```json
+{"Bind": "service"}
+{"ProjectBindings": {
+  "projections": [
+    {"kind": "Property", "target": {"Binding": "service"}, "source": "$id", "alias": "service_id"},
+    {"kind": "Property", "target": {"Binding": "pod"}, "source": "name", "alias": "pod_name"},
+    {"kind": "Coalesce", "refs": [
+      {"target": {"Binding": "deployment"}, "source": "$id"},
+      {"target": {"Binding": "owner"}, "source": "$id"}
+    ], "alias": "workload_id"}
+  ],
+  "distinct": true
+}}
+```
+
+This emits a **v5** query bundle. Not available in the Python SDK yet.
+
+---
+
 ## 12. Write: `addN` + `addE` in one batch with cross-entry `Var` reference
 
 ```ts

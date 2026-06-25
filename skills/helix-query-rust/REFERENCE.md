@@ -14,10 +14,11 @@ Empty  -- vector_search_nodes[_with], text_search_nodes[_with]          └─> 
 Empty  -- vector_search_edges[_with], text_search_edges[_with]          └─> OnEdges
 OnNodes -- out, in_, both, has, has_label, has_key, where_, dedup,
            within, without, limit, skip, range, as_, store, select,
-           inject, order_by[_multiple], repeat, union, choose, coalesce,
-           optional, path, simple_path, fold, unfold, sack_*            ↻ OnNodes
+           inject, bind, order_by[_multiple], repeat, union, choose,
+           coalesce, optional, path, simple_path, fold, unfold, sack_*  ↻ OnNodes
 OnNodes -- out_e, in_e, both_e                                          └─> OnEdges
 OnNodes -- count, exists, id, label, values, value_map, project,
+           project_bindings, project_distinct_bindings,
            group, group_count, aggregate_by                             └─> Terminal
 OnNodes(WriteEnabled) -- add_e, set_property, remove_property,
            drop, drop_edge, drop_edge_labeled, drop_edge_by_id          ↻ OnNodes
@@ -345,6 +346,71 @@ endpoints. Keep `.edge_properties()` for full edge maps and the internal `$from`
 
 ---
 
+## Row bindings (multi-hop correlation)
+
+`.project(...)` only sees the *final* stream. When you need columns captured at
+**different hops** of one traversal correlated on the same path, use row
+bindings: tag elements as you pass them with `.bind(name)`, then build the output
+rows with `.project_bindings(...)` / `.project_distinct_bindings(...)`.
+
+```rust
+.bind(name: impl Into<String>)                                  ↻ same stream; enters row mode (panics on empty name)
+.project_bindings(vec![...]: Vec<BindingProjection>)            -> Traversal<Terminal, M>  // preserves duplicate rows
+.project_distinct_bindings(vec![...]: Vec<BindingProjection>)   -> Traversal<Terminal, M>  // dedups identical rows
+```
+
+`.bind()` does not change the stream — each path keeps its own row-local
+bindings, so later hops (including those inside `union`, `optional`, `choose`)
+can still reference earlier captures. `.bind()` is available on `Traversal`
+(both node and edge streams) and on `SubTraversal` inside branches.
+(`sdks/rust/src/dsl.rs:3905,3972,3980,4344,4381,4389`.)
+
+`BindingProjection` constructors (`sdks/rust/src/dsl.rs:2130-2187`):
+
+```rust
+BindingProjection::current("$id", "current_id")           // read from the current element
+BindingProjection::binding("service", "$id", "service_id")// read from a named binding
+BindingProjection::property(BindingTarget::binding("svc"), "name", "svc_name")
+BindingProjection::coalesce(vec![                          // first present non-null wins
+    BindingValueRef::binding("deployment", "$id"),
+    BindingValueRef::binding("owner", "$id"),
+], "workload_id")
+```
+
+`BindingTarget` is `Current` or `Binding(name)`; `BindingValueRef { target, source }`
+has `BindingValueRef::current(source)` / `BindingValueRef::binding(name, source)`.
+The `source` accepts stored properties and the virtual fields `$id`, `$label`,
+`$from`, `$to`, `$distance`, `$score` — same set as `.project(...)`.
+
+Worked example (a service → pod → owner/workload correlation, one row per path):
+
+```rust
+g().n_with_label("Service")
+    .bind("service")
+    .out(Some("ROUTES_TO")).bind("pod")
+    .optional(sub().in_(Some("CREATES")).bind("deployment"))
+    .union(vec![
+        sub().in_(Some("MANAGES")).bind("owner"),
+        sub().out(Some("ROUTES_TO")).bind("workload"),
+    ])
+    .project_distinct_bindings(vec![
+        BindingProjection::binding("service", "$id", "service_id"),
+        BindingProjection::current("$id", "current_id"),
+        BindingProjection::coalesce(
+            vec![
+                BindingValueRef::binding("deployment", "$id"),
+                BindingValueRef::binding("owner", "$id"),
+            ],
+            "workload_id",
+        ),
+    ]);
+```
+
+Serializes to query bundle **v5** (`QUERY_BUNDLE_VERSION = 5`; v4 still accepted
+on read). See `../helix-query-json-dynamic/REFERENCE.md` for the wire shape.
+
+---
+
 ## Terminals (metadata)
 
 ```rust
@@ -489,7 +555,7 @@ pub fn generate() -> Result<PathBuf, GenerateError>               // writes quer
 pub fn generate_to_path<P: AsRef<Path>>(path: P) -> Result<PathBuf, GenerateError>
 ```
 
-Wire format version: `QUERY_BUNDLE_VERSION = 4`. `deserialize_query_bundle` rejects mismatched versions.
+Wire format version: `QUERY_BUNDLE_VERSION = 5` (`sdks/rust/src/query_generator.rs:6-13`). Bundles serialize at v5; `deserialize_query_bundle` accepts both v4 and v5 (`SUPPORTED_QUERY_BUNDLE_VERSIONS = [4, 5]`) and rejects any other version.
 
 ### `DynamicQueryRequest`
 

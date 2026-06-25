@@ -321,6 +321,34 @@ A `Vec<Projection>` inside a `Project` step contains a mix of `PropertyProjectio
 ]
 ```
 
+### `BindingProjection`  (`sdks/rust/src/dsl.rs:2130`)  —  internally tagged by `kind`
+
+Used inside the `ProjectBindings` step (see Step Catalog). Two variants:
+
+```json
+{"kind": "Property", "target": <BindingTarget>, "source": "<property>", "alias": "<output_name>"}
+{"kind": "Coalesce", "refs": [<BindingValueRef>, ...], "alias": "<output_name>"}
+```
+
+`Coalesce` projects the first present non-null `ref`, in order. `source` accepts
+the same virtual fields as `PropertyProjection` (`$id`, `$label`, `$distance`,
+`$from`, `$to`, `$score`).
+
+`BindingTarget`  (`sdks/rust/src/dsl.rs:2080`) — `"Current"` (the current
+traverser element) or `{"Binding": "<name>"}` (a row-local binding captured by a
+`Bind` step):
+
+```json
+"Current"
+{"Binding": "service"}
+```
+
+`BindingValueRef`  (`sdks/rust/src/dsl.rs:2102`):
+
+```json
+{"target": <BindingTarget>, "source": "<property>"}
+```
+
 ---
 
 ## 7. Order, Emit, Aggregation
@@ -469,6 +497,7 @@ right-hand side must be a `PropertyInput` expression or runtime parameter.
 | `Store(String)` | `{"Store": "<var>"}` — alias of `As` |
 | `Select(String)` | `{"Select": "<var>"}` — replace stream with a stored var |
 | `Inject(String)` | `{"Inject": "<var>"}` — start from or merge with a stored var |
+| `Bind(String)` | `{"Bind": "<name>"}` — tag current element as a row-local binding; enters row mode. Name must be non-empty. |
 
 ### Ordering (TS: `N` or `X`)
 
@@ -510,6 +539,7 @@ range indexes in V1.
 | `Values(Vec<String>)` | `{"Values": ["name", "email"]}` |
 | `ValueMap(Option<Vec<String>>)` | `{"ValueMap": ["$id", "name"]}` or `{"ValueMap": null}` |
 | `Project(Vec<Projection>)` | `{"Project": [<Projection>, ...]}` — Projection entries are **untagged** |
+| `ProjectBindings { projections, distinct }` | `{"ProjectBindings": {"projections": [<BindingProjection>, ...], "distinct": false}}` — row-binding terminal; `BindingProjection` entries are tagged by `kind`. `distinct: true` dedups identical rows. |
 | `EdgeProperties` (TS: `X`) | `"EdgeProperties"` |
 
 Filtered `Values`, filtered `ValueMap`, `Project.source`, and `Expr.Property` accept dotted object

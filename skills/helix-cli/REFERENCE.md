@@ -23,7 +23,7 @@ With no subcommand, `helix` prints a welcome banner (and any available CLI/skill
 
 ### `helix init [OPTIONS] [TARGET]`
 
-Scaffold a new project: writes `helix.toml`, a `.helix/` workspace dir, `examples/request.json`, and `.gitignore` entries (`.helix/`, `target/`, `*.log`). With no target it prompts interactively.
+Scaffold a new project: writes `helix.toml`, a `.helix/` workspace dir, `.gitignore` entries (`.helix/`, `target/`, `*.log`), and — for local targets only — `examples/request.json` and an `AGENTS.md` (instructions for coding agents picking up the project; never overwrites an existing one). With no target it prompts interactively.
 
 Top-level flags (before or independent of the target):
 
@@ -57,6 +57,7 @@ Interactive one-shot bootstrapper that hands off to a coding agent. **Takes no f
 
 Add an instance to an existing `helix.toml` without clobbering others.
 
+- `-p, --path <DIR>` — project directory containing `helix.toml` (default: walk up from the current dir). Accepted before or after the target: `helix add --path ./app local --name qa` and `helix add local --name qa --path ./app` both work.
 - `helix add local` — `-n, --name <NAME>` (required), `--port <PORT>` (default `6969`), `--disk`.
 - `helix add cloud` (alias `enterprise`) — `-n, --name <NAME>` (required), `--cluster-id <ID>`, `--gateway-url <URL>`.
 
@@ -161,9 +162,11 @@ See `helix-query-json-dynamic` for the full inline-AST grammar.
 
 - Auto-imports in scope: `g`, `readBatch`, `writeBatch`, `defineParams`, `param`.
 - The CLI evaluates the expression in Node (needs Node 20+ on PATH), calls `.toDynamicJson()`, and infers `request_type` from read-vs-write batch.
-- The `@helix-db/helix-db` SDK is `npm install`ed once into `<helix cache>/ts-runtime/` (spec `^2.0.2`), reused thereafter.
+- The `@helix-db/helix-db` SDK is `npm install`ed once into `<helix cache>/ts-runtime/` (spec `^2.0.6`, i.e. the latest 2.x), reused thereafter.
 
 **Cloud auth:** for an `[enterprise.<instance>]` target, the CLI posts to `<gateway_url>/v1/query` with the header named by `query_auth_header` (default `Authorization`), valued from the env named by `query_auth_env` (default `HELIX_API_KEY`), read from the shell or a project-root `.env`.
+
+**Connection errors:** if the instance is unreachable, the CLI reports `cannot reach Helix instance '<instance>' at <endpoint>` with a kind-specific hint — local: `helix start <instance>` then `helix status <instance>` (or pass `--host`/`--port`); enterprise: check `gateway_url` in `helix.toml` and run `helix sync <instance>`.
 
 ## Cloud
 

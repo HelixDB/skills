@@ -216,6 +216,7 @@ Bounds and variables:
 .Skip(offsetParam)
 .Range(start, end)
 .As("x") .Store("x") .Select("x") .Inject("x")
+.Bind("service")   // tag current element as a row-local binding; enters row mode
 ```
 
 Terminals and projection:
@@ -245,6 +246,31 @@ node properties such as resource ids without traversing from every edge to its
 endpoints. Keep `.EdgeProperties()` for full edge maps and the internal `$from`
 / `$to` node ids.
 
+Row bindings (multi-hop correlation):
+
+```go
+.ProjectBindings(
+    helix.ProjectNamedBinding("service", "$id", "service_id"), // read from a named binding
+    helix.ProjectCurrentBinding("$id", "current_id"),          // read from the current element
+    helix.ProjectBindingCoalesce([]helix.BindingValueRef{      // first present non-null wins
+        helix.NamedBindingValue("deployment", "$id"),
+        helix.NamedBindingValue("owner", "$id"),
+    }, "workload_id"),
+)
+.ProjectDistinctBindings(/* same args; dedups identical rows */)
+```
+
+`.Project(...)` only sees the final stream. When one output row must combine
+values captured at **different hops**, tag elements with `.Bind(name)` as you
+pass them, then assemble rows with `.ProjectBindings(...)` (preserves duplicate
+rows) or `.ProjectDistinctBindings(...)` (dedups). Constructors
+(`sdks/go/dsl.go:622-668`): `helix.Binding(name)` / `helix.CurrentBinding()`
+build a `BindingTarget`; `helix.ProjectBinding(target, source, alias)`,
+`ProjectNamedBinding`, `ProjectCurrentBinding`, and `ProjectBindingCoalesce`
+build `BindingProjection`s; `NamedBindingValue` / `CurrentBindingValue` build
+`BindingValueRef`s. `source` accepts stored properties and the virtual fields
+`$id`, `$label`, `$from`, `$to`, `$distance`, `$score`. Emits a **v5** bundle.
+
 Writes:
 
 ```go
@@ -272,9 +298,10 @@ Branching and aggregation:
 ```
 
 `helix.Sub()` is for inline branch traversals. It currently supports `Out`, `In`,
-`Both`, `Where`, `Limit`, and `Count`. Put shared terminal projections such as
-`ValueMap` or `Project` after the parent `.Choose`, `.Union`, `.Coalesce`, or
-`.Optional` step.
+`Both`, `Where`, `Limit`, `Count`, and `Bind` (`sdks/go/dsl.go:1191-1209`) — use
+`.Bind` inside a branch to tag the element reached on that arm. Put shared
+terminal projections such as `ValueMap`, `Project`, or `ProjectBindings` after
+the parent `.Choose`, `.Union`, `.Coalesce`, or `.Optional` step.
 
 Indexes:
 
