@@ -199,7 +199,7 @@ def search_documents(p=search_documents_params):
             .project([
                 Projection.property("$id", "id"),
                 Projection.property("title"),
-                Projection.property("$distance", "score"),
+                Projection.property("$score", "score"),
             ]),
         )
         .returning(["results"])
@@ -308,5 +308,5 @@ def test_find_users_request_json():
         query_name="find_users",
     )
     assert '"query_name":"find_users"' in body
-    assert '"parameter_types":{"tenant_id":"String","limit":"I64"}' in body
+    assert '"parameter_types":{"tenant_id":"string","limit":"i64"}' in body
 ```

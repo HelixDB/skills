@@ -3,13 +3,13 @@
 Use this reference to confirm forthcoming v3 Go SDK method names and request
 patterns. The module path intentionally has no `/v3` suffix:
 
-```go
+```text
 import helix "github.com/helixdb/helix-db/sdks/go"
 ```
 
 ## Request Shape
 
-```go
+```text
 type Request interface {
 	json.Marshaler
 	Validate() error
@@ -26,7 +26,7 @@ func MarshalRequest(req helix.Request) ([]byte, error)
 
 Primary usage:
 
-```go
+```text
 func Query(args ...) helix.Request {
 	q := helix.ReadQuery("query_name")
 	return q.VarAs("result", helix.G()...).Returning("result")
@@ -39,7 +39,7 @@ Pass explicit names to `.Returning(...)` for every response variable that should
 
 Both read and write builders support:
 
-```go
+```text
 .VarAs(name string, traversal *helix.Traversal)
 .VarAsIf(name string, condition helix.BatchCondition, traversal *helix.Traversal)
 .Returning(vars ...string) helix.Request
@@ -48,7 +48,7 @@ Both read and write builders support:
 `ForEachParam` is available on both builders, but the body type follows the request
 kind:
 
-```go
+```text
 read.ForEachParam(param string, body *helix.ReadBatch)
 write.ForEachParam(param string, body *helix.WriteBatch)
 ```
@@ -57,7 +57,7 @@ Read builders reject write traversals during validation. Write builders accept r
 
 ## Inline Params
 
-```go
+```text
 q.ParamBool(name string, value bool)
 q.ParamI64(name string, value any)
 q.ParamF64(name string, value any)
@@ -71,7 +71,7 @@ q.ParamArray(name string, value any, inner helix.QueryParamType)
 
 Each returns `helix.ParamRef`:
 
-```go
+```text
 ref.Expr()  // helix.Expr
 ref.Input() // helix.PropertyInput
 ref.Bound() // helix.StreamBound
@@ -79,7 +79,7 @@ ref.Bound() // helix.StreamBound
 
 Direct Go values are literals in the inline AST. `helix.SourceEq("id", "foo")` and `helix.PredEq("id", "foo")` embed `"foo"` directly and do not create parameters. For request-specific values, declare a `q.Param*` value and pass the returned ref so the request body has a stable query shape and runtime value metadata:
 
-```go
+```text
 id := q.ParamString("id", userID)
 helix.G().NWhere(helix.SourceEq("id", id))
 helix.G().NWithLabel("User").Where(helix.PredEq("id", id))
@@ -87,7 +87,7 @@ helix.G().NWithLabel("User").Where(helix.PredEq("id", id))
 
 Parameter type constructors:
 
-```go
+```text
 helix.ParamTypeBool()
 helix.ParamTypeI64()
 helix.ParamTypeF64()
@@ -106,7 +106,7 @@ Dynamic JSON cannot represent bytes values. `ParamTypeBytes()` exists for schema
 
 Property values are tagged on the wire:
 
-```go
+```text
 helix.Null()
 helix.Bool(true)
 helix.I64(42)
@@ -127,7 +127,7 @@ helix.ObjectFromEntries(helix.Entry("k", "v"))
 
 Property inputs are value-or-expression wrappers:
 
-```go
+```text
 helix.ValueInput(value)
 helix.ExprInput(expr)
 helix.ParamInput("name")
@@ -137,7 +137,7 @@ Most mutation/search methods accept normal Go values, `helix.Expr`, or `helix.Pa
 
 ## Traversal Sources
 
-```go
+```text
 helix.G()
 helix.Sub()
 
@@ -165,7 +165,7 @@ example `ids := q.ParamArray("node_ids", []int64{1, 2}, helix.ParamTypeI64())` a
 
 Search:
 
-```go
+```text
 G().VectorSearchNodes(label, property, []float32{1, 0, 0}, 10, tenantValue)
 G().VectorSearchNodesWith(label, property, queryVectorInput, kBound, tenantInputPtr)
 G().TextSearchNodes(label, property, "graph", 10, tenantValue)
@@ -176,7 +176,7 @@ G().TextSearchEdges(...)
 
 Use `*With` variants for params:
 
-```go
+```text
 queryVector := q.ParamArray("query_vector", []float32{1, 0, 0}, helix.ParamTypeF32())
 limit := q.ParamI64("limit", int64(10))
 tenant := q.ParamString("tenant_id", tenantID)
@@ -189,7 +189,7 @@ G().VectorSearchNodesWith("Document", "embedding", queryVector.Input(), limit.Bo
 
 Navigation:
 
-```go
+```text
 .Out("FOLLOWS") .In("FOLLOWS") .Both("RELATED")
 .OutE("FOLLOWS") .InE("FOLLOWS") .BothE("RELATED")
 .OutN() .InN() .OtherN()
@@ -197,7 +197,7 @@ Navigation:
 
 Filters:
 
-```go
+```text
 .Has("status", "active")
 .HasLabel("User")
 .HasKey("externalId")
@@ -211,7 +211,7 @@ Filters:
 
 Bounds and variables:
 
-```go
+```text
 .Limit(10)
 .Limit(limitParam)
 .Skip(offsetParam)
@@ -222,7 +222,7 @@ Bounds and variables:
 
 Terminals and projection:
 
-```go
+```text
 .Count()
 .Exists()
 .ID()
@@ -249,7 +249,7 @@ endpoints. Keep `.EdgeProperties()` for full edge maps and the internal `$from`
 
 Row bindings (multi-hop correlation):
 
-```go
+```text
 .ProjectBindings(
     helix.ProjectNamedBinding("service", "$id", "service_id"), // read from a named binding
     helix.ProjectCurrentBinding("$id", "current_id"),          // read from the current element
@@ -275,7 +275,7 @@ serialize inside the normal direct request.
 
 Writes:
 
-```go
+```text
 .AddN("User", helix.Props{helix.Prop("name", nameParam)})
 .AddE("FOLLOWS", helix.NodeVar("target"), helix.Props{helix.Prop("since", sinceParam)})
 .SetProperty("name", nameParam)
@@ -288,7 +288,7 @@ Writes:
 
 Branching and aggregation:
 
-```go
+```text
 .Repeat(helix.Repeat(helix.Sub().Out("FOLLOWS")).WithTimes(2).EmitAll().WithMaxDepth(4))
 .Union(helix.Sub().Out("FOLLOWS"), helix.Sub().In("FOLLOWS"))
 .Choose(pred, helix.Sub().Out("A"), helix.Sub().Out("B"))
@@ -307,7 +307,7 @@ the parent `.Choose`, `.Union`, `.Coalesce`, or `.Optional` step.
 
 Indexes:
 
-```go
+```text
 .CreateIndexIfNotExists(helix.NodeEqualityIndex("User", "externalId"))
 .CreateIndexIfNotExists(helix.NodeUniqueEqualityIndex("User", "email"))
 .CreateIndexIfNotExists(helix.NodeRangeIndex("User", "createdAt"))
@@ -316,7 +316,7 @@ Indexes:
 .CreateIndexIfNotExists(helix.EdgeEqualityIndex("FOLLOWS", "since"))
 .CreateIndexIfNotExists(helix.EdgeRangeDescIndex("FOLLOWS", "since"))
 .CreateIndexIfNotExists(helix.EdgeRangeIndexWithDirection("FOLLOWS", "since", helix.RangeIndexDesc))
-.CreateVectorIndexNodes("Document", "embedding", "tenantId")
+.CreateVectorIndexNodes("Document", "embedding", 1536, helix.VectorDistanceCosine, "tenantId")
 .CreateTextIndexNodes("Document", "body", "tenantId")
 .DropIndex(helix.NodeRangeIndex("User", "createdAt"))
 ```
@@ -327,7 +327,7 @@ Range indexes default to ascending physical order (`helix.RangeIndexAsc`). Use `
 
 Predicates:
 
-```go
+```text
 helix.PredEq("status", "active")
 helix.PredNeq("status", "deleted")
 helix.PredGt("score", helix.F64(0.8))
@@ -356,7 +356,7 @@ Passing a direct string, number, bool, or `helix.PropertyValue` to a predicate i
 
 Expressions:
 
-```go
+```text
 helix.ExprProp("score")
 helix.ExprID()
 helix.ExprTimestamp()
@@ -370,7 +370,7 @@ helix.ExprCase(branches, elseExprPtr)
 
 ## Client
 
-```go
+```text
 client, err := helix.NewClient("http://localhost:6969")
 client, err := helix.NewClient("https://helix.example.com", helix.WithAPIKey("hx_secret"))
 client = client.WithAPIKey("hx_secret")
@@ -382,14 +382,14 @@ can read it safely while other goroutines rotate or clear the key.
 
 Execute:
 
-```go
+```text
 err := client.Exec(ctx, FindUsers("acme", 25), &out)
 err = client.Exec(ctx, CreateUser("Alice", "acme"), &created, helix.WriterOnly(), helix.AwaitDurability(true))
 ```
 
 Options:
 
-```go
+```text
 helix.WriterOnly()
 helix.WarmOnly()
 helix.AwaitDurability(true)
@@ -401,7 +401,7 @@ Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more like
 
 Remote errors are returned as `*helix.HelixError` with `Kind: helix.ErrorRemote`, `Details`, and `StatusCode` set. `helix.IsConflict(err)` and `errors.Is(err, helix.ErrConflict)` detect HTTP 409 conflicts. The SDK does not retry conflicts automatically; callers should retry only when the operation is safe to replay.
 
-```go
+```text
 func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func() helix.Request, out any) error {
 	for attempt := 0; attempt < 3; attempt++ {
 		err := client.Exec(ctx, build(), out)

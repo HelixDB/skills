@@ -1,6 +1,6 @@
 ---
 name: helix-query-from-hql
-description: Translate legacy HelixDB HQL (.hx `QUERY ... => ... RETURN`) into the Rust DSL or TypeScript DSL. Use when the input contains HQL syntax — QUERY, N<T>/E<T>/V<T>, AddN/AddE/AddV, Out/In/OutE/InE, FromN/ToN, WHERE/EQ/GT/EXISTS, SearchV/SearchBM25, GROUP_BY/AGGREGATE_BY, ORDER<Desc>/RANGE, RETURN, UpsertN, RerankRRF, ShortestPath, Embed, or .hx files — and the goal is an equivalent Rust or TypeScript DSL query. Flags HQL features with no DSL equivalent. See REFERENCE.md for the full mapping table and EXAMPLES.md for worked HQL→Rust→TS migrations.
+description: Translate legacy HelixDB HQL (.hx QUERY/RETURN syntax) into direct forthcoming v3 Rust or TypeScript SDK requests. Use when the input contains HQL concepts such as typed node, edge, or vector sources; AddN/AddE/AddV; Out/In/OutE/InE; FromN/ToN; WHERE/EQ/GT/EXISTS; SearchV/SearchBM25; GROUP_BY/AGGREGATE_BY; ORDER/RANGE; UpsertN; RerankRRF; ShortestPath; Embed; or .hx files. Flags HQL features with no v3 DSL equivalent.
 license: MIT
 metadata:
   author: HelixDB
@@ -124,7 +124,8 @@ tenant-scoped, and project `$distance`/`$score` at the search step (it is gone a
 ### 8. Query header, params, and return
 
 Each `binding <- expr` → `.var_as("binding", expr)` / `.varAs(..)`. `RETURN a, b` → `.returning(["a","b"])`.
-`RETURN NONE` → `.returning([])`. `RETURN "literal"` has no form — return a binding instead. Reference parameters
+`RETURN NONE` → Rust `.returning(Vec::<&str>::new())` or TypeScript
+`.returning([])`. `RETURN "literal"` has no form — return a binding instead. Reference parameters
 by **name string** in predicates (`Predicate::eq_param("status","status")`).
 
 ### 9. `FOR ... IN` over an array parameter
@@ -221,7 +222,7 @@ Do not:
 - mix up the spellings: Rust `.in_(Some("X"))`/`.where_(..)` vs TS `.in("X")`/`.where(..)`; `::` vs `.` constructors
 - invert edge endpoints — `::FromN` is `.in_n()`, `::ToN` is `.out_n()`
 - translate `EXISTS`/count-in-`WHERE` into a `Predicate` (it has no such variant) — use set ops or app code
-- drop the tenant value on a `SearchV`/`SearchBM25` that was tenant-scoped, or read `$distance` after a hop
+- drop the tenant value on a `SearchV`/`SearchBM25` that was tenant-scoped, or read `$distance`/`$score` after a hop
 - invent a DSL shape for `Upsert`/`Rerank`/`ShortestPath`/`Embed`/advanced math — flag and defer to app code
 - return all properties by default — match the HQL projection
 - invent labels, edge labels, or properties instead of reading the target schema

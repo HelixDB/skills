@@ -81,7 +81,7 @@ Set the query name with `ReadQuery(...)` or `WriteQuery(...)`. Reserve
 
 Use the `q.Param*` methods before returning:
 
-```go
+```text
 tenant := q.ParamString("tenant_id", tenantID)
 limit := q.ParamI64("limit", limitValue)
 since := q.ParamDateTime("created_after", sinceValue)
@@ -91,7 +91,7 @@ Parameter refs can be passed to predicates, bounds, property inputs, and search 
 
 Important: direct Go values are inlined into the serialized AST. `helix.SourceEq("id", "foo")` and `helix.PredEq("id", "foo")` embed the string literal `"foo"`; they do not create runtime parameters and can miss server-cache hits across otherwise identical requests. For request-specific values, declare a builder parameter and pass the returned `ParamRef`:
 
-```go
+```text
 id := q.ParamString("id", userID)
 helix.G().NWhere(helix.SourceEq("id", id))
 ```
@@ -104,7 +104,7 @@ Do not add a `.With(...)` step. The runtime values and `parameter_types` metadat
 
 Always pass explicit response variable names to `.Returning(...)` when rows should be decoded:
 
-```go
+```text
 return q.VarAs("users", traversal).Returning("users")
 ```
 
@@ -112,7 +112,7 @@ Use zero-arg `.Returning()` only for intentional empty responses. The SDK serial
 
 ### 5. Execute With `Client.Exec`
 
-```go
+```text
 client, err := helix.NewClient("https://helix.example.com", helix.WithAPIKey("hx_secret"))
 if err != nil {
 	return err
@@ -124,7 +124,7 @@ err = client.Exec(ctx, FindUsers("acme", 25), &out)
 
 Use options only for transport behavior:
 
-```go
+```text
 err = client.Exec(ctx, CreateUser("Alice", "acme"), &created,
 	helix.WriterOnly(),
 	helix.AwaitDurability(true),

@@ -12,8 +12,24 @@ The source of truth is the `helix-ast` crate under
   "query_name": "optional_diagnostic_name",
   "query": {
     "read": {
-      "entries": [],
-      "returns": []
+      "entries": [
+        {
+          "query": {
+            "name": "users",
+            "root": {
+              "nodes_where": {
+                "predicate": {
+                  "eq": {
+                    "left": { "property": "$label" },
+                    "right": { "constant": { "string": "User" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["users"]
     }
   }
 }
@@ -27,7 +43,8 @@ The source of truth is the `helix-ast` crate under
 | `parameters` | no | object of JSON runtime values |
 | `parameter_types` | no | object of v3 parameter type descriptors |
 
-The batch variant must match `request_type`.
+The batch variant must match `request_type`, and every batch must contain at
+least one entry.
 
 ## Batches and entries
 
@@ -271,20 +288,22 @@ Predicates are expression trees, not positional arrays:
 
 ```json
 {
-  "and": [
-    {
-      "eq": {
-        "left": { "property": "$label" },
-        "right": { "constant": { "string": "User" } }
+  "and": {
+    "predicates": [
+      {
+        "eq": {
+          "left": { "property": "$label" },
+          "right": { "constant": { "string": "User" } }
+        }
+      },
+      {
+        "gte": {
+          "left": { "property": "age" },
+          "right": { "param": "minimum_age" }
+        }
       }
-    },
-    {
-      "gte": {
-        "left": { "property": "age" },
-        "right": { "param": "minimum_age" }
-      }
-    }
-  ]
+    ]
+  }
 }
 ```
 

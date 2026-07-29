@@ -167,20 +167,22 @@ Every SDK emits the same nested operation tree:
                 "input": {
                   "nodes_where": {
                     "predicate": {
-                      "and": [
-                        {
-                          "eq": {
-                            "left": { "property": "$label" },
-                            "right": { "constant": { "string": "User" } }
+                      "and": {
+                        "predicates": [
+                          {
+                            "eq": {
+                              "left": { "property": "$label" },
+                              "right": { "constant": { "string": "User" } }
+                            }
+                          },
+                          {
+                            "eq": {
+                              "left": { "property": "status" },
+                              "right": { "constant": { "string": "active" } }
+                            }
                           }
-                        },
-                        {
-                          "eq": {
-                            "left": { "property": "status" },
-                            "right": { "constant": { "string": "active" } }
-                          }
-                        }
-                      ]
+                        ]
+                      }
                     }
                   }
                 },

@@ -42,7 +42,7 @@ Expected shape:
 
 ```json
 {
-  "node_count": [0]
+  "node_count": 0
 }
 ```
 

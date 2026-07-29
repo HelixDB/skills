@@ -93,7 +93,12 @@ Do not return oversized properties like embeddings unless the caller explicitly 
 
 ### 5. Preserve Search Scope
 
-For BM25 and vector search: keep the chosen text/vector property explicit, pass the tenant value when the index is scoped, and project `$distance` **before** traversing off the hit stream (`out`/`in`/`both` drop the distance metadata). Prefer the `*With` variants for parameterized routes — they accept `PropertyInput.param(...)`, `Expr.param(...)`, and `StreamBound`.
+For BM25 and vector search: keep the chosen text/vector property explicit, pass
+the tenant value when the index is scoped, and project `$distance` for vector
+hits or `$score` for BM25 hits **before** traversing off the hit stream
+(`out`/`in`/`both` drop rank metadata). Prefer the `*With` variants for
+parameterized routes — they accept `PropertyInput.param(...)`,
+`Expr.param(...)`, and `StreamBound`.
 
 ### 6. Use Traversal Controls Deliberately
 
@@ -237,7 +242,7 @@ Do not:
 - call `JSON.stringify` on a payload that may contain `bigint` — use `toJsonString` / `stringifyJson`
 - pass a `param.bytes()` parameter through the JSON route — it throws `QueryError.UnsupportedBytesParameter`
 - put a write traversal into `readBatch().varAs(...)` — it is rejected at compile time and throws at runtime
-- traverse off a vector/text hit stream before projecting `$distance`
+- traverse off a vector/text hit stream before projecting `$distance` or `$score`
 
 ## Validation Checklist
 
@@ -247,7 +252,7 @@ Before finishing:
 - verify labels, edge labels, and properties match the repo exactly
 - verify the first anchor is the narrowest practical indexed set
 - verify the returned variable names and shape match service expectations
-- verify text/vector routes pass the tenant value when the index is scoped, and project `$distance` before navigating
+- verify text/vector routes pass the tenant value when the index is scoped, and project `$distance` or `$score` before navigating
 - verify `bigint`/`i64(...)` is used for large integers and serialization goes through `toJsonString`/`stringifyJson`
 - verify `DateTime` parameters use `param.dateTime()` and `DateTime.*` values
 - verify the query matches surrounding local style more than any generic example

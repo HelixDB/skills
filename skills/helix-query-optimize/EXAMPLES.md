@@ -70,20 +70,22 @@ Serialized request:
                     "input": {
                       "nodes_where": {
                         "predicate": {
-                          "and": [
-                            {
-                              "eq": {
-                                "left": { "property": "$label" },
-                                "right": { "constant": { "string": "User" } }
+                          "and": {
+                            "predicates": [
+                              {
+                                "eq": {
+                                  "left": { "property": "$label" },
+                                  "right": { "constant": { "string": "User" } }
+                                }
+                              },
+                              {
+                                "eq": {
+                                  "left": { "property": "status" },
+                                  "right": { "constant": { "string": "active" } }
+                                }
                               }
-                            },
-                            {
-                              "eq": {
-                                "left": { "property": "status" },
-                                "right": { "constant": { "string": "active" } }
-                              }
-                            }
-                          ]
+                            ]
+                          }
                         }
                       }
                     },
@@ -188,13 +190,13 @@ indexed unique property.
 
 Broader:
 
-```ts
+```text
 .valueMap(null)
 ```
 
 Stronger:
 
-```ts
+```text
 .valueMap(["$id", "name", "status"])
 ```
 
@@ -247,15 +249,23 @@ Wait for the range index before measuring the ordered query.
 When the vector index has a tenant property, include the tenant input in the search:
 
 ```ts
-g()
-  .vectorSearchNodesWith(
-    "Document",
-    "embedding",
-    param("query_vector"),
-    param("limit"),
-    param("tenant_id"),
-  )
-  .valueMap(["$id", "title", "$distance"])
+const vectorParams = defineParams({
+  queryVector: param.array(param.f32()),
+  limit: param.i64(),
+  tenantId: param.string(),
+});
+
+function tenantVectorSearch(p = vectorParams) {
+  return g()
+    .vectorSearchNodesWith(
+      "Document",
+      "embedding",
+      p.queryVector,
+      p.limit,
+      p.tenantId,
+    )
+    .valueMap(["$id", "title", "$distance"]);
+}
 ```
 
 Do not run an unscoped top-k query and try to repair it with a later tenant filter.

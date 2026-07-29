@@ -4,7 +4,7 @@ Use this reference to confirm forthcoming v3 Python SDK method names and
 request patterns. The package is `helix-db` and the import is `helixdb`; no
 package version is claimed before publication.
 
-```python
+```text
 from helixdb import (
     AggregateFunction,
     BatchCondition,
@@ -24,6 +24,7 @@ from helixdb import (
     RangeIndexDirection,
     RepeatConfig,
     SourcePredicate,
+    VectorDistanceMetric,
     define_params,
     g,
     param,
@@ -35,7 +36,7 @@ from helixdb import (
 
 ## Request Shape
 
-```python
+```text
 read_batch() -> ReadBatch
 write_batch() -> WriteBatch
 QueryRequest.read(batch, query_name=None)
@@ -44,7 +45,7 @@ QueryRequest.write(batch, query_name=None)
 
 Batches serialize to the same JSON shape as Rust and TypeScript:
 
-```python
+```text
 batch.to_json_string()     # raw typed batch JSON
 batch.to_query_request()   # direct QueryRequest object
 batch.to_query_json()      # request JSON string for POST /v1/query
@@ -54,7 +55,7 @@ batch.to_query_json()      # request JSON string for POST /v1/query
 
 Both read and write batches support:
 
-```python
+```text
 .var_as(name, traversal)
 .var_as_if(name, condition, traversal)
 .for_each_param(param_name, body_batch)
@@ -65,7 +66,7 @@ Read batches reject write traversals. Write batches accept read-only and write t
 
 Conditions:
 
-```python
+```text
 BatchCondition.var_not_empty("users")
 BatchCondition.var_empty("users")
 BatchCondition.var_min_size("users", 10)
@@ -74,7 +75,7 @@ BatchCondition.prev_not_empty()
 
 ## Parameters
 
-```python
+```text
 params = define_params({
     "tenant_id": param.string(),
     "limit": param.i64(),
@@ -86,14 +87,14 @@ params = define_params({
 
 Parameter refs are attributes and items:
 
-```python
+```text
 params.tenant_id
 params["tenant_id"]
 ```
 
 Use refs directly where accepted:
 
-```python
+```text
 Predicate.eq("tenantId", params.tenant_id)
 g().n(NodeRef.param("node_ids"))
 g().limit(params.limit)
@@ -102,7 +103,7 @@ g().set_property("name", params.name)
 
 Schema constructors:
 
-```python
+```text
 param.bool()
 param.i64()
 param.f64()
@@ -121,7 +122,7 @@ Dynamic datetime values accept `DateTime`, `datetime.datetime`, RFC3339 strings,
 
 Tagged property values:
 
-```python
+```text
 PropertyValue.null()
 PropertyValue.bool(True)
 PropertyValue.i64(42)
@@ -140,7 +141,7 @@ PropertyValue.object({"k": "v"})
 
 Property inputs:
 
-```python
+```text
 PropertyInput.value("Alice")
 PropertyInput.expr(Expr.prop("score"))
 PropertyInput.param("name")
@@ -150,7 +151,7 @@ Most mutating/search methods accept normal Python values, `PropertyValue`, `Prop
 
 ## Traversal Sources
 
-```python
+```text
 g()
 sub()
 
@@ -174,7 +175,7 @@ g().e_with_label_where("FOLLOWS", pred)
 
 Search:
 
-```python
+```text
 g().vector_search_nodes("Document", "embedding", [1.0, 0.0, 0.0], 10, tenant_value="acme")
 g().vector_search_nodes_with("Document", "embedding", params.query_vector.input(), params.limit, params.tenant_id.input())
 g().text_search_nodes("Document", "body", "graph", 10, tenant_value="acme")
@@ -183,13 +184,14 @@ g().vector_search_edges(...)
 g().text_search_edges(...)
 ```
 
-Project `$distance` before navigating away from a vector/text hit stream.
+Project `$distance` for vector hits or `$score` for BM25 hits before navigating
+away from the hit stream.
 
 ## Traversal Steps
 
 Navigation:
 
-```python
+```text
 .out("FOLLOWS") .in_("FOLLOWS") .both("RELATED")
 .out_e("FOLLOWS") .in_e("FOLLOWS") .both_e("RELATED")
 .out_n() .in_n() .other_n()
@@ -197,7 +199,7 @@ Navigation:
 
 Filters:
 
-```python
+```text
 .has("status", "active")
 .has_label("User")
 .has_key("externalId")
@@ -211,7 +213,7 @@ Filters:
 
 Bounds and variables:
 
-```python
+```text
 .limit(10)
 .limit(params.limit)
 .skip(params.offset)
@@ -221,7 +223,7 @@ Bounds and variables:
 
 Terminals and projections:
 
-```python
+```text
 .count()
 .exists()
 .id()
@@ -248,7 +250,7 @@ endpoints. Keep `.edge_properties()` for full edge maps and the internal `$from`
 
 Ordering and aggregation:
 
-```python
+```text
 .order_by("createdAt", Order.DESC)
 .order_by_multiple([("status", Order.ASC), ("createdAt", Order.DESC)])
 .group("status")
@@ -258,7 +260,7 @@ Ordering and aggregation:
 
 Branching and repeat:
 
-```python
+```text
 .repeat(RepeatConfig.new(sub().out("FOLLOWS")).times(2).emit_all().max_depth(4))
 .union([sub().out("FOLLOWS"), sub().in_("FOLLOWS")])
 .choose(Predicate.eq("tier", "pro"), sub().out("PremiumContent"), sub().out("FreeContent"))
@@ -268,7 +270,7 @@ Branching and repeat:
 
 Mutations:
 
-```python
+```text
 .add_n("User", {"name": params.name, "tenantId": params.tenant_id})
 .add_e("FOLLOWS", NodeRef.var("target"), {"since": params.since})
 .set_property("name", params.name)
@@ -281,14 +283,14 @@ Mutations:
 
 Indexes:
 
-```python
+```text
 g().create_index_if_not_exists(IndexSpec.node_unique_equality("User", "userId"))
 g().create_index_if_not_exists(IndexSpec.node_range_desc("User", "createdAt"))
 g().create_index_if_not_exists(IndexSpec.node_range_with_direction("User", "createdAt", RangeIndexDirection.DESC))
 g().create_index_if_not_exists(IndexSpec.edge_range_desc("FOLLOWS", "since"))
 g().create_index_if_not_exists(IndexSpec.edge_range_with_direction("FOLLOWS", "since", RangeIndexDirection.DESC))
 g().drop_index(IndexSpec.node_range("User", "score"))
-g().create_vector_index_nodes("Document", "embedding", "tenantId")
+g().create_vector_index_nodes("Document", "embedding", 1536, VectorDistanceMetric.COSINE, "tenantId")
 g().create_text_index_nodes("Document", "body", "tenantId")
 ```
 
@@ -298,7 +300,7 @@ Range indexes default to ascending physical order (`RangeIndexDirection.ASC`). U
 
 Predicates:
 
-```python
+```text
 Predicate.eq("status", "active")
 Predicate.neq("status", "deleted")
 Predicate.gt("score", 10)
@@ -322,14 +324,14 @@ Predicate.compare(Expr.prop("score"), CompareOp.GT, Expr.val(10))
 
 Source predicates are the index-eligible source-side subset:
 
-```python
+```text
 SourcePredicate.eq("$label", "User")
 SourcePredicate.and_([SourcePredicate.eq("$label", "User"), SourcePredicate.eq("tenantId", params.tenant_id)])
 ```
 
 Expressions:
 
-```python
+```text
 Expr.prop("score")
 Expr.val(1)
 Expr.id()
@@ -345,7 +347,7 @@ Python operators are also available for expressions: `+`, `-`, `*`, `/`, `%`, an
 
 ## Client
 
-```python
+```text
 client = Client("http://localhost:6969", api_key="hx_secret")
 client.with_api_key(None)  # clear
 client.base_url
@@ -353,7 +355,7 @@ client.base_url
 
 Execute a request directly:
 
-```python
+```text
 client.query(request)
 client.execute(request, writer_only=True)
 client.execute(request, warm_only=True)
@@ -365,7 +367,7 @@ serialization, URL, or request failures.
 
 ## Row Bindings
 
-```python
+```text
 g().n_with_label("User") \
     .bind("user") \
     .out("FOLLOWS") \

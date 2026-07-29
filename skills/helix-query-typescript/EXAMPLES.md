@@ -146,7 +146,7 @@ function documentSearch(p = docSearchParams) {
         .project([
           PropertyProjection.renamed("$id", "id"),
           PropertyProjection.new("title"),
-          PropertyProjection.renamed("$distance", "score"),
+          PropertyProjection.renamed("$score", "score"),
         ]),
     )
     .returning(["results"]);
@@ -516,7 +516,18 @@ millisecond precision before serializing.
 function bootstrapIndexes() {
   return writeBatch()
     .varAs("idx_userId", g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("User", "userId")))
-    .varAs("idx_embedding", g().createIndexIfNotExists(IndexSpec.nodeVector("Document", "embedding", "tenantId")))
+    .varAs(
+      "idx_embedding",
+      g().createIndexIfNotExists(
+        IndexSpec.nodeVector(
+          "Document",
+          "embedding",
+          1536,
+          VectorDistanceMetric.Cosine,
+          "tenantId",
+        ),
+      ),
+    )
     .varAs("idx_body", g().createIndexIfNotExists(IndexSpec.nodeText("Document", "body", "tenantId")))
     .returning(["idx_userId", "idx_embedding", "idx_body"]);
 }

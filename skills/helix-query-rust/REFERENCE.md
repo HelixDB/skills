@@ -42,7 +42,7 @@ OnEdges(WriteEnabled) -- drop_edge_by_id                                ↻ OnEd
 
 ## Batch Entry Points
 
-```rust
+```text
 pub fn read_batch() -> ReadBatch
 pub fn write_batch() -> WriteBatch
 pub fn g() -> Traversal<Empty>
@@ -58,7 +58,7 @@ pub fn sub() -> SubTraversal
 
 ### `BatchCondition`
 
-```rust
+```text
 BatchCondition::VarNotEmpty(name)
 BatchCondition::VarEmpty(name)
 BatchCondition::VarMinSize(name, n)
@@ -69,7 +69,7 @@ BatchCondition::PrevNotEmpty
 
 ## Sources  (`Traversal<Empty>` → `Traversal<On*, _>`)
 
-```rust
+```text
 // Nodes
 g().n(nodes: impl Into<NodeRef>)                      -> Traversal<OnNodes>
 g().n_where(pred: SourcePredicate)                    -> Traversal<OnNodes>
@@ -106,7 +106,7 @@ Prefer the `_with` variants for parameterized routes — they accept `PropertyIn
 
 Node state:
 
-```rust
+```text
 traversal.out(label: Option<impl Into<String>>)   -> Traversal<OnNodes, M>
 traversal.in_(label: Option<impl Into<String>>)   -> Traversal<OnNodes, M>
 traversal.both(label: Option<impl Into<String>>)  -> Traversal<OnNodes, M>
@@ -117,7 +117,7 @@ traversal.both_e(label)                           -> Traversal<OnEdges, M>
 
 Edge state:
 
-```rust
+```text
 traversal.out_n()   -> Traversal<OnNodes, M>   // edge → target
 traversal.in_n()    -> Traversal<OnNodes, M>   // edge → source
 traversal.other_n() -> Traversal<OnNodes, M>   // edge → "other" endpoint
@@ -129,7 +129,7 @@ Pass `None::<&str>` to skip label filtering: `.out(None::<&str>)`.
 
 ## Filters
 
-```rust
+```text
 .has(prop, value: impl Into<PropertyValue>)   // both Nodes & Edges
 .has_label(label)
 .has_key(prop)
@@ -150,7 +150,7 @@ side must be a `PropertyInput` expression or runtime parameter.
 
 Literal constructors:
 
-```rust
+```text
 Predicate::eq(prop, val)          Predicate::neq(prop, val)
 Predicate::gt(prop, val)          Predicate::gte(prop, val)
 Predicate::lt(prop, val)          Predicate::lte(prop, val)
@@ -168,7 +168,7 @@ Predicate::compare(left: Expr, op: CompareOp, right: Expr)
 
 Parameterized comparison shortcuts (wrap `Compare`):
 
-```rust
+```text
 Predicate::eq_param(prop, param)  Predicate::neq_param(prop, param)
 Predicate::gt_param(prop, param)  Predicate::gte_param(prop, param)
 Predicate::lt_param(prop, param)  Predicate::lte_param(prop, param)
@@ -178,7 +178,7 @@ Predicate::lt_param(prop, param)  Predicate::lte_param(prop, param)
 
 Restricted subset for `n_where` / `e_where` (must be index-friendly):
 
-```rust
+```text
 SourcePredicate::eq / neq / gt / gte / lt / lte / between / has_key / starts_with / and / or
 ```
 
@@ -190,7 +190,7 @@ Property-name strings in filters can be dotted object paths, for example `Predic
 
 ### `CompareOp`
 
-```rust
+```text
 CompareOp::{Eq, Neq, Gt, Gte, Lt, Lte}
 ```
 
@@ -200,7 +200,7 @@ CompareOp::{Eq, Neq, Gt, Gte, Lt, Lte}
 
 `Expr`:
 
-```rust
+```text
 Expr::prop(name)                    Expr::val(value: impl Into<PropertyValue>)
 Expr::id()                          Expr::param(name)
 Expr::timestamp()                   // server UTC epoch millis (i64)
@@ -221,7 +221,7 @@ Typical uses:
 
 ## Stream Bounds & Limits
 
-```rust
+```text
 .limit(n: impl Into<StreamBound>)
 .skip(n: impl Into<StreamBound>)
 .range(start: impl Into<StreamBound>, end: impl Into<StreamBound>)
@@ -229,7 +229,7 @@ Typical uses:
 
 `StreamBound` accepts `usize`, `u8`/`u16`/`u32`, `i64`/`i32` (errors into `Expr::Constant` when negative), and `Expr`. Canonical forms:
 
-```rust
+```text
 .limit(25usize)                 // StreamBound::Literal
 .limit(Expr::param("limit"))    // StreamBound::Expr
 ```
@@ -238,7 +238,7 @@ Typical uses:
 
 ## Variables & Injection
 
-```rust
+```text
 .as_(name)          // store current stream
 .store(name)        // alias of .as_
 .select(name)       // replace current stream with a stored var
@@ -252,7 +252,7 @@ Cross-entry references use `NodeRef::var(name)`, `EdgeRef::var(name)`, `NodeRef:
 
 ## Ordering
 
-```rust
+```text
 .order_by(property, order: Order)                       // Order::{Asc, Desc}
 .order_by_multiple(vec![(prop1, Order::Desc), (prop2, Order::Asc)])
 ```
@@ -264,7 +264,7 @@ range indexes do not accelerate nested paths.
 
 ## Aggregation (terminals)
 
-```rust
+```text
 .count()           -> Traversal<Terminal, M>
 .exists()          -> Traversal<Terminal, M>
 .group(property)   -> Traversal<Terminal, M>
@@ -279,7 +279,7 @@ range indexes do not accelerate nested paths.
 
 Each arm is a `SubTraversal`, built by `sub()` + the same filter / traversal / projection methods:
 
-```rust
+```text
 .union(vec![sub_a, sub_b, ...])
 .choose(condition: Predicate, then_t: SubTraversal, else_t: Option<SubTraversal>)
 .coalesce(vec![sub_a, sub_b, ...])   // first non-empty wins
@@ -296,7 +296,7 @@ and `simple_path`.
 
 ## Repeat
 
-```rust
+```text
 traversal.repeat(RepeatConfig::new(sub()).times(3))
 traversal.repeat(
     RepeatConfig::new(sub().out(Some("KNOWS")))
@@ -320,7 +320,7 @@ Default `emit` is `EmitBehavior::None` (only the final result is returned). Boun
 
 ## Projections (terminals)
 
-```rust
+```text
 .values(vec!["name", "email"])                              -> Traversal<Terminal, M>
 .value_map(Some(vec!["$id", "name"]))                       -> Traversal<Terminal, M>
 .value_map(None::<Vec<&str>>)                               -> Traversal<Terminal, M>  // all properties
@@ -330,7 +330,7 @@ Default `emit` is `EmitBehavior::None` (only the final result is returned). Boun
 
 Projection constructors:
 
-```rust
+```text
 PropertyProjection::new("name")                 // no rename; source == alias
 PropertyProjection::renamed("$distance", "distance")
 ExprProjection::new("age_plus_one", Expr::prop("age").add(Expr::val(1i64)))
@@ -360,7 +360,7 @@ endpoints. Keep `.edge_properties()` for full edge maps and the internal `$from`
 bindings: tag elements as you pass them with `.bind(name)`, then build the output
 rows with `.project_bindings(...)` / `.project_distinct_bindings(...)`.
 
-```rust
+```text
 .bind(name: impl Into<String>)                                  ↻ same stream; enters row mode (panics on empty name)
 .project_bindings(vec![...]: Vec<BindingProjection>)            -> Traversal<Terminal, M>  // preserves duplicate rows
 .project_distinct_bindings(vec![...]: Vec<BindingProjection>)   -> Traversal<Terminal, M>  // dedups identical rows
@@ -372,7 +372,7 @@ can still reference earlier captures. `.bind()` is available on `Traversal`
 (both node and edge streams) and on `SubTraversal` inside branches.
 `BindingProjection` constructors:
 
-```rust
+```text
 BindingProjection::current("$id", "current_id")           // read from the current element
 BindingProjection::binding("service", "$id", "service_id")// read from a named binding
 BindingProjection::property(BindingTarget::binding("svc"), "name", "svc_name")
@@ -389,7 +389,7 @@ The `source` accepts stored properties and the virtual fields `$id`, `$label`,
 
 Worked example (a service → pod → owner/workload correlation, one row per path):
 
-```rust
+```text
 g().n_with_label("Service")
     .bind("service")
     .out(Some("ROUTES_TO")).bind("pod")
@@ -418,7 +418,7 @@ The binding projection is part of a normal direct `QueryRequest`. See
 
 ## Terminals (metadata)
 
-```rust
+```text
 .count()    .exists()    .id()    .label()
 ```
 
@@ -430,7 +430,7 @@ Usable on both node and edge streams. `.edge_properties()` is edge-only.
 
 Source-position mutation (`Traversal<Empty>` → `Traversal<OnNodes, WriteEnabled>`):
 
-```rust
+```text
 g().add_n(label, vec![(prop, PropertyInput::from(val)), ...])
 g().drop_edge_by_id(edges: impl Into<EdgeRef>)
 g().inject(var_name)  // from var (ReadOnly side), safe to use in write batches
@@ -438,7 +438,7 @@ g().inject(var_name)  // from var (ReadOnly side), safe to use in write batches
 
 Node-state mutations (`Traversal<OnNodes, _>` → `Traversal<OnNodes, WriteEnabled>`):
 
-```rust
+```text
 .add_e(label, to: impl Into<NodeRef>, vec![(prop, PropertyInput::from(val)), ...])
 .set_property(name, value: impl Into<PropertyInput>)
 .remove_property(name)
@@ -450,13 +450,13 @@ Node-state mutations (`Traversal<OnNodes, _>` → `Traversal<OnNodes, WriteEnabl
 
 Edge-state mutation:
 
-```rust
+```text
 .drop_edge_by_id(edges: impl Into<EdgeRef>)   // OnEdges -> OnEdges, WriteEnabled
 ```
 
 Key `PropertyInput` shortcuts:
 
-```rust
+```text
 PropertyInput::from("literal")              // wraps as Value(PropertyValue)
 PropertyInput::from(Expr::timestamp())      // wraps Expr
 PropertyInput::param("userId")              // wraps Expr::Param("userId")
@@ -469,23 +469,23 @@ PropertyInput::from(PropertyValue::object(vec![("externalID", PropertyValue::fro
 
 Generic `IndexSpec` forms:
 
-```rust
+```text
 g().create_index_if_not_exists(spec: IndexSpec) -> Traversal<Terminal, WriteEnabled>
 g().drop_index(spec: IndexSpec)                 -> Traversal<Terminal, WriteEnabled>
 ```
 
 Convenience source forms:
 
-```rust
-g().create_vector_index_nodes(label, property, tenant_property: Option<impl Into<String>>)
-g().create_vector_index_edges(label, property, tenant_property)
+```text
+g().create_vector_index_nodes(label, property, dimension: NonZeroUsize, metric: VectorDistanceMetric, tenant_property)
+g().create_vector_index_edges(label, property, dimension: NonZeroUsize, metric: VectorDistanceMetric, tenant_property)
 g().create_text_index_nodes(label, property, tenant_property)
 g().create_text_index_edges(label, property, tenant_property)
 ```
 
 `IndexSpec` constructors:
 
-```rust
+```text
 IndexSpec::node_equality(label, property)               // unique = false
 IndexSpec::node_unique_equality(label, property)        // unique = true
 IndexSpec::node_range(label, property)
@@ -495,9 +495,9 @@ IndexSpec::edge_equality(label, property)
 IndexSpec::edge_range(label, property)
 IndexSpec::edge_range_desc(label, property)
 IndexSpec::edge_range_with_direction(label, property, RangeIndexDirection::Desc)
-IndexSpec::node_vector(label, property, tenant_property: Option<impl Into<String>>)
+IndexSpec::node_vector(label, property, dimension, metric, tenant_property)
 IndexSpec::node_text(label, property, tenant_property)
-IndexSpec::edge_vector(label, property, tenant_property)
+IndexSpec::edge_vector(label, property, dimension, metric, tenant_property)
 IndexSpec::edge_text(label, property, tenant_property)
 ```
 
@@ -511,7 +511,7 @@ Index properties are top-level only in the current runtime. Do not declare `meta
 
 Emit the corresponding steps but have no effect in the current interpreter. Safe to include for forward-compatible queries.
 
-```rust
+```text
 .fold()    .unfold()    .path()    .simple_path()
 .with_sack(PropertyValue::I64(0))
 .sack_set(prop)    .sack_add(prop)    .sack_get()
@@ -523,7 +523,7 @@ Emit the corresponding steps but have no effect in the current interpreter. Safe
 
 `sdks/rust/helix-dsl-macros/src/lib.rs`. Apply to a top-level function returning `ReadBatch` or `WriteBatch`; the macro generates a wrapper that constructs a `QueryRequest` with the function's arguments as typed parameters and sets top-level `query_name` to the Rust function name.
 
-```rust
+```text
 #[query]
 pub fn find_user(tenant_id: String, limit: i64) -> ReadBatch {
     read_batch()
@@ -552,7 +552,7 @@ route and raise `QueryError::UnsupportedBytesParameter`.
 
 ### `QueryRequest`
 
-```rust
+```text
 QueryRequest::read(batch: ReadBatch)
 QueryRequest::write(batch: WriteBatch)
 req.set_query_name("find_users")
@@ -572,7 +572,7 @@ For the JSON wire encoding this produces, see `../helix-query-json-dynamic/REFER
 
 Async HTTP client for running a direct request against a Helix instance.
 
-```rust
+```text
 use helix_db::{Client, HelixError};
 
 Client::new(url: Option<&str>) -> Result<Self, HelixError>   // default "http://localhost:6969"; InvalidURL on bad url

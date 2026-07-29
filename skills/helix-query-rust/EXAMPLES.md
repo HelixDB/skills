@@ -154,7 +154,7 @@ pub fn document_search(
             .project(vec![
                 PropertyProjection::renamed("$id", "id"),
                 PropertyProjection::new("title"),
-                PropertyProjection::renamed("$distance", "score"),
+                PropertyProjection::renamed("$score", "score"),
             ]),
         )
         .returning(["results"])
@@ -589,6 +589,8 @@ pub fn bootstrap_indexes() -> WriteBatch {
             g().create_index_if_not_exists(IndexSpec::node_vector(
                 "Document",
                 "embedding",
+                std::num::NonZeroUsize::new(1536).expect("non-zero dimension"),
+                VectorDistanceMetric::Cosine,
                 Some("tenantId"),
             )),
         )
@@ -617,7 +619,8 @@ use helix_db::Client;
 
 let client = Client::new(Some("https://helix.example.com"))?.with_api_key(Some(&api_key));
 
-// .warm_only() sets X-Helix-Warm: true. A successful warm returns 204 No Content; writes reject warming.
+// .warm_only() sets X-Helix-Warm: true. Successful reads return their normal response;
+// writes reject warming.
 let _: serde_json::Value = client
     .request_builder()
     .warm_only()

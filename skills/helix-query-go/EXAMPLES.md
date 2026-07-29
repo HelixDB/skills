@@ -88,8 +88,16 @@ func CreateUser(name string, tenantID string) helix.Request {
 		Returning("user")
 }
 
-var created CreateUserResponse
-err := client.Exec(ctx, CreateUser("Alice", "acme"), &created, helix.WriterOnly(), helix.AwaitDurability(true))
+func ExecuteCreateUser(ctx context.Context, client *helix.Client) error {
+	var created CreateUserResponse
+	return client.Exec(
+		ctx,
+		CreateUser("Alice", "acme"),
+		&created,
+		helix.WriterOnly(),
+		helix.AwaitDurability(true),
+	)
+}
 ```
 
 ## 5. Explicit Create Or Update
@@ -158,7 +166,7 @@ func SearchDocuments(tenantID string, query string) helix.Request {
 				Project(
 					helix.ProjectPropAs("$id", "id"),
 					helix.ProjectPropAs("title", "title"),
-					helix.ProjectPropAs("$distance", "score"),
+					helix.ProjectPropAs("$score", "score"),
 				),
 		).
 		Returning("results")

@@ -39,12 +39,12 @@ Use these for product semantics and supported behavior:
 - `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
 - `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
 - `https://docs.helix-db.com/database/helix-db/query-guides/parameters`
-- `https://docs.helix-db.com/documentation/hql/traversals`
-- `https://docs.helix-db.com/documentation/hql/conditionals`
-- `https://docs.helix-db.com/documentation/hql/result_ops`
-- `https://docs.helix-db.com/documentation/hql/output_values`
-- `https://docs.helix-db.com/documentation/hql/vectors`
-- `https://docs.helix-db.com/documentation/hql/keyword_search`
+- `https://docs.helix-db.com/database/helix-db/query-guides/traversals`
+- `https://docs.helix-db.com/database/helix-db/query-guides/filtering`
+- `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
+- `https://docs.helix-db.com/database/helix-db/query-guides/projections`
+- `https://docs.helix-db.com/database/helix-db/query-guides/vector-indexes`
+- `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
 
 Use these for skill packaging and discovery behavior:
 

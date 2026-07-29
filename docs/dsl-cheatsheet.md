@@ -6,20 +6,20 @@ Quick authoring reference for Helix Rust DSL queries.
 
 Start with one of these roots:
 
-```rust
+```text
 read_batch()
 write_batch()
 ```
 
 Common structure:
 
-```rust
+```text
 read_batch()
     .var_as("result", g()...)
     .returning(["result"])
 ```
 
-```rust
+```text
 write_batch()
     .var_as("result", g()...)
     .returning(["result"])
@@ -41,7 +41,7 @@ Use `write_batch()` for any mutation, including:
 
 Prefer the narrowest known starting set:
 
-```rust
+```text
 g().n(NodeRef::param("node_id"))
 g().e(EdgeRef::param("edge_id"))
 g().n_with_label("User")
@@ -59,7 +59,7 @@ Anchor order:
 
 Use `where_` for property predicates.
 
-```rust
+```text
 g().n_with_label("User")
     .where_(Predicate::eq_param("userId", "userId"))
 ```
@@ -83,28 +83,28 @@ Use `Predicate::has_key` when you specifically need property-existence semantics
 
 Node to node:
 
-```rust
+```text
 g().n(NodeRef::var("user")).out(Some("FOLLOWS"))
 g().n(NodeRef::var("entity")).both(Some("RELATED_TO"))
 ```
 
 Node to edge:
 
-```rust
+```text
 g().n(NodeRef::param("node_id")).out_e(Some("WORKED_AT"))
 g().n(NodeRef::param("node_id")).both_e(Some("RELATED_TO"))
 ```
 
 Incoming traversal:
 
-```rust
+```text
 g().n(NodeRef::param("node_id")).in_(Some("FOLLOWS"))
 g().n(NodeRef::param("node_id")).in_e(Some("FOLLOWS"))
 ```
 
 Optional traversal:
 
-```rust
+```text
 g().n(NodeRef::var("user"))
     .optional(sub().out(Some("WORKS_AT")))
 ```
@@ -119,7 +119,7 @@ Use `.choose(...)` for traversal-level if/then/else logic when a Cypher-style `C
 
 Use `project(...)` when the route should return an intentional stable shape.
 
-```rust
+```text
 g().n_with_label("User").project(vec![
     PropertyProjection::new("$id"),
     PropertyProjection::new("userId"),
@@ -129,13 +129,13 @@ g().n_with_label("User").project(vec![
 
 Use `value_map(...)` when returning a loose property map is acceptable.
 
-```rust
+```text
 g().n_with_label("User").value_map(Some(vec!["$id", "name"]))
 ```
 
 For vector search, add `$distance` only when needed:
 
-```rust
+```text
 let projection = vec![
     PropertyProjection::new("$id"),
     PropertyProjection::new("title"),
@@ -147,7 +147,7 @@ let projection = vec![
 
 Common operators:
 
-```rust
+```text
 .order_by("createdAt", Order::Desc)
 .order_by_multiple(vec![("updatedAt", Order::Desc), ("entityId", Order::Asc)])
 .skip(Expr::param("offset"))
@@ -157,7 +157,7 @@ Common operators:
 
 When you only need the best element by a property, prefer ordering plus `limit(1)`.
 
-```rust
+```text
 .order_by("score", Order::Desc)
 .limit(1)
 ```
@@ -168,7 +168,7 @@ If the route truly needs to collect values into an array first, use the fold or 
 
 Create a node:
 
-```rust
+```text
 g().add_n(
     "User",
     vec![
@@ -180,7 +180,7 @@ g().add_n(
 
 Create an edge:
 
-```rust
+```text
 g().n(NodeRef::var("user")).add_e(
     "FOLLOWS",
     NodeRef::var("target"),
@@ -190,14 +190,14 @@ g().n(NodeRef::var("user")).add_e(
 
 Update properties:
 
-```rust
+```text
 g().n(NodeRef::var("existing"))
     .set_property("name", PropertyInput::param("name"))
 ```
 
 Delete:
 
-```rust
+```text
 g().n(NodeRef::var("target")).drop()
 g().drop_edge_by_id(EdgeRef::var("target"))
 ```
@@ -206,7 +206,7 @@ g().drop_edge_by_id(EdgeRef::var("target"))
 
 For create-or-update behavior, use explicit branching.
 
-```rust
+```text
 write_batch()
     .var_as(
         "existing",
@@ -245,7 +245,7 @@ This is the main route-level mapping for Cypher patterns like `UNWIND ... FOREAC
 
 BM25 text search is property-scoped.
 
-```rust
+```text
 read_batch()
     .var_as(
         "results",
@@ -266,7 +266,7 @@ read_batch()
 
 ## Vector Search
 
-```rust
+```text
 read_batch()
     .var_as(
         "results",
@@ -296,7 +296,7 @@ Guidance:
 
 Repeat is often used with an explicit bounded depth.
 
-```rust
+```text
 g().n(NodeRef::var("seed"))
     .repeat(
         RepeatConfig::new(sub().both(Some("RELATED_TO")))
@@ -307,7 +307,7 @@ g().n(NodeRef::var("seed"))
 
 For Cypher-style multi-hop traversal where you want emitted results after each hop, use `emit_after()`.
 
-```rust
+```text
 g().n(NodeRef::var("seed"))
     .repeat(
         RepeatConfig::new(sub().out(Some("RELATED_TO")))

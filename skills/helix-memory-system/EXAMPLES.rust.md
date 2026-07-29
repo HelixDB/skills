@@ -80,13 +80,13 @@ pub fn bootstrap_memory_indexes() -> WriteBatch {
         .var_as("chunkTenant", g().create_index_if_not_exists(IndexSpec::node_equality("Chunk", "tenant_id")))
         .var_as("chunkUser",   g().create_index_if_not_exists(IndexSpec::node_equality("Chunk", "userId")))
         .var_as("chunkDoc",    g().create_index_if_not_exists(IndexSpec::node_equality("Chunk", "documentId")))
-        .var_as("chunkVec",    g().create_index_if_not_exists(IndexSpec::node_vector("Chunk", "embedding", Some("tenant_id"))))
+        .var_as("chunkVec",    g().create_index_if_not_exists(IndexSpec::node_vector("Chunk", "embedding", std::num::NonZeroUsize::new(1536).expect("non-zero dimension"), VectorDistanceMetric::Cosine, Some("tenant_id"))))
         .var_as("chunkText",   g().create_index_if_not_exists(IndexSpec::node_text("Chunk", "content", Some("tenant_id"))))
         .var_as("memoryId",    g().create_index_if_not_exists(IndexSpec::node_unique_equality("Memory", "memoryId")))
         .var_as("memTenant",   g().create_index_if_not_exists(IndexSpec::node_equality("Memory", "tenant_id")))
         .var_as("memUser",     g().create_index_if_not_exists(IndexSpec::node_equality("Memory", "userId")))
         .var_as("memLatest",   g().create_index_if_not_exists(IndexSpec::node_equality("Memory", "isLatest")))
-        .var_as("memVector",   g().create_index_if_not_exists(IndexSpec::node_vector("Memory", "embedding", Some("tenant_id"))))
+        .var_as("memVector",   g().create_index_if_not_exists(IndexSpec::node_vector("Memory", "embedding", std::num::NonZeroUsize::new(1536).expect("non-zero dimension"), VectorDistanceMetric::Cosine, Some("tenant_id"))))
         .var_as("memText",     g().create_index_if_not_exists(IndexSpec::node_text("Memory", "content", Some("tenant_id"))))
         .var_as("catKey",      g().create_index_if_not_exists(IndexSpec::node_unique_equality("Category", "categoryKey")))
         .var_as("catTenant",   g().create_index_if_not_exists(IndexSpec::node_equality("Category", "tenant_id")))
@@ -611,7 +611,7 @@ pub fn hybrid_recall(
                 PropertyProjection::new("lastAccessedAt"),
                 PropertyProjection::new("documentId"),
                 PropertyProjection::new("chunkId"),
-                PropertyProjection::renamed("$distance", "score"),
+                PropertyProjection::renamed("$score", "score"),
             ]),
         )
         .var_as(
@@ -647,7 +647,7 @@ pub fn hybrid_recall(
                 PropertyProjection::new("documentId"),
                 PropertyProjection::new("content"),
                 PropertyProjection::new("ordinal"),
-                PropertyProjection::renamed("$distance", "score"),
+                PropertyProjection::renamed("$score", "score"),
             ]),
         )
         .returning(["profile", "memorySemantic", "memoryKeyword", "chunkSemantic", "chunkKeyword"])

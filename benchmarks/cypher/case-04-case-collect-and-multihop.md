@@ -38,7 +38,7 @@ RETURN reduce(best = null, score IN scores |
 
 ## Gold Translation Sketch
 
-```rust
+```text
 // multi-hop
 read_batch()
     .var_as(

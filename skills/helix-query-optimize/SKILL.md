@@ -90,7 +90,7 @@ at the end.
 
 Prefer:
 
-```ts
+```text
 .valueMap(["$id", "name"])
 ```
 

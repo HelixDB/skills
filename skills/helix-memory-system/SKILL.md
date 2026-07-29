@@ -200,7 +200,7 @@ Do not:
 - drop short follow-up answers because they are not self-contained before context resolution
 - write user-specific chunks/documents without an owner or scope field, then recall them tenant-wide
 - expect Helix to extract files, chunk documents, generate embeddings, classify updates, build profiles, rerank, sync connectors, or run TTL jobs automatically
-- read `$distance` after an `out`/`in`/`both` step; project it immediately after search
+- read `$distance` or `$score` after an `out`/`in`/`both` step; project rank metadata immediately after search
 - try to express a similarity-threshold dedup as a `BatchCondition`; it can only test variable emptiness/size
 - update `content` without re-embedding
 - return `embedding` arrays in API responses unless explicitly required

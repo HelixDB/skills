@@ -4,7 +4,7 @@ Generic before-and-after patterns for direct forthcoming v3 SDK requests.
 
 ## Better Anchor Choice
 
-```rust
+```text
 // weaker
 g().n_with_label("Entity")
     .where_(Predicate::eq_param("status", "status"))

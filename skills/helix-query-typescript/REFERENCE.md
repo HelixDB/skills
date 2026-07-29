@@ -11,11 +11,12 @@ rules live in `../helix-query-json-dynamic/REFERENCE.md`.
 
 ## Import
 
-```ts
+```text
 import { g, sub, readBatch, writeBatch, NodeRef, EdgeRef, Predicate, SourcePredicate,
          PropertyValue, PropertyInput, Expr, StreamBound, PropertyProjection, ExprProjection,
-         Projection, RepeatConfig, IndexSpec, Order, EmitBehavior, AggregateFunction, CompareOp,
-         BatchCondition, DateTime, RangeIndexDirection, QueryRequest, defineParams, param,
+         Projection, BindingProjection, BindingTarget, RepeatConfig, IndexSpec, Order,
+         EmitBehavior, AggregateFunction, CompareOp, BatchCondition, DateTime,
+         RangeIndexDirection, VectorDistanceMetric, QueryRequest, defineParams, param,
          stringifyJson, i64, f32, f64, bytes, dateTime } from "@helix-db/helix-db";
 ```
 
@@ -55,7 +56,7 @@ either mode.
 
 ## Entry Points
 
-```ts
+```text
 g(): Traversal<"empty", "read">
 sub(): SubTraversal
 readBatch(): ReadBatch
@@ -64,7 +65,7 @@ writeBatch(): WriteBatch
 
 ### `ReadBatch` / `WriteBatch`
 
-```ts
+```text
 .varAs(name: string, traversal): ReadBatch | WriteBatch         // store named result
 .varAsIf(name: string, condition: BatchCondition, traversal)    // conditional entry
 .forEachParam(paramName: string, body): ReadBatch | WriteBatch  // run body per object in array param
@@ -79,7 +80,7 @@ writeBatch(): WriteBatch
 
 ### `BatchCondition`
 
-```ts
+```text
 BatchCondition.varNotEmpty(name)   // {"var_not_empty": name}
 BatchCondition.varEmpty(name)      // {"var_empty": name}
 BatchCondition.varMinSize(name, n) // {"var_min_size": [name, n]}
@@ -95,14 +96,14 @@ you rarely construct them directly.
 
 Literal helpers disambiguate numeric width:
 
-```ts
+```text
 i64(value: number | bigint)   f32(value: number)   f64(value: number)
 bytes(value: Uint8Array | number[])   dateTime(value: DateTime)
 ```
 
 ### `PropertyValue` — tagged on the wire
 
-```ts
+```text
 PropertyValue.null()              // "null"
 PropertyValue.bool(b)             // {"bool": b}
 PropertyValue.i64(n)              // {"i64": n}      (number | bigint)
@@ -127,7 +128,7 @@ stored as property values. Homogeneous primitive arrays may use tagged
 
 Used for write property values and `edgeHas` / search args:
 
-```ts
+```text
 PropertyInput.value(v: PropertyValueInput)  // {"value": <PropertyValue>}
 PropertyInput.expr(e: Expr)                 // {"expr": <Expr>}
 PropertyInput.param(name: string)           // {"expr": {"param": name}}
@@ -136,7 +137,7 @@ PropertyInput.from(input)                   // smart constructor
 
 ### `DateTime`
 
-```ts
+```text
 DateTime.fromMillis(ms: number | bigint)   DateTime.parseRfc3339(s: string)
 .millis(): bigint   .toRfc3339(): string   // UTC, millisecond precision; negative epochs supported
 ```
@@ -147,7 +148,7 @@ DateTime.fromMillis(ms: number | bigint)   DateTime.parseRfc3339(s: string)
 
 `NodeRef` / `EdgeRef`:
 
-```ts
+```text
 NodeRef.all()              // "all"          (nodes only)
 NodeRef.id(id)             // {"ids": [id]}
 NodeRef.ids(iterable)      // {"ids": [...]}
@@ -163,7 +164,7 @@ NodeRef.from(value)        // accepts NodeRef | id | id[] | "var-name"
 
 ## Sources (`Traversal<"empty">` → `Traversal<"nodes"|"edges">`)
 
-```ts
+```text
 g().n(nodes)                                  -> Traversal<"nodes">
 g().nWhere(pred: SourcePredicate)             -> Traversal<"nodes">
 g().nWithLabel(label)                         -> Traversal<"nodes">     // = nWhere(SourcePredicate.eq("$label", label))
@@ -191,14 +192,14 @@ Prefer the `*With` variants for parameterized routes. The high-level `vectorSear
 
 Node-stream navigation:
 
-```ts
+```text
 .out(label?: string)   .in(label?: string)   .both(label?: string)   -> Traversal<"nodes", M>
 .outE(label?: string)  .inE(label?: string)  .bothE(label?: string)  -> Traversal<"edges", M>
 ```
 
 Edge-stream navigation:
 
-```ts
+```text
 .outN()    -> Traversal<"nodes", M>   // edge → target
 .inN()     -> Traversal<"nodes", M>   // edge → source
 .otherN()  -> Traversal<"nodes", M>   // edge → "other" endpoint
@@ -212,7 +213,7 @@ The label argument is optional; omit it (`out()`) or pass a string
 
 ## Filters
 
-```ts
+```text
 .has(prop, value: PropertyValueInput)    // both node & edge streams
 .hasLabel(label)
 .hasKey(prop)
@@ -232,7 +233,7 @@ side must be a `PropertyInput` expression or runtime parameter.
 
 Literal constructors:
 
-```ts
+```text
 Predicate.eq(prop, val)    Predicate.neq(prop, val)
 Predicate.gt(prop, val)    Predicate.gte(prop, val)    Predicate.lt(prop, val)    Predicate.lte(prop, val)
 Predicate.between(prop, min, max)
@@ -245,7 +246,7 @@ Predicate.compare(left: Expr, op: CompareOp, right: Expr)
 
 Parameterized comparison shortcuts:
 
-```ts
+```text
 Predicate.eqParam(prop, paramName)   Predicate.neqParam(...)
 Predicate.gtParam(...)   Predicate.gteParam(...)   Predicate.ltParam(...)   Predicate.lteParam(...)
 ```
@@ -254,7 +255,7 @@ Predicate.gtParam(...)   Predicate.gteParam(...)   Predicate.ltParam(...)   Pred
 
 Use index-friendly predicate shapes at the source:
 
-```ts
+```text
 SourcePredicate.eq / neq / gt / gte / lt / lte / between / hasKey / startsWith / and / or
 ```
 
@@ -267,7 +268,7 @@ Property-name strings in filters can be dotted object paths, for example `Predic
 
 ### `CompareOp`
 
-```ts
+```text
 CompareOp.Eq | Neq | Gt | Gte | Lt | Lte
 ```
 
@@ -277,7 +278,7 @@ CompareOp.Eq | Neq | Gt | Gte | Lt | Lte
 
 `Expr`:
 
-```ts
+```text
 Expr.prop(name)    Expr.val(value: PropertyValueInput)
 Expr.id()          Expr.param(name)
 Expr.timestamp()   // server UTC epoch millis
@@ -300,13 +301,13 @@ Typical uses:
 
 ## Stream Bounds & Limits
 
-```ts
+```text
 .limit(n)   .skip(n)   .range(start, end)
 ```
 
 Each accepts `number`, `bigint`, `Expr`, `ParamRef`, or `StreamBound`:
 
-```ts
+```text
 StreamBound.literal(n)        // {"literal": n}
 StreamBound.expr(e)           // {"expr": <Expr>}
 StreamBound.from(value)       // negative numbers become an expression bound
@@ -316,7 +317,7 @@ StreamBound.from(value)       // negative numbers become an expression bound
 
 ## Variables & Injection
 
-```ts
+```text
 .as(name)       // store current stream
 .store(name)    // alias of .as
 .select(name)   // replace current stream with a stored var
@@ -330,7 +331,7 @@ Cross-entry references: `NodeRef.var(name)`, `EdgeRef.var(name)`, `NodeRef.param
 
 ## Ordering
 
-```ts
+```text
 .orderBy(property, order: Order)                                  // Order.Asc | Order.Desc
 .orderByMultiple([[prop1, Order.Desc], [prop2, Order.Asc]])
 ```
@@ -343,7 +344,7 @@ range indexes do not accelerate nested paths.
 
 ## Aggregation (terminals)
 
-```ts
+```text
 .count()   .exists()   .group(property)   .groupCount(property)
 .aggregateBy(fn: AggregateFunction, property)
 // AggregateFunction.{Count, Sum, Min, Max, Mean}
@@ -355,7 +356,7 @@ range indexes do not accelerate nested paths.
 
 Each arm is a `SubTraversal` from `sub()`:
 
-```ts
+```text
 .union([subA, subB, ...])
 .choose(condition: Predicate, thenTraversal: SubTraversal, elseTraversal?: SubTraversal | null)
 .coalesce([subA, subB, ...])   // first non-empty wins
@@ -368,7 +369,7 @@ Each arm is a `SubTraversal` from `sub()`:
 
 ## Repeat
 
-```ts
+```text
 .repeat(RepeatConfig.new(sub().out("KNOWS")).times(3))
 .repeat(
   RepeatConfig.new(sub().out("REPORTS_TO"))
@@ -393,7 +394,7 @@ repeat with `times` or `until`.
 
 ## Projections (terminals)
 
-```ts
+```text
 .values(["name", "email"])                  -> Traversal<"terminal", M>
 .valueMap(["$id", "name"])                  -> Traversal<"terminal", M>
 .valueMap(null)                             -> all properties
@@ -403,7 +404,7 @@ repeat with `times` or `until`.
 
 Projection constructors:
 
-```ts
+```text
 PropertyProjection.new("name")                       // {source:"name", alias:"name"}
 PropertyProjection.renamed("$distance", "distance")  // {source:"$distance", alias:"distance"}
 ExprProjection.new("age2", Expr.prop("age").add(Expr.val(1)))   // {alias:"age2", expr:{...}}
@@ -434,7 +435,7 @@ values captured at **different hops** of one path, tag elements with
 `.bind(name)` as you pass them, then assemble rows with `.projectBindings(...)`
 / `.projectDistinctBindings(...)`.
 
-```ts
+```text
 .bind(name: string)                                ↻ same stream; enters row mode (throws on empty name)
 .projectBindings(projs: BindingProjection[])       -> Traversal<"terminal", M>  // preserves duplicate rows
 .projectDistinctBindings(projs: BindingProjection[])-> Traversal<"terminal", M> // dedups identical rows
@@ -447,7 +448,7 @@ earlier captures. Available on `Traversal` (node and edge streams) and on
 
 `BindingProjection` constructors:
 
-```ts
+```text
 BindingProjection.current("$id", "current_id")              // read from current element
 BindingProjection.binding("service", "$id", "service_id")   // read from a named binding
 BindingProjection.property(BindingTarget.binding("svc"), "name", "svc_name")
@@ -466,7 +467,7 @@ BindingProjection.coalesce([                                // first present non
 
 Worked example:
 
-```ts
+```text
 g().nWithLabel("Service")
   .bind("service")
   .out("ROUTES_TO").bind("pod")
@@ -492,7 +493,7 @@ The binding projection is part of the normal direct `QueryRequest`. See
 
 ## Terminals (metadata)
 
-```ts
+```text
 .count()   .exists()   .id()   .label()
 ```
 
@@ -504,7 +505,7 @@ Usable on node and edge streams. `.edgeProperties()` is edge-only.
 
 Source-position mutation (`Traversal<"empty">` → `Traversal<"nodes", "write">`):
 
-```ts
+```text
 g().addN(label, properties)            // properties: Record<string, PropertyInput|PropertyValueInput|ParamRef> OR [string, ...][]
 g().dropEdgeById(edges)
 g().inject(varName)
@@ -512,7 +513,7 @@ g().inject(varName)
 
 Node-state mutations (→ `Traversal<"nodes", "write">`):
 
-```ts
+```text
 .addE(label, to: NodeRef | NodeId | ..., properties)
 .setProperty(name, value: PropertyInput | PropertyValueInput)
 .removeProperty(name)
@@ -529,20 +530,20 @@ literal property is `["name", {"value": {"string": "Alice"}}]`.
 
 ## Indexes (write-only)
 
-```ts
+```text
 g().createIndexIfNotExists(spec: IndexSpec)   -> Traversal<"terminal", "write">
 g().dropIndex(spec: IndexSpec)                -> Traversal<"terminal", "write">
 
 // convenience source forms (tenantProperty optional)
-g().createVectorIndexNodes(label, property, tenantProperty?)
-g().createVectorIndexEdges(label, property, tenantProperty?)
+g().createVectorIndexNodes(label, property, dimension, metric, tenantProperty?)
+g().createVectorIndexEdges(label, property, dimension, metric, tenantProperty?)
 g().createTextIndexNodes(label, property, tenantProperty?)
 g().createTextIndexEdges(label, property, tenantProperty?)
 ```
 
 `IndexSpec` constructors:
 
-```ts
+```text
 IndexSpec.nodeEquality(label, property)         // unique = false
 IndexSpec.nodeUniqueEquality(label, property)   // unique = true
 IndexSpec.nodeRange(label, property)
@@ -552,9 +553,9 @@ IndexSpec.edgeEquality(label, property)
 IndexSpec.edgeRange(label, property)
 IndexSpec.edgeRangeDesc(label, property)
 IndexSpec.edgeRangeWithDirection(label, property, RangeIndexDirection.Desc)
-IndexSpec.nodeVector(label, property, tenantProperty?)
+IndexSpec.nodeVector(label, property, dimension, metric, tenantProperty?)
 IndexSpec.nodeText(label, property, tenantProperty?)
-IndexSpec.edgeVector(label, property, tenantProperty?)
+IndexSpec.edgeVector(label, property, dimension, metric, tenantProperty?)
 IndexSpec.edgeText(label, property, tenantProperty?)
 ```
 
@@ -570,7 +571,7 @@ Index properties are top-level only in the current runtime. Do not declare `meta
 
 Emit the corresponding steps but have no effect in the current interpreter. Safe to include for forward-compatible queries.
 
-```ts
+```text
 .fold()   .unfold()   .path()   .simplePath()
 .withSack(initial)   .sackSet(prop)   .sackAdd(prop)   .sackGet()
 ```
@@ -581,7 +582,7 @@ Emit the corresponding steps but have no effect in the current interpreter. Safe
 
 `param` schema constructors:
 
-```ts
+```text
 param.bool()  param.i64()  param.f64()  param.f32()  param.string()
 param.dateTime()  param.bytes()  param.value()
 param.object()  param.object(inner)  param.array(inner)
@@ -604,7 +605,7 @@ objects use their structured `snake_case` schema form.
 
 ## Direct Requests
 
-```ts
+```text
 type QueryOptions = { queryName?: string | null }
 
 QueryRequest.read(batch: ReadBatch, queryName?: string | null)
@@ -636,7 +637,7 @@ untagged `Projection`/`BatchQuery`/`QueryValue`, `parameter_types` rules, and
 
 Built-in HTTP client for running a request against a Helix instance. Uses the global `fetch`, so there are no extra dependencies. Strict port of the Rust `helix_db::Client`.
 
-```ts
+```text
 new Client(url?: string | null)           // defaults to http://localhost:6969
 Client.server(url?: string | null)
   .withApiKey(key?: string | null)        // Authorization: Bearer <key> (null/undefined clears it)
@@ -654,7 +655,7 @@ await request.send(): Promise<R>           // 200 -> parsed JSON (parseJsonStruc
 
 Prefer `.shouldAwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 
-```ts
+```text
 import { Client, HelixError } from "@helix-db/helix-db";
 
 const client = new Client("https://helix.example.com").withApiKey(apiKey);
@@ -683,7 +684,7 @@ registration, and query bundles are not supported.
 
 ## Enums
 
-```ts
+```text
 CompareOp.{Eq, Neq, Gt, Gte, Lt, Lte}
 Order.{Asc, Desc}                              // lowercase strings on the wire
 EmitBehavior.{None, Before, After, All}

@@ -63,7 +63,8 @@ Prefer snake_case in Python code:
 - `.var_as(...)`, `.var_as_if(...)`, `.for_each_param(...)`
 - `.n_with_label(...)`, `.value_map(...)`, `.order_by(...)`
 - `.to_query_request(...)`, `.to_query_json(...)`
-- `Client(...).with_api_key(...)`, `.warm_only()`, `.writer_only()`, `.should_await_durability(True)`
+- `Client(...).with_api_key(...)`; advanced request builders expose
+  `.warm_only()`, `.writer_only()`, and `.should_await_durability(True)`
 
 Compatibility aliases such as `readBatch`, `varAs`, and `valueMap` exist for translation, but do not use them in fresh Python.
 
@@ -129,7 +130,10 @@ client.execute(write_request, writer_only=True, await_durability=True)
 client.execute(read_request, warm_only=True)
 ```
 
-Prefer `should_await_durability(True)` on writes. It reduces HTTP 409 conflicts under concurrent writers, but the SDK does not retry conflicts; application code owns retry policy and idempotency.
+Prefer `await_durability=True` with `execute` or
+`client.request_builder().should_await_durability(True)` on writes. This
+reduces HTTP 409 conflicts under concurrent writers, but the SDK does not retry
+conflicts; application code owns retry policy and idempotency.
 
 ### 6. Shape Responses Deliberately
 
@@ -174,7 +178,7 @@ Before finishing:
 - verify request-specific values use `define_params` refs instead of direct literals
 - verify `.returning([...])` names match the expected response shape
 - verify vector/text search preserves tenant scope when the index is scoped
-- verify `$distance` is projected before traversing away from search hits
+- verify `$distance` or `$score` is projected before traversing away from search hits
 - verify write callers use explicit conflict retry only when safe to replay
 - run the Python tests or at minimum serialize the request and inspect the JSON
 

@@ -69,8 +69,8 @@ Key facts:
 
 ```bash
 helix auth login                          # GitHub device-code flow → ~/.helix/credentials
-helix workspace switch <slug>             # pick the active workspace
-helix project switch <name>               # link the project (writes ids to helix.toml)
+helix workspace switch my-team            # pick the active workspace
+helix project switch payments-api         # link the project (writes ids to helix.toml)
 helix cluster list                        # find the cluster id
 helix add cloud --name production --cluster-id ec_01HX...   # add an [enterprise.production] block
 helix sync production                      # fetch gateway_url + auth metadata into helix.toml
@@ -101,7 +101,8 @@ In a JSON request body, `request_type` must be lowercase `"read"` or `"write"`. 
 
 ### 4. `--warm` Is Read-Only
 
-`--warm` adds the `X-Helix-Warm` header to pre-warm caches and is for read requests only. Output is suppressed.
+`--warm` adds the `X-Helix-Warm` header to execute a read through warm mode and
+populate caches. It is read-only, and the normal query result is still printed.
 
 ### 5. Prefer `helix push`, Not Removed Commands
 

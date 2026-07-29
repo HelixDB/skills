@@ -30,7 +30,7 @@ RETURN u, o
 
 ## Gold Translation Sketch
 
-```rust
+```text
 read_batch()
     .var_as(
         "user",

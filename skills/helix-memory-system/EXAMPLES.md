@@ -21,7 +21,7 @@ import {
   Client,
   g, readBatch, writeBatch, defineParams, param,
   NodeRef, SourcePredicate, Predicate, Expr, CompareOp,
-  IndexSpec, Projection, BatchCondition,
+  IndexSpec, Projection, BatchCondition, VectorDistanceMetric,
 } from "@helix-db/helix-db";
 ```
 
@@ -100,13 +100,13 @@ function bootstrapMemoryIndexes() {
     .varAs("chunkTenant", g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "tenant_id")))
     .varAs("chunkUser",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "userId")))
     .varAs("chunkDoc",    g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "documentId")))
-    .varAs("chunkVec",    g().createIndexIfNotExists(IndexSpec.nodeVector("Chunk", "embedding", "tenant_id")))
+    .varAs("chunkVec",    g().createIndexIfNotExists(IndexSpec.nodeVector("Chunk", "embedding", DEFAULT_EMBEDDING_DIM, VectorDistanceMetric.Cosine, "tenant_id")))
     .varAs("chunkText",   g().createIndexIfNotExists(IndexSpec.nodeText("Chunk", "content", "tenant_id")))
     .varAs("memoryId",    g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Memory", "memoryId")))
     .varAs("memTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "tenant_id")))
     .varAs("memUser",     g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "userId")))
     .varAs("memLatest",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "isLatest")))
-    .varAs("memVector",   g().createIndexIfNotExists(IndexSpec.nodeVector("Memory", "embedding", "tenant_id")))
+    .varAs("memVector",   g().createIndexIfNotExists(IndexSpec.nodeVector("Memory", "embedding", DEFAULT_EMBEDDING_DIM, VectorDistanceMetric.Cosine, "tenant_id")))
     .varAs("memText",     g().createIndexIfNotExists(IndexSpec.nodeText("Memory", "content", "tenant_id")))
     .varAs("catKey",      g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Category", "categoryKey")))
     .varAs("catTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Category", "tenant_id")))
@@ -512,7 +512,7 @@ function hybridRecall(p = recallParams) {
           Projection.property("lastAccessedAt", "lastAccessedAt"),
           Projection.property("documentId", "documentId"),
           Projection.property("chunkId", "chunkId"),
-          Projection.property("$distance", "score"),
+          Projection.property("$score", "score"),
         ]),
     )
     .varAs(
@@ -538,7 +538,7 @@ function hybridRecall(p = recallParams) {
           Projection.property("documentId", "documentId"),
           Projection.property("content", "content"),
           Projection.property("ordinal", "ordinal"),
-          Projection.property("$distance", "score"),
+          Projection.property("$score", "score"),
         ]),
     )
     .returning(["profile", "memorySemantic", "memoryKeyword", "chunkSemantic", "chunkKeyword"]);

@@ -20,7 +20,7 @@ Preferred order:
 
 Example:
 
-```rust
+```text
 // weaker
 g().n_with_label("Entity")
     .where_(Predicate::eq_param("status", "status"))
@@ -66,7 +66,7 @@ Prefer:
 
 Example:
 
-```rust
+```text
 // weaker
 g().vector_search_nodes_with(...)
     .value_map(None::<Vec<&str>>)
@@ -105,7 +105,7 @@ For BM25 routes, check:
 
 Example:
 
-```rust
+```text
 g().text_search_nodes_with(
     "Document",
     "body",
@@ -138,7 +138,7 @@ Rules:
 
 - warming only supports reads
 - it uses the same request shape as the live read
-- it returns `204 No Content`
+- it returns `200 OK` with the normal normalized query response
 
 ## 10. Common Optimization Mistakes
 

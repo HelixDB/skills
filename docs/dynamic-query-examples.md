@@ -115,7 +115,8 @@ For a direct read request, warming uses the same body plus:
 X-Helix-Warm: true
 ```
 
-Warm requests return `204 No Content`. Write warming is rejected.
+Successful warm reads return `200 OK` with the normal normalized JSON response
+while populating caches. Write warming is rejected.
 
 ## Common mistakes
 

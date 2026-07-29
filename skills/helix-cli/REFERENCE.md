@@ -141,7 +141,7 @@ Options:
 
 | Flag | Purpose |
 |---|---|
-| `--warm` | Add `X-Helix-Warm` to pre-warm caches (read requests only); output suppressed. |
+| `--warm` | Add `X-Helix-Warm` to execute through warm mode and populate caches (read requests only); the normal result is printed. |
 | `--host <HOST>` | Override host for local instances (default `localhost`). |
 | `--port <PORT>` | Override port for local instances. |
 | `--compact` | Print single-line JSON (default is pretty). |

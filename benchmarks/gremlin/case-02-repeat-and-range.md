@@ -28,7 +28,7 @@ g.V().hasLabel('Entity').has('entityId', seedId).repeat(__.both('RELATED_TO')).t
 
 ## Gold Translation Sketch
 
-```rust
+```text
 read_batch()
     .var_as(
         "seed",

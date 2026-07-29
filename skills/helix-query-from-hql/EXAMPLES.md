@@ -461,7 +461,11 @@ write_batch()
     .var_as(
         "edge",
         g().n(NodeRef::var("user"))
-            .add_e("Follows", NodeRef::param("target_id"), vec![]),
+            .add_e(
+                "Follows",
+                NodeRef::param("target_id"),
+                Vec::<(&str, PropertyInput)>::new(),
+            ),
     )
     .returning(["user", "edge"])
 ```
@@ -551,8 +555,10 @@ function deleteUser(_ = deleteUserParams) {
 const body = deleteUser().toQueryJson(deleteUserParams, { userId: "u-42" });
 ```
 
-> HQL `RETURN "Removed"` (a literal) has no DSL form — return the dropped binding (or `.returning([])` for no
-> payload) instead. Dropping a node removes its connected edges. To drop only edges, traverse to them and use
+> HQL `RETURN "Removed"` (a literal) has no DSL form — return the dropped
+> binding (or Rust `.returning(Vec::<&str>::new())` / TypeScript
+> `.returning([])` for no payload) instead. Dropping a node removes its
+> connected edges. To drop only edges, traverse to them and use
 > `drop_edge_by_id`/`dropEdgeById` (multigraph-safe).
 
 ---
@@ -575,7 +581,7 @@ let body = write_batch()
 
 write_batch()
     .for_each_param("users", body)
-    .returning([])
+    .returning(Vec::<&str>::new())
 ```
 
 ```ts
@@ -591,8 +597,9 @@ const body = createUsers().toQueryJson(createUsersParams, { users: [{ name: "Ali
 
 > `for_each_param`/`forEachParam` iterates the objects of an **array parameter** — it is not a general loop. The
 > body is its own batch that reads each element's fields by name. Use the HQL destructuring form (`FOR {name} IN`,
-> array-of-objects) for a clean mapping; an array-of-scalars `FOR name IN` does not map directly. `RETURN NONE` →
-> `.returning([])`.
+> array-of-objects) for a clean mapping; an array-of-scalars `FOR name IN` does
+> not map directly. `RETURN NONE` maps to Rust
+> `.returning(Vec::<&str>::new())` or TypeScript `.returning([])`.
 
 ---
 

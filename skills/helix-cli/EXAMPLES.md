@@ -86,7 +86,7 @@ helix prune staging
 helix query dev --file examples/request.json
 
 # (b) Inline JSON string
-helix query dev --json '{"request_type":"read","query_name":"ping","query":{"read":{"entries":[],"returns":[]}},"parameters":{}}'
+helix query dev --json '{"request_type":"read","query_name":"node_count","query":{"read":{"entries":[{"query":{"name":"node_count","root":{"count":{"input":{"nodes_where":{"predicate":{"eq":{"left":{"property":"$label"},"right":{"constant":{"string":"User"}}}}}}}}}}],"returns":["node_count"]}}}'
 
 # (c) Inline TypeScript DSL expression (like `mysql -e`; needs Node 20+)
 helix query dev -e 'readBatch().varAs("c", g().nWithLabel("User").count()).returning(["c"])'
@@ -103,7 +103,8 @@ readBatch()
   .returning(["c"]);
 ```
 
-Pre-warm caches without printing output (read-only):
+Execute the read through warm mode to populate caches (the normal result is
+still printed):
 
 ```bash
 helix query dev --file examples/request.json --warm
