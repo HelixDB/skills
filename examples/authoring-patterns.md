@@ -1,6 +1,7 @@
-# Authoring Patterns
+# v3 Authoring Patterns
 
-Generic Helix Rust DSL examples for new query authoring.
+Generic forthcoming `helix-db = "3.0.0"` Rust SDK examples. Each builder produces a
+direct `QueryRequest`; there is no route registration or bundle generation.
 
 ## Read By Indexed Identifier
 
@@ -8,8 +9,10 @@ Generic Helix Rust DSL examples for new query authoring.
 read_batch()
     .var_as(
         "user",
-        g().n_with_label("User")
-            .where_(Predicate::eq_param("userId", "userId"))
+        g().n_with_label_where(
+            "User",
+            SourcePredicate::eq("userId", "known-id"),
+        )
             .project(vec![
                 PropertyProjection::new("$id"),
                 PropertyProjection::new("userId"),

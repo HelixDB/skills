@@ -3,10 +3,10 @@
 This is the per-feature lookup table for migrating legacy **HelixQL (HQL)** — the deprecated `.hx`
 text language (`QUERY Foo(...) => ... RETURN ...`) — into the two code-native DSLs that replace it:
 
-- **Rust DSL** — `~/github/helix-db/sdks/rust/src/dsl.rs`, registered with `#[register]` (re-exported in
-  `sdks/rust/src/lib.rs`) and bundled with `helix_db::generate()` (`sdks/rust/src/query_generator.rs:219`).
-- **TypeScript DSL** — `~/github/helix-db/sdks/typescript/src/index.ts`, declared with `defineParams` +
-  `registerRead`/`registerWrite` and bundled with `defineQueries({...}).generate()`.
+- **Rust v3 DSL** — `helix-db = "3.0.0"`, imported as `helix_db`; a `#[query]`
+  function returns a direct `QueryRequest`.
+- **TypeScript v3 DSL** — `@helix-db/helix-db@3.0.0`; a normal builder uses
+  `toQueryRequest` or `toQueryJson`.
 
 Both DSLs serialize to the **same JSON query AST**. A Rust query and a TS query that produce identical JSON are
 semantically identical — that is the primary fidelity check (see §Verification).
@@ -31,7 +31,7 @@ The DSLs are structurally identical but spelled differently. Most translation mi
 | Property lists | `vec!["a","b"]` / `Some(vec![...])` / `None::<Vec<&str>>` | `["a","b"]` / `null` |
 | Write properties | `vec![("name","Alice")]` | `{ name: "Alice" }` or `[["name","Alice"]]` |
 | Integers in params | native `i64` | `bigint` (`1n`) for `i64`/IDs |
-| Bundle | `#[register] fn foo(..) -> ReadBatch` + `generate()` | `registerRead(fn, defineParams({..}))` + `defineQueries({..}).generate()` |
+| Direct request | `#[query] fn foo(..) -> ReadBatch` | `defineParams(...)` + `batch.toQueryRequest(...)` |
 
 ---
 
@@ -39,8 +39,8 @@ The DSLs are structurally identical but spelled differently. Most translation mi
 
 | HQL | Rust DSL | TypeScript DSL | Notes |
 | --- | --- | --- | --- |
-| `QUERY Foo(p: ID) =>` (read) | `#[register] pub fn foo(p: String) -> ReadBatch { read_batch()... }` (`dsl.rs:4556`) | `const fooParams = defineParams({ p: param.string() }); function foo(_ = fooParams) { return readBatch()... }` + `registerRead(foo, fooParams)` (`index.ts:1930,2068,2299`) | HQL `ID` → `String` in Rust, `param.string()` in TS. |
-| `QUERY Foo(..) =>` (write) | `#[register] pub fn foo(..) -> WriteBatch { write_batch()... }` (`dsl.rs:4562`) | `registerWrite(foo, fooParams)` (`index.ts:2308`) | Pick read vs write by whether the body mutates. The Rust typestate / TS types reject a write op inside a read batch. |
+| `QUERY Foo(p: ID) =>` (read) | `#[query] pub fn foo(p: String) -> ReadBatch { read_batch()... }` | `const fooParams = defineParams({ p: param.string() }); function foo(_ = fooParams) { return readBatch()... }` | HQL `ID` → `String` in Rust, `param.string()` in TS. |
+| `QUERY Foo(..) =>` (write) | `#[query] pub fn foo(..) -> WriteBatch { write_batch()... }` | `function foo(...) { return writeBatch()... }` | Pick read vs write by whether the body mutates. The Rust typestate / TS types reject a write op inside a read batch. |
 | `name: String, age: U8, vec: [F64]` | fn params `name: String, age: i64, vec: Vec<f64>` | `param.string()`, `param.i64()`, `param.array(param.f64())` | HQL integer widths (`U8`,`I32`,`U64`,…) all collapse to `i64`/`param.i64()`. `[F64]` → `Vec<f64>` / `param.array(param.f64())`. |
 | Parameter use in a predicate | `Predicate::eq_param("status","status")` (`dsl.rs:1930`) | `Predicate.eqParam("status","status")` (`index.ts:692`) | Pass the **parameter name** as a string, not a value. |
 | `binding <- expr` (assignment) | `.var_as("binding", expr)` (`dsl.rs:4219`) | `.varAs("binding", expr)` (`index.ts:1840`) | Each HQL `<-` line becomes a `var_as`/`varAs`. |
@@ -230,9 +230,9 @@ clearly during migration and **move the logic into application code** — do not
    and non-`SourcePredicate` at a source. TS: `tsc` — the type system rejects a write traversal in `readBatch`.
 2. **AST parity.** Generate raw batch JSON for both languages, or generate full dynamic envelopes only after setting
    the same Rust `query_name` / TS `{ queryName }` (`req.to_json_string()` /
-   `batch.toDynamicJson(params, values, { queryName })`, or full bundles via `generate()` → `queries.json`). Diff the
+   `batch.toQueryJson(params, values, { queryName })`). Diff the
    JSON. **Identical AST = the Rust and TS migrations agree** and match the wire format.
-3. **Run.** Deploy both bundles (or POST the dynamic JSON to a test Helix instance at `POST /v1/query`) on the
+3. **Run.** POST both direct requests to a test Helix instance at `POST /v1/query` on the
    same dataset the HQL query ran on. Compare row counts, ordering, and projected fields against the HQL output.
 
 See `EXAMPLES.md` for end-to-end HQL→Rust→TS migrations, including unsupported-feature cases.

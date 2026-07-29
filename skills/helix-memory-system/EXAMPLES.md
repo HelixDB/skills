@@ -1,8 +1,20 @@
 # Helix Memory System — TypeScript Examples
 
-Complete `@helix-db/helix-db` snippets for a tenant-safe memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`. The model and indexes are in `REFERENCE.md`.
+Complete forthcoming `@helix-db/helix-db@3.0.0` snippets for a tenant-safe
+memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`.
 
-Each query function is plain; call it and `.toDynamicRequest(params, values, { queryName: "route_name" })` for a request, then run it with the built-in client — `await new Client(url).withApiKey(key).query<R>().dynamic(req).send()` — or `.toDynamicJson(params, values, { queryName: "route_name" })` for the raw `POST /v1/query` body. On writes, add `.shouldAwaitDurability(true)` before `.send()` — concurrent memory writes are prone to HTTP 409 conflicts, and awaiting durability reduces them (callers still own retry). Embeddings are produced by the application and passed as numeric arrays. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model. Every tenant-owned node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant value. The default examples also filter user-private memories and chunks by `userId`; replace that with `containerId`, `scopeId`, or app ACL filtering for project/team/workspace memory.
+Each query function is plain; call
+`.toQueryRequest(params, values, { queryName: "route_name" })`, then execute it
+with `await Client.server(url).withApiKey(key).query<R>(request).send()`. For
+advanced write headers use
+`client.requestBuilder<R>().writerOnly().shouldAwaitDurability(true).query(request).send()`.
+Embeddings are produced by the application and passed as numeric arrays.
+Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless
+the app has explicitly standardised on another model. Every tenant-owned
+node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant
+value. The default examples also filter user-private memories and chunks by
+`userId`; replace that with `containerId`, `scopeId`, or app ACL filtering for
+project/team/workspace memory.
 
 ```ts
 import {

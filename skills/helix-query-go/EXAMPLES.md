@@ -241,22 +241,8 @@ func ServiceTopology() helix.Request {
 }
 ```
 
-Wire format (each tag is a `Bind` step; the terminal is `ProjectBindings`):
-
-```json
-{"Bind": "service"}
-{"ProjectBindings": {
-  "projections": [
-    {"kind": "Property", "target": {"Binding": "service"}, "source": "$id", "alias": "service_id"},
-    {"kind": "Property", "target": {"Binding": "pod"}, "source": "name", "alias": "pod_name"},
-    {"kind": "Coalesce", "refs": [
-      {"target": {"Binding": "deployment"}, "source": "$id"},
-      {"target": {"Binding": "owner"}, "source": "$id"}
-    ], "alias": "workload_id"}
-  ],
-  "distinct": true
-}}
-```
+The binding projection serializes as the nested `project_bindings` operation in a
+normal direct request.
 
 ## 9. For Each Param Writes
 

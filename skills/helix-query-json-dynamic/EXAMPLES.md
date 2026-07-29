@@ -1,870 +1,374 @@
-# Helix Dynamic Query — JSON Examples
+# HelixDB v3 JSON Examples
 
-Copy the closest scenario and adapt labels, properties, and parameters. Every example is a complete body for `POST /v1/query`. Add a top-level `query_name` string when logs or diagnostics should identify the inline query; omit it or set it to `null` only for ad-hoc requests that can aggregate under `__dynamic__`. Encoding rules are in `REFERENCE.md`; authoring style rules are in `SKILL.md`.
+These are direct request bodies for `POST /v1/query`. They use the same nested AST as
+the forthcoming v3 SDKs.
 
----
-
-## 1. Count nodes matching label + predicate
-
-**Goal:** how many active users are there?
+## Count nodes by label
 
 ```json
 {
   "request_type": "read",
-  "query_name": "active_user_count",
+  "query_name": "node_count",
   "query": {
-    "queries": [
-      {"Query": {
-        "name": "active_count",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "User"}]}},
-          {"Where": {"Eq": ["status", {"String": "active"}]}},
-          "Count"
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["active_count"]
-  }
-}
-```
-
-Response: `{"active_count": <number>}`.
-
----
-
-## 2. Read node by indexed property with projection
-
-**Goal:** load a single User by `userId`, return three properties with a renamed id.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "user",
-        "steps": [
-          {"NWhere": {"And": [
-            {"Eq": ["$label", {"String": "User"}]},
-            {"Eq": ["userId", {"String": "u-42"}]}
-          ]}},
-          {"Project": [
-            {"source": "$id", "alias": "id"},
-            {"source": "userId", "alias": "userId"},
-            {"source": "name", "alias": "name"}
-          ]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["user"]
-  }
-}
-```
-
-Parameterized form (prefer this for reusable routes):
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "user",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "User"}]}},
-          {"Where": {"Compare": {
-            "left": {"Property": "userId"},
-            "op": "Eq",
-            "right": {"Param": "userId"}
-          }}},
-          {"Project": [
-            {"source": "$id", "alias": "id"},
-            {"source": "name", "alias": "name"}
-          ]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["user"]
-  },
-  "parameters":      {"userId": "u-42"},
-  "parameter_types": {"userId": "String"}
-}
-```
-
----
-
-## 3. Multi-hop traversal with `dedup` + `limit`
-
-**Goal:** starting from a user id param, find users two hops out via `FOLLOWS`, deduplicate, cap at 50.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "fof",
-        "steps": [
-          {"N": {"Param": "userId"}},
-          {"Out": "FOLLOWS"},
-          {"Out": "FOLLOWS"},
-          "Dedup",
-          {"Limit": 50},
-          {"Values": ["$id", "name"]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["fof"]
-  },
-  "parameters":      {"userId": [42]},
-  "parameter_types": {"userId": {"Array": "I64"}}
-}
-```
-
----
-
-## 4. Vector search with tenant + distance in projection
-
-**Goal:** 5 nearest documents to a query embedding, scoped by tenant, returning id/title/distance.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "hits",
-        "steps": [
-          {"VectorSearchNodes": {
-            "label": "Document",
-            "property": "embedding",
-            "tenant_value": {"Expr": {"Param": "tenantId"}},
-            "query_vector": {"Expr": {"Param": "queryVector"}},
-            "k": {"Expr": {"Param": "k"}}
-          }},
-          {"Project": [
-            {"source": "$id", "alias": "id"},
-            {"source": "title", "alias": "title"},
-            {"source": "$distance", "alias": "distance"}
-          ]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["hits"]
-  },
-  "parameters": {
-    "tenantId": "acme",
-    "queryVector": [0.12, 0.44, 0.91],
-    "k": 5
-  },
-  "parameter_types": {
-    "tenantId": "String",
-    "queryVector": {"Array": "F64"},
-    "k": "I64"
-  }
-}
-```
-
-`$distance` ascends (smaller = closer). Project it before any `Out`/`In`/`Both` step or you lose it.
-
----
-
-## 5. BM25 text search with post-filter
-
-**Goal:** BM25 over `Document.body`, over-fetch 50, keep only the published ones in the tenant, cap at 10.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "results",
-        "steps": [
-          {"TextSearchNodes": {
-            "label": "Document",
-            "property": "body",
-            "tenant_value": {"Expr": {"Param": "tenantId"}},
-            "query_text": {"Expr": {"Param": "q"}},
-            "k": {"Literal": 50}
-          }},
-          {"Where": {"Eq": ["published", {"Bool": true}]}},
-          {"Limit": 10},
-          {"Project": [
-            {"source": "$id", "alias": "id"},
-            {"source": "title", "alias": "title"},
-            {"source": "$distance", "alias": "score"}
-          ]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["results"]
-  },
-  "parameters":      {"tenantId": "acme", "q": "knowledge graph"},
-  "parameter_types": {"tenantId": "String", "q": "String"}
-}
-```
-
----
-
-## 6. `Repeat` traversal with `until` + `emit_after`
-
-**Goal:** crawl outwards via `REPORTS_TO`, emitting each level, stopping when the title is "CEO" or depth hits 10.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "chain",
-        "steps": [
-          {"N": {"Param": "startId"}},
-          {"Repeat": {
-            "traversal": {"steps": [{"Out": "REPORTS_TO"}]},
-            "times": null,
-            "until": {"Eq": ["title", {"String": "CEO"}]},
-            "emit": "After",
-            "emit_predicate": null,
-            "max_depth": 10
-          }},
-          {"Project": [
-            {"source": "$id", "alias": "id"},
-            {"source": "name", "alias": "name"},
-            {"source": "title", "alias": "title"}
-          ]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["chain"]
-  },
-  "parameters":      {"startId": [1]},
-  "parameter_types": {"startId": {"Array": "I64"}}
-}
-```
-
----
-
-## 7. `Union` of two sub-traversals
-
-**Goal:** merge direct followers and followees of a user.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "network",
-        "steps": [
-          {"N": {"Param": "userId"}},
-          {"Union": [
-            {"steps": [{"Out": "FOLLOWS"}]},
-            {"steps": [{"In": "FOLLOWS"}]}
-          ]},
-          "Dedup",
-          {"Values": ["$id", "name"]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["network"]
-  },
-  "parameters":      {"userId": [42]},
-  "parameter_types": {"userId": {"Array": "I64"}}
-}
-```
-
----
-
-## 8. `Choose` (conditional traversal)
-
-**Goal:** for premium users, walk to `PremiumContent`; otherwise walk to `FreeContent`.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "content",
-        "steps": [
-          {"N": {"Param": "userId"}},
-          {"Choose": {
-            "condition": {"Eq": ["tier", {"String": "premium"}]},
-            "then_traversal": {"steps": [{"Out": "HAS_PREMIUM"}]},
-            "else_traversal": {"steps": [{"Out": "HAS_FREE"}]}
-          }},
-          {"Limit": 20},
-          {"ValueMap": ["$id", "title"]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["content"]
-  },
-  "parameters":      {"userId": [42]},
-  "parameter_types": {"userId": {"Array": "I64"}}
-}
-```
-
----
-
-## 9. `Coalesce` (fallback traversal)
-
-**Goal:** prefer the user's preferred team, fall back to primary team, fall back to any team.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "team",
-        "steps": [
-          {"N": {"Param": "userId"}},
-          {"Coalesce": [
-            {"steps": [{"Out": "PREFERRED_TEAM"}]},
-            {"steps": [{"Out": "PRIMARY_TEAM"}]},
-            {"steps": [{"Out": "MEMBER_OF"}, {"Limit": 1}]}
-          ]},
-          {"Values": ["$id", "name"]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["team"]
-  },
-  "parameters":      {"userId": [42]},
-  "parameter_types": {"userId": {"Array": "I64"}}
-}
-```
-
----
-
-## 10. `Project` with `Expr::Case` (computed field)
-
-**Goal:** user list plus a `bucket` column derived from `score`.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "users",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "User"}]}},
-          {"Project": [
-            {"source": "$id", "alias": "id"},
-            {"source": "score", "alias": "score"},
-            {
-              "alias": "bucket",
-              "expr": {
-                "Case": {
-                  "when_then": [
-                    [{"Gte": ["score", {"I64": 1000}]}, {"Constant": {"String": "high"}}],
-                    [{"Gte": ["score", {"I64": 100}]},  {"Constant": {"String": "mid"}}]
-                  ],
-                  "else_expr": {"Constant": {"String": "low"}}
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "node_count",
+            "root": {
+              "count": {
+                "input": {
+                  "nodes_where": {
+                    "predicate": {
+                      "eq": {
+                        "left": { "property": "$label" },
+                        "right": { "constant": { "string": "User" } }
+                      }
+                    }
+                  }
                 }
               }
             }
-          ]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["users"]
+          }
+        }
+      ],
+      "returns": ["node_count"]
+    }
   }
 }
 ```
 
-Note the `Project` entries — **no `{"Property": ...}` / `{"Expr": ...}` wrapper**; `Projection` is untagged.
+Expected shape:
 
----
+```json
+{
+  "node_count": [0]
+}
+```
 
-## 11. Aggregation: `Group` + `GroupCount`
-
-**Goal:** count users per status.
+## Filter, limit, and project
 
 ```json
 {
   "request_type": "read",
+  "query_name": "active_users",
   "query": {
-    "queries": [
-      {"Query": {
-        "name": "by_status",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "User"}]}},
-          {"GroupCount": "status"}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["by_status"]
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "users",
+            "root": {
+              "value_map": {
+                "input": {
+                  "limit": {
+                    "input": {
+                      "where": {
+                        "input": {
+                          "nodes_where": {
+                            "predicate": {
+                              "eq": {
+                                "left": { "property": "$label" },
+                                "right": { "constant": { "string": "User" } }
+                              }
+                            }
+                          }
+                        },
+                        "predicate": {
+                          "eq": {
+                            "left": { "property": "status" },
+                            "right": { "constant": { "string": "active" } }
+                          }
+                        }
+                      }
+                    },
+                    "count": { "literal": 25 }
+                  }
+                },
+                "properties": ["$id", "name"]
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["users"]
+    }
   }
 }
 ```
 
-Sum of `price` across `Order` nodes:
+## Parameterized query
 
 ```json
 {
   "request_type": "read",
+  "query_name": "find_users",
   "query": {
-    "queries": [
-      {"Query": {
-        "name": "revenue",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "Order"}]}},
-          {"AggregateBy": ["Sum", "price"]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["revenue"]
-  }
-}
-```
-
----
-
-## 12. Write: `AddN` + `AddE` in one batch with cross-entry `Var` reference
-
-**Goal:** create a user, then create a `CREATED_BY` edge from an existing `Post` to the new user.
-
-```json
-{
-  "request_type": "write",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "newUser",
-        "steps": [
-          {"AddN": {
-            "label": "User",
-            "properties": [
-              ["userId", {"Expr": {"Param": "userId"}}],
-              ["name",   {"Expr": {"Param": "name"}}],
-              ["createdAt", {"Expr": "Timestamp"}]
-            ]
-          }},
-          {"Project": [{"source": "$id", "alias": "id"}]}
-        ],
-        "condition": null
-      }},
-      {"Query": {
-        "name": "link",
-        "steps": [
-          {"N": {"Param": "postId"}},
-          {"AddE": {
-            "label": "CREATED_BY",
-            "to": {"Var": "newUser"},
-            "properties": []
-          }}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["newUser", "link"]
-  },
-  "parameters":      {"userId": "u-42", "name": "Alice", "postId": [101]},
-  "parameter_types": {"userId": "String", "name": "String", "postId": {"Array": "I64"}}
-}
-```
-
-`{"Expr": "Timestamp"}` is `PropertyInput::Expr(Expr::Timestamp)` — sets the property to the server's UTC epoch millis at write time.
-
----
-
-## 13. Write: upsert via `VarNotEmpty` / `VarEmpty` conditions
-
-**Goal:** find user by `userId`; if exists, update `name`; otherwise create.
-
-```json
-{
-  "request_type": "write",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "existing",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "User"}]}},
-          {"Where": {"Compare": {
-            "left": {"Property": "userId"}, "op": "Eq", "right": {"Param": "userId"}
-          }}}
-        ],
-        "condition": null
-      }},
-      {"Query": {
-        "name": "updated",
-        "steps": [
-          {"N": {"Var": "existing"}},
-          {"SetProperty": ["name", {"Expr": {"Param": "name"}}]}
-        ],
-        "condition": {"VarNotEmpty": "existing"}
-      }},
-      {"Query": {
-        "name": "created",
-        "steps": [
-          {"AddN": {
-            "label": "User",
-            "properties": [
-              ["userId", {"Expr": {"Param": "userId"}}],
-              ["name",   {"Expr": {"Param": "name"}}]
-            ]
-          }}
-        ],
-        "condition": {"VarEmpty": "existing"}
-      }}
-    ],
-    "returns": ["updated", "created"]
-  },
-  "parameters":      {"userId": "u-42", "name": "Alice"},
-  "parameter_types": {"userId": "String", "name": "String"}
-}
-```
-
-Exactly one of `updated` / `created` is populated per call.
-
----
-
-## 14. Write: `ForEach` over an array parameter (bulk insert)
-
-**Goal:** insert one `User` node per object in the `data` array.
-
-```json
-{
-  "request_type": "write",
-  "query": {
-    "queries": [
-      {"ForEach": {
-        "param": "data",
-        "body": [
-          {"Query": {
-            "name": "created",
-            "steps": [
-              {"AddN": {
-                "label": "User",
-                "properties": [
-                  ["externalId", {"Expr": {"Param": "externalId"}}],
-                  ["embedding",  {"Expr": {"Param": "embedding"}}]
-                ]
-              }}
-            ],
-            "condition": null
-          }}
-        ]
-      }}
-    ],
-    "returns": ["created"]
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "users",
+            "root": {
+              "value_map": {
+                "input": {
+                  "limit": {
+                    "input": {
+                      "where": {
+                        "input": {
+                          "nodes_where": {
+                            "predicate": {
+                              "eq": {
+                                "left": { "property": "$label" },
+                                "right": { "constant": { "string": "User" } }
+                              }
+                            }
+                          }
+                        },
+                        "predicate": {
+                          "eq": {
+                            "left": { "property": "tenantId" },
+                            "right": { "param": "tenant_id" }
+                          }
+                        }
+                      }
+                    },
+                    "count": { "expr": { "param": "limit" } }
+                  }
+                },
+                "properties": ["$id", "name", "tenantId"]
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["users"]
+    }
   },
   "parameters": {
-    "data": [
-      {"externalId": "u-1", "embedding": [0.1, 0.2]},
-      {"externalId": "u-2", "embedding": [0.3, 0.4]}
-    ]
-  },
-  "parameter_types": {"data": {"Array": "Object"}}
-}
-```
-
-Inside `body`, the fields of each object (`externalId`, `embedding`) are available as scoped `Param` references. Match shape for `#[register] fn(data: Vec<ParamObject>)` — see `tests/register_metadata_tests.rs:36-56`.
-
----
-
-## 15. Nested object properties + dotted-path reads
-
-**Goal:** write nested metadata, return one nested field, then filter by that field with a dotted path.
-
-```json
-{
-  "request_type": "write",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "user",
-        "steps": [
-          {"AddN": {
-            "label": "User",
-            "properties": [
-              ["userId", {"Value": {"String": "u-42"}}],
-              ["metadata", {"Value": {"Object": {
-                "externalID": {"String": "crm-42"},
-                "score": {"I64": 20},
-                "tags": {"Array": [{"String": "trial"}, {"I64": 7}]}
-              }}}]
-            ]
-          }},
-          {"ValueMap": ["userId", "metadata.externalID"]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["user"]
-  }
-}
-```
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "users",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "User"}]}},
-          {"Where": {"Eq": ["metadata.externalID", {"String": "crm-42"}]}},
-          {"Project": [
-            {"source": "userId", "alias": "userId"},
-            {"source": "metadata.externalID", "alias": "external_id"}
-          ]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["users"]
-  }
-}
-```
-
-Dotted property lookup is exact-first and scan-only in V1. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
-
----
-
-## Edge Endpoint Projection
-
-Project endpoint properties from an edge stream with `$from.<property>` and
-`$to.<property>`. These are normal `Project` entries; do not add an
-`EdgeEndpointProperties` step.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "relationships",
-        "steps": [
-          {"EWhere": {"Eq": ["$label", {"String": "DESCRIBES"}]}},
-          {"Project": [
-            {"source": "$from.resource_id", "alias": "from_id"},
-            {"source": "$to.resource_id", "alias": "to_id"},
-            {"source": "$id", "alias": "edge_id"},
-            {"source": "confidence", "alias": "confidence"}
-          ]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["relationships"]
-  }
-}
-```
-
-This preserves one output row per edge and avoids `OutN` / `InN` endpoint
-traversals for large edge lists.
-
----
-
-## Row Bindings: multi-hop correlation
-
-**Goal:** return one row per path that combines values captured at different
-hops. Tag elements with `Bind` steps as the traversal passes them, then build
-the output rows with a `ProjectBindings` terminal. `Coalesce` picks the first
-present non-null reference. `distinct: true` deduplicates identical rows.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "rows",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "Service"}]}},
-          {"Bind": "service"},
-          {"Out": "ROUTES_TO"},
-          {"Bind": "pod"},
-          {"Optional": [{"In": "CREATES"}, {"Bind": "deployment"}]},
-          {"Union": [
-            [{"In": "MANAGES"}, {"Bind": "owner"}],
-            [{"Out": "ROUTES_TO"}, {"Bind": "workload"}]
-          ]},
-          {"ProjectBindings": {
-            "projections": [
-              {"kind": "Property", "target": {"Binding": "service"}, "source": "$id", "alias": "service_id"},
-              {"kind": "Property", "target": {"Binding": "pod"}, "source": "name", "alias": "pod_name"},
-              {"kind": "Property", "target": "Current", "source": "$id", "alias": "current_id"},
-              {"kind": "Coalesce", "refs": [
-                {"target": {"Binding": "deployment"}, "source": "$id"},
-                {"target": {"Binding": "owner"}, "source": "$id"}
-              ], "alias": "workload_id"}
-            ],
-            "distinct": true
-          }}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["rows"]
-  }
-}
-```
-
-`source` accepts stored properties and the virtual fields `$id`, `$label`,
-`$from`, `$to`, `$distance`, `$score`. `Bind` names must be non-empty. This is
-the wire form the Rust/TypeScript/Go DSL `bind` + `project[_distinct]_bindings`
-builders emit; the Python SDK does not generate it yet, so hand-write this JSON
-for binding queries from Python.
-
----
-
-## 16. Write: typed-array parameter + `DateTime` parameter
-
-**Goal:** restrict to users whose status is in a list and were created after a datetime.
-
-```json
-{
-  "request_type": "read",
-  "query": {
-    "queries": [
-      {"Query": {
-        "name": "users",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "User"}]}},
-          {"Where": {"And": [
-            {"IsInExpr": ["status", {"Param": "statuses"}]},
-            {"Compare": {
-              "left": {"Property": "createdAt"}, "op": "Gte", "right": {"Param": "since"}
-            }}
-          ]}},
-          {"Values": ["$id", "status", "createdAt"]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["users"]
-  },
-  "parameters": {
-    "statuses": ["active", "pending"],
-    "since": "2026-01-01T00:00:00Z"
+    "tenant_id": "acme",
+    "limit": 25
   },
   "parameter_types": {
-    "statuses": {"Array": "String"},
-    "since": "DateTime"
+    "tenant_id": "string",
+    "limit": "i64"
   }
 }
 ```
 
-`DateTime` values may also be sent as epoch-millis integers; the type declaration is what triggers coercion.
-
----
-
-## 17. Write: `CreateIndex` / `DropIndex` (equality + range + vector + text)
-
-**Goal:** bootstrap labels with an equality index on `userId`, a descending range index on `createdAt`, a multitenant vector index on `embedding`, and a multitenant text index on `body`.
+## Write two nodes, connect them, and read through the edge
 
 ```json
 {
   "request_type": "write",
+  "query_name": "write_users",
   "query": {
-    "queries": [
-      {"Query": {
-        "name": "idx_userId",
-        "steps": [
-          {"CreateIndex": {
-            "spec": {"NodeEquality": {"label": "User", "property": "userId", "unique": true}},
-            "if_not_exists": true
-          }}
-        ],
-        "condition": null
-      }},
-      {"Query": {
-        "name": "idx_createdAt_desc",
-        "steps": [
-          {"CreateIndex": {
-            "spec": {"NodeRange": {"label": "User", "property": "createdAt", "direction": "Desc"}},
-            "if_not_exists": true
-          }}
-        ],
-        "condition": null
-      }},
-      {"Query": {
-        "name": "idx_embedding",
-        "steps": [
-          {"CreateIndex": {
-            "spec": {"NodeVector": {"label": "Document", "property": "embedding", "tenant_property": "tenantId"}},
-            "if_not_exists": true
-          }}
-        ],
-        "condition": null
-      }},
-      {"Query": {
-        "name": "idx_body",
-        "steps": [
-          {"CreateIndex": {
-            "spec": {"NodeText": {"label": "Document", "property": "body", "tenant_property": "tenantId"}},
-            "if_not_exists": true
-          }}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["idx_userId", "idx_createdAt_desc", "idx_embedding", "idx_body"]
+    "write": {
+      "entries": [
+        {
+          "query": {
+            "name": "alice",
+            "root": {
+              "add_n": {
+                "label": "User",
+                "properties": [
+                  ["name", { "value": { "string": "Alice" } }]
+                ]
+              }
+            }
+          }
+        },
+        {
+          "query": {
+            "name": "bob",
+            "root": {
+              "add_n": {
+                "label": "User",
+                "properties": [
+                  ["name", { "value": { "string": "Bob" } }]
+                ]
+              }
+            }
+          }
+        },
+        {
+          "query": {
+            "name": "follow",
+            "root": {
+              "add_e": {
+                "input": {
+                  "nodes": { "reference": { "var": "alice" } }
+                },
+                "label": "FOLLOWS",
+                "to": { "var": "bob" },
+                "properties": [
+                  ["since", { "value": { "string": "2026-07-24" } }]
+                ]
+              }
+            }
+          }
+        },
+        {
+          "query": {
+            "name": "friends",
+            "root": {
+              "value_map": {
+                "input": {
+                  "out": {
+                    "input": {
+                      "nodes": { "reference": { "var": "alice" } }
+                    },
+                    "label": "FOLLOWS"
+                  }
+                },
+                "properties": ["$id", "name"]
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["alice", "bob", "friends"]
+    }
   }
 }
 ```
 
-To drop instead, replace each `CreateIndex` with:
+Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.1` instance:
 
 ```json
-{"DropIndex": {"spec": <IndexSpec>}}
+{
+  "alice": [{ "$id": 0 }],
+  "bob": [{ "$id": 1 }],
+  "friends": [{ "$id": 1, "name": "Bob" }]
+}
 ```
 
----
-
-## 18. Warm a read route
-
-**Goal:** prefetch caches for a recurring read without retrieving rows. (From the TS/Rust SDKs use the client's `.warmOnly()` / `.warm_only()` instead of setting the header by hand — see `helix-query-typescript` / `helix-query-rust` §17.)
-
-```text
-POST /v1/query
-X-Helix-Warm: true
-Content-Type: application/json
-```
+## Traverse from a previous entry
 
 ```json
 {
   "request_type": "read",
+  "query_name": "friends",
   "query": {
-    "queries": [
-      {"Query": {
-        "name": "user",
-        "steps": [
-          {"NWhere": {"Eq": ["$label", {"String": "User"}]}},
-          {"Where": {"Compare": {
-            "left": {"Property": "userId"}, "op": "Eq", "right": {"Param": "userId"}
-          }}},
-          {"Values": ["$id", "name"]}
-        ],
-        "condition": null
-      }}
-    ],
-    "returns": ["user"]
-  },
-  "parameters":      {"userId": "u-42"},
-  "parameter_types": {"userId": "String"}
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "user",
+            "root": {
+              "nodes_where": {
+                "predicate": {
+                  "eq": {
+                    "left": { "property": "username" },
+                    "right": { "constant": { "string": "alice" } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "query": {
+            "name": "friends",
+            "root": {
+              "value_map": {
+                "input": {
+                  "limit": {
+                    "input": {
+                      "dedup": {
+                        "input": {
+                          "out": {
+                            "input": {
+                              "nodes": {
+                                "reference": { "var": "user" }
+                              }
+                            },
+                            "label": "FOLLOWS"
+                          }
+                        }
+                      }
+                    },
+                    "count": { "literal": 25 }
+                  }
+                },
+                "properties": ["$id", "username"]
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["friends"]
+    }
+  }
 }
 ```
 
-On success the gateway returns `204 No Content`. Rejected with `4xx` if `request_type` is `"write"`.
+## Structured projection
+
+```json
+{
+  "request_type": "read",
+  "query_name": "project_users",
+  "query": {
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "users",
+            "root": {
+              "project": {
+                "input": {
+                  "nodes_where": {
+                    "predicate": {
+                      "eq": {
+                        "left": { "property": "$label" },
+                        "right": { "constant": { "string": "User" } }
+                      }
+                    }
+                  }
+                },
+                "projections": [
+                  {
+                    "property": {
+                      "source": "$id",
+                      "alias": "user_id"
+                    }
+                  },
+                  {
+                    "property": {
+                      "source": "name",
+                      "alias": "name"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["users"]
+    }
+  }
+}
+```
+
+## Invalid legacy shapes
+
+The following are intentionally invalid and shown as `text` so JSON validation does
+not mistake them for supported requests:
+
+```text
+{"queries":[{"Query":{"steps":["Count"]}}],"returns":["count"]}
+```
+
+```text
+{"request_type":"READ","query":{"read":{"entries":[],"returns":[]}}}
+```
+
+```text
+{"request_type":"read","queries.json":{}}
+```
+
+Use an SDK serializer when constructing a shape not covered here. Equivalent builders
+in the Rust, TypeScript, Python, and Go skills must serialize to the same JSON
+structure.

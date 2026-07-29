@@ -4,7 +4,10 @@ Exhaustive builder catalog for the forthcoming
 `@helix-db/helix-db@3.0.0` TypeScript DSL. Use when `SKILL.md` points
 you at a category or when you need a signature confirmed.
 
-All signatures come from `sdks/typescript/src/index.ts`; line numbers are cited inline. The builder is intentionally close to the Rust enum names *on the wire* (e.g. `Step`, `Predicate` variants serialize identically) while exposing camelCase TypeScript methods. The compatibility target is structural JSON equality with Rust serde output — encoding rules live in `../helix-query-json-dynamic/REFERENCE.md`.
+The public surface is defined under
+[`sdks/typescript/src`](https://github.com/HelixDB/helix-db/tree/main/sdks/typescript/src).
+The compatibility target is structural JSON equality with the Rust SDK; encoding
+rules live in `../helix-query-json-dynamic/REFERENCE.md`.
 
 ## Import
 
@@ -16,11 +19,13 @@ import { g, sub, readBatch, writeBatch, NodeRef, EdgeRef, Predicate, SourcePredi
          stringifyJson, i64, f32, f64, bytes, dateTime } from "@helix-db/helix-db";
 ```
 
-A `prelude` object (`src/index.ts:2467`) re-exports all of the above for convenience.
+A `prelude` object re-exports the common DSL surface for convenience.
 
 ## Typestate Cheat Sheet
 
-`Traversal<S extends TraversalState, M extends MutationMode>` (`src/index.ts:1284`) tracks state in the type system. `TraversalState = "empty" | "nodes" | "edges" | "terminal"` and `MutationMode = "read" | "write"` (`src/index.ts:1281-1282`).
+`Traversal<S extends TraversalState, M extends MutationMode>` tracks state in the
+type system. `TraversalState = "empty" | "nodes" | "edges" | "terminal"` and
+`MutationMode = "read" | "write"`.
 
 ```text
 empty  -- n,nWhere,nWithLabel[Where],inject,addN,createIndexIfNotExists,dropIndex,
@@ -43,13 +48,12 @@ edges  -- has, hasLabel, hasKey, where, edgeHas, edgeHasLabel, dedup, within,
 edges  -- count, exists, id, label, edgeProperties                          └─> terminal
 ```
 
-`ReadBatch.varAs` accepts only `Traversal<_, "read">` — both the compiler and a runtime guard reject a write traversal (`src/index.ts:1840-1842`). `WriteBatch.varAs` accepts either mode.
+`ReadBatch.varAs` accepts only a read traversal. `WriteBatch.varAs` accepts
+either mode.
 
 ---
 
 ## Entry Points
-
-`src/index.ts:1674, 1775, 1930, 1933`:
 
 ```ts
 g(): Traversal<"empty", "read">
@@ -58,7 +62,7 @@ readBatch(): ReadBatch
 writeBatch(): WriteBatch
 ```
 
-### `ReadBatch` / `WriteBatch`  (`src/index.ts:1832, 1880`)
+### `ReadBatch` / `WriteBatch`
 
 ```ts
 .varAs(name: string, traversal): ReadBatch | WriteBatch         // store named result
@@ -73,37 +77,38 @@ writeBatch(): WriteBatch
 .toQueryBytes(..., options?: QueryOptions): Uint8Array
 ```
 
-### `BatchCondition`  (`src/index.ts:1779`)
+### `BatchCondition`
 
 ```ts
-BatchCondition.varNotEmpty(name)   // {"VarNotEmpty": name}
-BatchCondition.varEmpty(name)      // {"VarEmpty": name}
-BatchCondition.varMinSize(name, n) // {"VarMinSize": [name, n]}
-BatchCondition.prevNotEmpty()      // "PrevNotEmpty"
+BatchCondition.varNotEmpty(name)   // {"var_not_empty": name}
+BatchCondition.varEmpty(name)      // {"var_empty": name}
+BatchCondition.varMinSize(name, n) // {"var_min_size": [name, n]}
+BatchCondition.prevNotEmpty()      // "prev_not_empty"
 ```
 
-`NamedQuery` (`src/index.ts:1805`) and `BatchEntry` (`src/index.ts:1816`, `.query(...)` / `.forEach(...)`) are built for you by `varAs` / `forEachParam` — you rarely construct them directly.
+`NamedQuery` and `BatchEntry` are built for you by `varAs` / `forEachParam` —
+you rarely construct them directly.
 
 ---
 
 ## Scalar Constructors & Values
 
-Literal helpers (`src/index.ts:288-300`) disambiguate numeric width:
+Literal helpers disambiguate numeric width:
 
 ```ts
 i64(value: number | bigint)   f32(value: number)   f64(value: number)
 bytes(value: Uint8Array | number[])   dateTime(value: DateTime)
 ```
 
-### `PropertyValue`  (`src/index.ts:326`)  — tagged on the wire
+### `PropertyValue` — tagged on the wire
 
 ```ts
-PropertyValue.null()              // "Null"
-PropertyValue.bool(b)             // {"Bool": b}
-PropertyValue.i64(n)              // {"I64": n}      (number | bigint)
+PropertyValue.null()              // "null"
+PropertyValue.bool(b)             // {"bool": b}
+PropertyValue.i64(n)              // {"i64": n}      (number | bigint)
 PropertyValue.f64(n)  PropertyValue.f32(n)
-PropertyValue.string(s)           // {"String": s}
-PropertyValue.bytes(u8)           // {"Bytes": [...]}
+PropertyValue.string(s)           // {"string": s}
+PropertyValue.bytes(u8)           // {"bytes": [...]}
 PropertyValue.dateTime(dt | ms)   PropertyValue.datetimeMillis(ms)
 PropertyValue.i64Array(xs)  PropertyValue.f64Array(xs)  PropertyValue.f32Array(xs)  PropertyValue.stringArray(xs)
 PropertyValue.array(xs)  PropertyValue.object(record)
@@ -111,21 +116,25 @@ PropertyValue.from(input)         // smart conversion from PropertyValueInput
 // accessors: asStr, asI64, asDatetimeMillis, asF64, asBool, asArray, asObject
 ```
 
-`PropertyValueInput` (`src/index.ts:307`) is the union accepted wherever a literal is allowed: `null | boolean | number | bigint | string | Uint8Array | DateTime | PropertyValue | arrays | { object: ... }`.
-Objects and generic arrays are stored as property values. Homogeneous primitive arrays may use the typed array variants (`I64Array`, `F64Array`, `StringArray`); mixed or nested arrays use `PropertyValue.array(...)`.
+`PropertyValueInput` is the union accepted wherever a literal is allowed:
+`null | boolean | number | bigint | string | Uint8Array | DateTime |
+PropertyValue | arrays | { object: ... }`. Objects and generic arrays are
+stored as property values. Homogeneous primitive arrays may use tagged
+`i64_array`, `f64_array`, or `string_array` values; mixed or nested arrays use
+`PropertyValue.array(...)`.
 
-### `PropertyInput`  (`src/index.ts:431`)  — value-or-expression
+### `PropertyInput` — value-or-expression
 
 Used for write property values and `edgeHas` / search args:
 
 ```ts
-PropertyInput.value(v: PropertyValueInput)  // {"Value": <PropertyValue>}
-PropertyInput.expr(e: Expr)                 // {"Expr": <Expr>}
-PropertyInput.param(name: string)           // {"Expr": {"Param": name}}
+PropertyInput.value(v: PropertyValueInput)  // {"value": <PropertyValue>}
+PropertyInput.expr(e: Expr)                 // {"expr": <Expr>}
+PropertyInput.param(name: string)           // {"expr": {"param": name}}
 PropertyInput.from(input)                   // smart constructor
 ```
 
-### `DateTime`  (`src/index.ts:239`)
+### `DateTime`
 
 ```ts
 DateTime.fromMillis(ms: number | bigint)   DateTime.parseRfc3339(s: string)
@@ -136,14 +145,14 @@ DateTime.fromMillis(ms: number | bigint)   DateTime.parseRfc3339(s: string)
 
 ## References: Nodes & Edges
 
-`NodeRef` (`src/index.ts:459`) / `EdgeRef` (`src/index.ts:490`):
+`NodeRef` / `EdgeRef`:
 
 ```ts
-NodeRef.all()              // "All"          (nodes only)
-NodeRef.id(id)             // {"Ids": [id]}
-NodeRef.ids(iterable)      // {"Ids": [...]}
-NodeRef.var(name)          // {"Var": name}
-NodeRef.param(name)        // {"Param": name}
+NodeRef.all()              // "all"          (nodes only)
+NodeRef.id(id)             // {"ids": [id]}
+NodeRef.ids(iterable)      // {"ids": [...]}
+NodeRef.var(name)          // {"var": name}
+NodeRef.param(name)        // {"param": name}
 NodeRef.from(value)        // accepts NodeRef | id | id[] | "var-name"
 // EdgeRef: id, ids, var, param, from (no `all`)
 ```
@@ -152,9 +161,7 @@ NodeRef.from(value)        // accepts NodeRef | id | id[] | "var-name"
 
 ---
 
-## Sources  (`Traversal<"empty">` → `Traversal<"nodes"|"edges">`)
-
-`src/index.ts:1329-1476`:
+## Sources (`Traversal<"empty">` → `Traversal<"nodes"|"edges">`)
 
 ```ts
 g().n(nodes)                                  -> Traversal<"nodes">
@@ -182,7 +189,7 @@ Prefer the `*With` variants for parameterized routes. The high-level `vectorSear
 
 ## Traversal
 
-Node-stream navigation (`src/index.ts` Traversal class):
+Node-stream navigation:
 
 ```ts
 .out(label?: string)   .in(label?: string)   .both(label?: string)   -> Traversal<"nodes", M>
@@ -197,7 +204,9 @@ Edge-stream navigation:
 .otherN()  -> Traversal<"nodes", M>   // edge → "other" endpoint
 ```
 
-The label argument is optional; omit it (`out()`) or pass a string (`out("FOLLOWS")`). On the wire, `out()` → `{"Out": null}`, `out("FOLLOWS")` → `{"Out": "FOLLOWS"}`.
+The label argument is optional; omit it (`out()`) or pass a string
+(`out("FOLLOWS")`). On the wire the nested `out` node has an `input` and omits
+`label` when it is absent.
 
 ---
 
@@ -219,7 +228,7 @@ stored edge properties plus virtual fields `$id`, `$label`, `$from`, `$to`,
 `$distance`, and `$score`. Keep `.edgeHas` for edge filters whose right-hand
 side must be a `PropertyInput` expression or runtime parameter.
 
-### `Predicate`  (`src/index.ts:624`)
+### `Predicate`
 
 Literal constructors:
 
@@ -234,26 +243,29 @@ Predicate.and(preds)   Predicate.or(preds)   Predicate.not(pred)
 Predicate.compare(left: Expr, op: CompareOp, right: Expr)
 ```
 
-Parameterized comparison shortcuts (wrap `Compare`):
+Parameterized comparison shortcuts:
 
 ```ts
 Predicate.eqParam(prop, paramName)   Predicate.neqParam(...)
 Predicate.gtParam(...)   Predicate.gteParam(...)   Predicate.ltParam(...)   Predicate.lteParam(...)
 ```
 
-### `SourcePredicate`  (`src/index.ts:722`)  — used in `nWhere` / `eWhere`
+### `SourcePredicate` — used in `nWhere` / `eWhere`
 
-Index-friendly subset:
+Use index-friendly predicate shapes at the source:
 
 ```ts
 SourcePredicate.eq / neq / gt / gte / lt / lte / between / hasKey / startsWith / and / or
 ```
 
-Each comparison **auto-routes** by argument type: a literal keeps the plain variant (`SourcePredicate.eq("u","alice")` → `{"Eq": ["u", {"String": "alice"}]}`); an `Expr`/`ParamRef` routes to the `*Expr` variant (`SourcePredicate.eq("u", Expr.param("name"))` → `{"EqExpr": ["u", {"Param": "name"}]}`). `.toPredicate()` converts `*Expr` variants to `Compare`. Not available at source position: `isNull`, `isNotNull`, `contains[Param]`, `endsWith`, `isIn*`, `not`, `compare` — push those into a following `.where(Predicate....)`.
+The v3 wire format serializes predicates as expression trees, for example
+`{"eq":{"left":{"property":"u"},"right":{"constant":{"string":"alice"}}}}`.
+Use `.where(Predicate....)` after a source for filters that are not suitable as
+an indexed source anchor.
 
 Property-name strings in filters can be dotted object paths, for example `Predicate.eq("metadata.externalID", "crm-42")`. Lookup is exact-first: a top-level property named `metadata.externalID` wins before walking the `metadata` object. Dotted paths are scan-only in the current runtime; secondary, text, and vector indexes remain top-level only. Arrays are opaque and do not support `tags.0` syntax.
 
-### `CompareOp`  (`src/index.ts:517`)
+### `CompareOp`
 
 ```ts
 CompareOp.Eq | Neq | Gt | Gte | Lt | Lte
@@ -263,7 +275,7 @@ CompareOp.Eq | Neq | Gt | Gte | Lt | Lte
 
 ## Expressions
 
-`Expr`  (`src/index.ts:543`):
+`Expr`:
 
 ```ts
 Expr.prop(name)    Expr.val(value: PropertyValueInput)
@@ -274,7 +286,8 @@ expr.add(other)  expr.sub(other)  expr.mul(other)  expr.div(other)  expr.modulo(
 Expr.case(whenThen: [Predicate, Expr][], elseExpr?: Expr | null)
 ```
 
-`ParamRef` (`src/index.ts:2048`) has `.toExpr()` so a `param` reference can be used where an `Expr` is expected.
+`ParamRef` has `.toExpr()` so a `param` reference can be used where an `Expr`
+is expected.
 
 Typical uses:
 
@@ -291,12 +304,12 @@ Typical uses:
 .limit(n)   .skip(n)   .range(start, end)
 ```
 
-Each accepts `number`, `bigint`, `Expr`, `ParamRef`, or `StreamBound`. `StreamBound` (`src/index.ts:596`):
+Each accepts `number`, `bigint`, `Expr`, `ParamRef`, or `StreamBound`:
 
 ```ts
-StreamBound.literal(n)        // {"Literal": n}
-StreamBound.expr(e)           // {"Expr": <Expr>}
-StreamBound.from(value)       // negative numbers become Expr (e.g. -1 -> {"Expr": {"Constant": {"I64": -1}}})
+StreamBound.literal(n)        // {"literal": n}
+StreamBound.expr(e)           // {"expr": <Expr>}
+StreamBound.from(value)       // negative numbers become an expression bound
 ```
 
 ---
@@ -322,8 +335,9 @@ Cross-entry references: `NodeRef.var(name)`, `EdgeRef.var(name)`, `NodeRef.param
 .orderByMultiple([[prop1, Order.Desc], [prop2, Order.Asc]])
 ```
 
-`Order` at `src/index.ts:525`.
-Dotted paths such as `metadata.score` are valid for fallback ordering, but V1 range indexes cannot accelerate nested paths.
+Use `Order.Asc` or `Order.Desc`.
+Dotted paths such as `metadata.score` are valid for fallback ordering, but current
+range indexes do not accelerate nested paths.
 
 ---
 
@@ -332,14 +346,14 @@ Dotted paths such as `metadata.score` are valid for fallback ordering, but V1 ra
 ```ts
 .count()   .exists()   .group(property)   .groupCount(property)
 .aggregateBy(fn: AggregateFunction, property)
-// AggregateFunction.{Count, Sum, Min, Max, Mean}  (src/index.ts:535)
+// AggregateFunction.{Count, Sum, Min, Max, Mean}
 ```
 
 ---
 
 ## Branching
 
-Each arm is a `SubTraversal` from `sub()` (`src/index.ts:1678`):
+Each arm is a `SubTraversal` from `sub()`:
 
 ```ts
 .union([subA, subB, ...])
@@ -364,7 +378,7 @@ Each arm is a `SubTraversal` from `sub()` (`src/index.ts:1678`):
 )
 ```
 
-`RepeatConfig` (`src/index.ts:884`):
+`RepeatConfig`:
 
 - `.times(n)` — fixed iterations
 - `.until(pred)` — stop when predicate is true
@@ -372,7 +386,8 @@ Each arm is a `SubTraversal` from `sub()` (`src/index.ts:1678`):
 - `.emitIf(pred)` — emit only matching elements (sets emit to `After`)
 - `.maxDepth(n)` — safety cap (default 100)
 
-Default `emit` is `EmitBehavior.None` (`src/index.ts:529`; only the final result). Bound every repeat with `times` or `until`.
+Default `emit` is `EmitBehavior.None` (only the final result). Bound every
+repeat with `times` or `until`.
 
 ---
 
@@ -386,7 +401,7 @@ Default `emit` is `EmitBehavior.None` (`src/index.ts:529`; only the final result
 .edgeProperties()                           -> Traversal<"terminal", M>   // edge streams only
 ```
 
-Projection constructors (`src/index.ts:837, 853, 868`) — all `#[serde(untagged)]` on the wire (no variant tag):
+Projection constructors:
 
 ```ts
 PropertyProjection.new("name")                       // {source:"name", alias:"name"}
@@ -428,10 +443,9 @@ values captured at **different hops** of one path, tag elements with
 `.bind()` does not change the stream — each path keeps its own row-local
 bindings, so hops inside `union` / `optional` / `choose` can still reference
 earlier captures. Available on `Traversal` (node and edge streams) and on
-`SubTraversal` inside branches (`src/index.ts` `bind`/`projectBindings` —
-`dsl.ts:1234,1258,1666,1693,1696,1866`).
+`SubTraversal` inside branches supports `bind` and binding projection.
 
-`BindingProjection` constructors (`dsl.ts:915-955`) — tagged on the wire by `kind`:
+`BindingProjection` constructors:
 
 ```ts
 BindingProjection.current("$id", "current_id")              // read from current element
@@ -443,7 +457,7 @@ BindingProjection.coalesce([                                // first present non
 ], "workload_id")
 ```
 
-`BindingTarget` is `"Current"` or `{ Binding: name }`
+`BindingTarget` is `"current"` or `{ binding: name }`
 (`BindingTarget.current()` / `BindingTarget.binding(name)`);
 `BindingValueRef = { target, source }` via
 `BindingProjection.currentRef(source)` / `.bindingRef(name, source)`.
@@ -506,7 +520,10 @@ Node-state mutations (→ `Traversal<"nodes", "write">`):
 .dropEdge(to)              .dropEdgeLabeled(to, label)        .dropEdgeById(edges)
 ```
 
-`addN`/`addE` properties accept an object (`{ name: "Alice" }`) or an array of tuples (`[["name", "Bob"]]`); values may be raw literals, nested objects/arrays, `PropertyInput.param(...)`, or a `ParamRef`. On the wire each becomes `["name", {"Value": {"String": "Alice"}}]` or, for nested values, a tagged `{"Object": ...}` / `{"Array": ...}` `PropertyValue`.
+`addN`/`addE` properties accept an object (`{ name: "Alice" }`) or an array of
+tuples (`[["name", "Bob"]]`); values may be raw literals, nested
+objects/arrays, `PropertyInput.param(...)`, or a `ParamRef`. On the wire a
+literal property is `["name", {"value": {"string": "Alice"}}]`.
 
 ---
 
@@ -523,7 +540,7 @@ g().createTextIndexNodes(label, property, tenantProperty?)
 g().createTextIndexEdges(label, property, tenantProperty?)
 ```
 
-`IndexSpec` constructors (`src/index.ts:963`):
+`IndexSpec` constructors:
 
 ```ts
 IndexSpec.nodeEquality(label, property)         // unique = false
@@ -543,7 +560,8 @@ IndexSpec.edgeText(label, property, tenantProperty?)
 
 Range indexes default to ascending physical order. Use `RangeIndexDirection.Desc` for descending indexes that primarily serve newest-first or high-score-first scans.
 
-`createVectorIndexNodes(...)` serializes identically to `createIndexIfNotExists(IndexSpec.nodeVector(...))` — `{"CreateIndex": {"spec": {"NodeVector": {...}}, "if_not_exists": true}}`.
+`createVectorIndexNodes(...)` serializes to the same `create_index` operation
+as `createIndexIfNotExists(IndexSpec.nodeVector(...))`.
 Index properties are top-level only in the current runtime. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
 
 ---
@@ -559,15 +577,9 @@ Emit the corresponding steps but have no effect in the current interpreter. Safe
 
 ---
 
-## Raw `Step` factory
-
-`Step` (`src/index.ts:1002`) exposes every AST step as a static factory (`Step.n`, `Step.out`, `Step.vectorSearchEdges`, `Step.addN`, `Step.createVectorIndexNodes`, `Step.inject`, …) for building step lists directly. Most code should use the fluent `Traversal` methods; reach for `Step` only when assembling steps programmatically. `traversal.intoSteps()` returns the underlying `Step[]`.
-
----
-
 ## Parameters
 
-`param` schema constructors (`src/index.ts:2033`):
+`param` schema constructors:
 
 ```ts
 param.bool()  param.i64()  param.f64()  param.f32()  param.string()
@@ -575,9 +587,15 @@ param.dateTime()  param.bytes()  param.value()
 param.object()  param.object(inner)  param.array(inner)
 ```
 
-`defineParams(schema)` (`src/index.ts:2068`) returns a `DefinedParams<T>` — an object of typed `ParamRef`s (`p.limit`, `p.tenantId`) plus hidden metadata. Pass it as the default argument of a builder function (`function f(p = params) { ... }`). A `ParamRef` (`src/index.ts:2048`) can be used directly where a `StreamBound`/`Expr`/property value is expected; `.toExpr()` converts it explicitly.
+`defineParams(schema)` returns a `DefinedParams<T>` — an object of typed
+`ParamRef`s (`p.limit`, `p.tenantId`) plus hidden metadata. Pass it as the
+default argument of a builder function (`function f(p = params) { ... }`).
+A `ParamRef` can be used directly where a `StreamBound`/`Expr`/property value
+is expected; `.toExpr()` converts it explicitly.
 
-`QueryParamType` (`src/index.ts:1937`) is the on-the-wire parameter type: unit scalars serialize as bare strings (`"String"`, `"I64"`, `"DateTime"`, …); `array` is a single-field tuple (`{"Array": "String"}`).
+`QueryParamType` is the on-the-wire parameter type: scalar schemas serialize
+as lowercase strings (`"string"`, `"i64"`, `"date_time"`, …); arrays and
+objects use their structured `snake_case` schema form.
 
 `param.bytes()` cannot be sent through the JSON route — conversion throws
 `QueryError.UnsupportedBytesParameter`.
@@ -589,14 +607,14 @@ param.object()  param.object(inner)  param.array(inner)
 ```ts
 type QueryOptions = { queryName?: string | null }
 
-QueryRequest.read(batch: ReadBatch, queryName?: string | null)     // src/index.ts:2191
+QueryRequest.read(batch: ReadBatch, queryName?: string | null)
 QueryRequest.write(batch: WriteBatch, queryName?: string | null)
 req.insertParameterValue(name, value)   req.insertParameterType(name, ty)
 req.withParameterValue(name, value)      req.withParameterType(name, ty)
 req.setQueryName(name)                   req.clearQueryName()
 req.withQueryName(name)
 req.toJsonString()   req.toJsonBytes()
-// req.requestType -> "read" | "write"   (QueryRequestType, src/index.ts:2174, lowercase on the wire)
+// req.requestType -> "read" | "write" (lowercase on the wire)
 // req.queryName -> string | null         (serialized as top-level query_name)
 ```
 
@@ -655,7 +673,9 @@ registration, and query bundles are not supported.
 
 ## Errors
 
-- `HelixError` (`src/index.ts`) — raised by `Client`/`send()`. `kind` ∈ `Network | Remote | Serialization | InvalidUrl`; `Remote` carries the server response body in `details`.
+- `HelixError` — raised by `Client`/`send()`. `kind` identifies network,
+  remote, serialization, and URL errors; remote errors carry the server
+  response body in `details`.
 - `QueryError` — invalid parameter values, unknown parameters, serialization,
   or unsupported bytes parameters.
 
@@ -664,11 +684,11 @@ registration, and query bundles are not supported.
 ## Enums
 
 ```ts
-CompareOp.{Eq, Neq, Gt, Gte, Lt, Lte}                // src/index.ts:517
-Order.{Asc, Desc}                                    // src/index.ts:525  (bare strings on the wire)
-EmitBehavior.{None, Before, After, All}              // src/index.ts:529
-AggregateFunction.{Count, Sum, Min, Max, Mean}       // src/index.ts:535
-QueryRequestType.{Read, Write}                // src/index.ts:2174 (lowercase on the wire)
+CompareOp.{Eq, Neq, Gt, Gte, Lt, Lte}
+Order.{Asc, Desc}                              // lowercase strings on the wire
+EmitBehavior.{None, Before, After, All}
+AggregateFunction.{Count, Sum, Min, Max, Mean}
+QueryRequestType.{Read, Write}                 // lowercase on the wire
 ```
 
 ---

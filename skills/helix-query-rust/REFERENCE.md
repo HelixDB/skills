@@ -4,7 +4,11 @@ Exhaustive builder catalog for the forthcoming `helix-db = "3.0.0"` Rust
 crate, imported as `helix_db`. The crate is not published yet; these names
 follow the v3 source that will land on `HelixDB/helix-db` `main`.
 
-Import: `use helix_db::dsl::prelude::*;`. All signatures come from `sdks/rust/src/dsl.rs` (re-exported at the crate root via `pub use dsl::*`); line numbers are cited inline.
+Import: `use helix_db::dsl::prelude::*;`. The SDK re-exports the shared AST and
+builders from
+[`crates/ast`](https://github.com/HelixDB/helix-db/tree/main/crates/ast);
+client and macro surfaces live under
+[`sdks/rust`](https://github.com/HelixDB/helix-db/tree/main/sdks/rust).
 
 ## Typestate Cheat Sheet
 
@@ -38,8 +42,6 @@ OnEdges(WriteEnabled) -- drop_edge_by_id                                ↻ OnEd
 
 ## Batch Entry Points
 
-`sdks/rust/src/dsl.rs:4556`, `:4562`, `:4133`, `:2342`:
-
 ```rust
 pub fn read_batch() -> ReadBatch
 pub fn write_batch() -> WriteBatch
@@ -54,7 +56,7 @@ pub fn sub() -> SubTraversal
 - `for_each_param(param: &str, body: ReadBatch | WriteBatch)` — run `body` once per object in an array param. `body.queries` are inlined inside a `BatchEntry::ForEach`.
 - `returning<I, S: Into<String>>(vars)` — restrict the response to these variable names.
 
-### `BatchCondition`  (`sdks/rust/src/dsl.rs:4142`)
+### `BatchCondition`
 
 ```rust
 BatchCondition::VarNotEmpty(name)
@@ -66,8 +68,6 @@ BatchCondition::PrevNotEmpty
 ---
 
 ## Sources  (`Traversal<Empty>` → `Traversal<On*, _>`)
-
-`sdks/rust/src/dsl.rs:3191` (`impl Traversal<Empty, ReadOnly>`):
 
 ```rust
 // Nodes
@@ -104,7 +104,7 @@ Prefer the `_with` variants for parameterized routes — they accept `PropertyIn
 
 ## Traversal
 
-Node state (`sdks/rust/src/dsl.rs:3586`, `impl<M: MutationMode> Traversal<OnNodes, M>`):
+Node state:
 
 ```rust
 traversal.out(label: Option<impl Into<String>>)   -> Traversal<OnNodes, M>
@@ -115,7 +115,7 @@ traversal.in_e(label)                             -> Traversal<OnEdges, M>
 traversal.both_e(label)                           -> Traversal<OnEdges, M>
 ```
 
-Edge state (`sdks/rust/src/dsl.rs:4023`, `impl<M: MutationMode> Traversal<OnEdges, M>`):
+Edge state:
 
 ```rust
 traversal.out_n()   -> Traversal<OnNodes, M>   // edge → target
@@ -146,7 +146,7 @@ stored edge properties plus virtual fields `$id`, `$label`, `$from`, `$to`,
 `$distance`, and `$score`. Keep `.edge_has` for edge filters whose right-hand
 side must be a `PropertyInput` expression or runtime parameter.
 
-### `Predicate`  (enum `sdks/rust/src/dsl.rs:1564`, impl `:1811`)
+### `Predicate`
 
 Literal constructors:
 
@@ -174,7 +174,7 @@ Predicate::gt_param(prop, param)  Predicate::gte_param(prop, param)
 Predicate::lt_param(prop, param)  Predicate::lte_param(prop, param)
 ```
 
-### `SourcePredicate`  (enum `sdks/rust/src/dsl.rs:1619`, impl `:1658`)
+### `SourcePredicate`
 
 Restricted subset for `n_where` / `e_where` (must be index-friendly):
 
@@ -198,7 +198,7 @@ CompareOp::{Eq, Neq, Gt, Gte, Lt, Lte}
 
 ## Expressions
 
-`Expr`  (enum `sdks/rust/src/dsl.rs:1368`, impl `:1402`):
+`Expr`:
 
 ```rust
 Expr::prop(name)                    Expr::val(value: impl Into<PropertyValue>)
@@ -257,7 +257,8 @@ Cross-entry references use `NodeRef::var(name)`, `EdgeRef::var(name)`, `NodeRef:
 .order_by_multiple(vec![(prop1, Order::Desc), (prop2, Order::Asc)])
 ```
 
-Dotted paths such as `metadata.score` are valid for fallback ordering, but V1 range indexes cannot accelerate nested paths.
+Dotted paths such as `metadata.score` are valid for fallback ordering, but current
+range indexes do not accelerate nested paths.
 
 ---
 
@@ -285,7 +286,11 @@ Each arm is a `SubTraversal`, built by `sub()` + the same filter / traversal / p
 .optional(sub_a)                     // pass through if sub_a is empty
 ```
 
-`SubTraversal` API (struct `sdks/rust/src/dsl.rs:2124`, impl `:2129`) includes: `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`, `out_n`, `in_n`, `other_n`, `has`, `has_label`, `has_key`, `where_`, `dedup`, `within`, `without`, `edge_has`, `edge_has_label`, `limit`, `skip`, `range`, `as_`, `store`, `select`, `order_by`, `order_by_multiple`, `path`, `simple_path`.
+`SubTraversal` includes: `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`,
+`out_n`, `in_n`, `other_n`, `has`, `has_label`, `has_key`, `where_`,
+`dedup`, `within`, `without`, `edge_has`, `edge_has_label`, `limit`, `skip`,
+`range`, `as_`, `store`, `select`, `order_by`, `order_by_multiple`, `path`,
+and `simple_path`.
 
 ---
 
@@ -301,7 +306,7 @@ traversal.repeat(
 )
 ```
 
-`RepeatConfig`  (struct `sdks/rust/src/dsl.rs:2350`, impl `:2365`):
+`RepeatConfig`:
 
 - `.times(n: usize)` — fixed iterations
 - `.until(Predicate)` — stop when predicate is true
@@ -323,7 +328,7 @@ Default `emit` is `EmitBehavior::None` (only the final result is returned). Boun
 .edge_properties()                                          -> Traversal<Terminal, M>  // OnEdges only
 ```
 
-Projection constructors (`sdks/rust/src/dsl.rs:1988-2062`):
+Projection constructors:
 
 ```rust
 PropertyProjection::new("name")                 // no rename; source == alias
@@ -365,9 +370,7 @@ rows with `.project_bindings(...)` / `.project_distinct_bindings(...)`.
 bindings, so later hops (including those inside `union`, `optional`, `choose`)
 can still reference earlier captures. `.bind()` is available on `Traversal`
 (both node and edge streams) and on `SubTraversal` inside branches.
-(`sdks/rust/src/dsl.rs:3905,3972,3980,4344,4381,4389`.)
-
-`BindingProjection` constructors (`sdks/rust/src/dsl.rs:2130-2187`):
+`BindingProjection` constructors:
 
 ```rust
 BindingProjection::current("$id", "current_id")           // read from the current element
@@ -423,7 +426,7 @@ Usable on both node and edge streams. `.edge_properties()` is edge-only.
 
 ---
 
-## Mutations (write-only)  (`sdks/rust/src/dsl.rs:3191`, `:3586`)
+## Mutations (write-only)
 
 Source-position mutation (`Traversal<Empty>` → `Traversal<OnNodes, WriteEnabled>`):
 
@@ -462,7 +465,7 @@ PropertyInput::from(PropertyValue::object(vec![("externalID", PropertyValue::fro
 
 ---
 
-## Indexes (write-only)  (`sdks/rust/src/dsl.rs:3191`)
+## Indexes (write-only)
 
 Generic `IndexSpec` forms:
 
@@ -480,7 +483,7 @@ g().create_text_index_nodes(label, property, tenant_property)
 g().create_text_index_edges(label, property, tenant_property)
 ```
 
-`IndexSpec` constructors  (enum `sdks/rust/src/dsl.rs:2427`, impl `:2501`):
+`IndexSpec` constructors:
 
 ```rust
 IndexSpec::node_equality(label, property)               // unique = false

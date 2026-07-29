@@ -1,637 +1,335 @@
-# Helix Dynamic Query — JSON AST Reference
+# HelixDB v3 JSON Wire Reference
 
-Exhaustive variant catalog for the `POST /v1/query` inline AST. Every variant shows its Rust signature, its JSON encoding, and a one-line semantics note. Organized for grep: each category header is a stable anchor.
+This reference describes the direct request produced by the forthcoming v3 SDKs.
+The source of truth is the `helix-ast` crate under
+[`HelixDB/helix-db`](https://github.com/HelixDB/helix-db/tree/main/crates/ast).
 
-Rust signatures and line numbers cite the canonical AST source — the `helix-db` crate at `sdks/rust/src/dsl.rs` (re-exported at the crate root via `pub use dsl::*`). The TypeScript DSL (`@helix-db/helix-db`) emits structurally identical JSON. Both DSLs can produce these bodies: Rust `DynamicQueryRequest::{read,write}(batch).with_query_name("route").to_json_string()` (see `../helix-query-rust/`), TypeScript `batch.toDynamicJson(params, values, { queryName: "route" })` (see `../helix-query-typescript/`).
-
-Conventions used below:
-
-- `<X>` — a JSON value of type X (defined elsewhere in this document).
-- Encoding rules (serde default **externally tagged** unless marked otherwise):
-  - Unit variant → bare string: `"Count"`.
-  - Tuple variant, 1 field → `{"Var": <inner>}`.
-  - Tuple variant, 2+ fields → `{"Var": [<f1>, <f2>, ...]}`.
-  - Struct variant → `{"Var": {"field1": ..., "field2": ...}}`.
-  - `#[serde(untagged)]` — inner value written directly, no variant tag.
-
----
-
-## 1. Envelope
-
-### `DynamicQueryRequest`  (`sdks/rust/src/dsl.rs:4480`)
+## Envelope
 
 ```json
 {
-  "request_type": "read" | "write",
-  "query_name": "<name>" | null,
-  "query": <BatchQuery>,
-  "parameters": { "<name>": <DynamicQueryValue>, ... } | null,
-  "parameter_types": { "<name>": <QueryParamType>, ... } | null
-}
-```
-
-- `request_type` — `#[serde(rename_all = "lowercase")]`. Only `"read"` / `"write"`.
-- `query_name` — optional top-level operational name used by gateway logs and slow-query diagnostics. Missing or `null` falls back to `__dynamic__`; blank/whitespace-only strings are rejected. Use exactly `query_name`; `name` and `queryName` are rejected aliases. This is distinct from `NamedQuery.name` inside `query.queries[*]`, which names result variables.
-- `parameters` / `parameter_types` — both optional; serialize via `skip_serializing_if = "Option::is_none"`. Server accepts `null` or omission.
-
-### `BatchQuery`  (`sdks/rust/src/dsl.rs:4365`)  —  `#[serde(untagged)]`
-
-Value written inline; **no `{"Read": ...}` or `{"Write": ...}` wrapper**. Whichever object shape is present (`ReadBatch` / `WriteBatch`) both look structurally identical:
-
-```json
-{ "queries": [<BatchEntry>, ...], "returns": ["<var>", ...] }
-```
-
-### `ReadBatch` / `WriteBatch`  (`sdks/rust/src/dsl.rs:4190`, `:4280`)
-
-Same JSON shape — the distinction is enforced on the Rust side; JSON distinguishes via the envelope's `request_type`.
-
-| Field | Type | Description |
-|---|---|---|
-| `queries` | `[BatchEntry, ...]` | Entries executed in order |
-| `returns` | `["<var>", ...]` | Named variables to include in the response; empty = all |
-
-### `BatchEntry`  (`sdks/rust/src/dsl.rs:4168`)
-
-Tagged enum with two variants:
-
-```json
-{"Query": <NamedQuery>}
-{"ForEach": {"param": "<param_name>", "body": [<BatchEntry>, ...]}}
-```
-
-- `ForEach.param` must reference a top-level parameter typed as `{"Array": "Object"}` (an array of objects). Each iteration binds the current object's fields as scoped parameters inside `body`.
-
-### `NamedQuery`  (`sdks/rust/src/dsl.rs:4156`)
-
-```json
-{
-  "name": "<var_name>" | null,
-  "steps": [<Step>, ...],
-  "condition": <BatchCondition> | null
-}
-```
-
-- `name` stores the result under that variable; `null` means no storage.
-- `condition` gates execution of the entire entry.
-
-### `BatchCondition`  (`sdks/rust/src/dsl.rs:4142`)
-
-```json
-{"VarNotEmpty": "<var>"}        // execute only if var has >=1 item
-{"VarEmpty": "<var>"}           // execute only if var is empty
-{"VarMinSize": ["<var>", 5]}    // execute only if var has >=N items
-"PrevNotEmpty"                  // unit variant — previous entry produced rows
-```
-
----
-
-## 2. Primitive Values
-
-### `PropertyValue`  (`sdks/rust/src/dsl.rs:973`)  —  externally tagged
-
-Used everywhere inside the AST where a literal appears (e.g. `Predicate::Eq`, `Step::Has`, `Expr::Constant`, `PropertyInput::Value`).
-
-| Variant | Rust | JSON |
-|---|---|---|
-| `Null` | `Null` | `"Null"` |
-| `Bool(bool)` | `Bool(true)` | `{"Bool": true}` |
-| `I64(i64)` | `I64(42)` | `{"I64": 42}` |
-| `DateTime(i64)` | `DateTime(1712313296000)` | `{"DateTime": 1712313296000}` (epoch millis, UTC) |
-| `F64(f64)` | `F64(3.14)` | `{"F64": 3.14}` |
-| `F32(f32)` | `F32(1.5)` | `{"F32": 1.5}` |
-| `String(String)` | `String("x")` | `{"String": "x"}` |
-| `Bytes(Vec<u8>)` | `Bytes(vec![1,2])` | `{"Bytes": [1, 2]}` — **not supported over the dynamic JSON route** |
-| `I64Array(Vec<i64>)` | `I64Array(vec![1,2])` | `{"I64Array": [1, 2]}` |
-| `F64Array(Vec<f64>)` | `F64Array(vec![0.1])` | `{"F64Array": [0.1]}` |
-| `F32Array(Vec<f32>)` | `F32Array(vec![0.1])` | `{"F32Array": [0.1]}` |
-| `StringArray(Vec<String>)` | `StringArray(vec!["a"])` | `{"StringArray": ["a"]}` |
-| `Array(Vec<PropertyValue>)` | heterogeneous | `{"Array": [{"I64": 1}, {"String": "a"}]}` |
-| `Object(BTreeMap<String, PropertyValue>)` | | `{"Object": {"k": {"I64": 1}}}` |
-
-`Array` and `Object` are stored property values. Object fields can be read later with dotted
-property paths such as `metadata.externalID` in property-name slots. Lookup is exact-first: a
-top-level property literally named `metadata.externalID` wins before walking the nested
-`metadata` object. Dotted paths only walk object values; arrays are opaque and do not support
-index syntax such as `tags.0`.
-
-### `PropertyInput`  (`sdks/rust/src/dsl.rs:1197`)
-
-Used in mutation step property lists (`AddN`, `AddE`, `SetProperty`, `EdgeHas`) and in `VectorSearchNodes.query_vector` / `VectorSearchEdges.query_vector` / `tenant_value`.
-
-```json
-{"Value": <PropertyValue>}      // literal
-{"Expr": <Expr>}                // resolved at runtime (e.g. from a parameter)
-```
-
-`PropertyInput::param("x")` is syntactic sugar for `{"Expr": {"Param": "x"}}`.
-
-### `NodeRef`  (`sdks/rust/src/dsl.rs:1241`)
-
-```json
-{"Ids": [1, 2, 3]}              // concrete node ids (u64)
-{"Var": "<name>"}               // nodes stored in a prior-batch variable
-{"Param": "<name>"}             // array of ids from a parameter
-```
-
-### `EdgeRef`  (`sdks/rust/src/dsl.rs:1308`)
-
-Same three variants as `NodeRef` but over edge ids:
-
-```json
-{"Ids": [10, 20]} | {"Var": "<name>"} | {"Param": "<name>"}
-```
-
-### `StreamBound`  (`sdks/rust/src/dsl.rs:1474`)
-
-Non-negative integer for `limit`, `skip`, `range` bounds.
-
-```json
-{"Literal": 25}                 // known at build time
-{"Expr": <Expr>}                // resolved at runtime — e.g. {"Expr": {"Param": "limit"}}
-```
-
----
-
-## 3. Parameter Values & Types
-
-### `DynamicQueryValue`  (`sdks/rust/src/dsl.rs:4458`)  —  `#[serde(untagged)]`
-
-Values inside the top-level `parameters` map are **bare JSON** — no variant tag.
-
-| Rust | JSON |
-|---|---|
-| `Null` | `null` |
-| `Bool(b)` | `true` / `false` |
-| `I64(n)` | `42` |
-| `F64(x)` / `F32(x)` | `3.14` |
-| `String(s)` | `"acme"` |
-| `Array(vs)` | `["a", "b"]` |
-| `Object(m)` | `{"k": 1}` |
-
-Example (from `tests/register_metadata_tests.rs:184`):
-
-```json
-"parameters": {"limit": 25, "tenant_id": "acme"}
-```
-
-### `QueryParamType`  (`src/query_generator.rs:9-31`)  —  externally tagged
-
-Unit scalars as bare strings:
-
-```text
-"Bool" | "I64" | "F64" | "F32" | "String" | "DateTime" | "Bytes" | "Value" | "Object"
-```
-
-`Array` is a single-field tuple variant — wraps its inner type:
-
-```json
-{"Array": "String"}                     // Vec<String>
-{"Array": "F64"}                        // Vec<f64> — e.g. a query vector
-{"Array": {"Array": "F64"}}             // Vec<Vec<f64>> — a batch of vectors
-{"Array": "Object"}                     // Vec<ParamObject> — used by ForEach
-```
-
-Example (from `tests/register_metadata_tests.rs:185`):
-
-```json
-"parameter_types": {"limit": "I64", "tenant_id": "String"}
-```
-
----
-
-## 4. Expressions
-
-### `Expr`  (`sdks/rust/src/dsl.rs:1368`)
-
-| Variant | Rust | JSON |
-|---|---|---|
-| `Property(String)` | `Expr::prop("age")` | `{"Property": "age"}` |
-| `Id` | `Expr::id()` | `"Id"` |
-| `Timestamp` | `Expr::timestamp()` | `"Timestamp"` — server UTC epoch millis |
-| `DateTimeNow` | `Expr::datetime()` | `"DateTimeNow"` — typed server datetime |
-| `Constant(PropertyValue)` | `Expr::val(1i64)` | `{"Constant": {"I64": 1}}` |
-| `Param(String)` | `Expr::param("min")` | `{"Param": "min"}` |
-| `Add(Box<Expr>, Box<Expr>)` | `a.add(b)` | `{"Add": [<Expr>, <Expr>]}` |
-| `Sub(..)` | `a.sub(b)` | `{"Sub": [<Expr>, <Expr>]}` |
-| `Mul(..)` | `a.mul(b)` | `{"Mul": [<Expr>, <Expr>]}` |
-| `Div(..)` | `a.div(b)` | `{"Div": [<Expr>, <Expr>]}` |
-| `Mod(..)` | `a.modulo(b)` | `{"Mod": [<Expr>, <Expr>]}` |
-| `Neg(Box<Expr>)` | `a.neg()` | `{"Neg": <Expr>}` |
-| `Case { when_then, else_expr }` | `Expr::case(branches, Some(fallback))` | see below |
-
-`Case` JSON shape:
-
-```json
-{
-  "Case": {
-    "when_then": [
-      [<Predicate>, <Expr>],
-      [<Predicate>, <Expr>]
-    ],
-    "else_expr": <Expr> | null
+  "request_type": "read",
+  "query_name": "optional_diagnostic_name",
+  "query": {
+    "read": {
+      "entries": [],
+      "returns": []
+    }
   }
 }
 ```
 
-Each `when_then` entry is a 2-tuple `[predicate, expr]` — a `Vec<(Predicate, Expr)>` in Rust. `else_expr` may be omitted or `null`; when absent the result is explicit `Null`.
+| Field | Required | Shape |
+|---|---:|---|
+| `request_type` | yes | lowercase `"read"` or `"write"` |
+| `query_name` | no | non-empty string or `null` |
+| `query` | yes | `{ "read": ReadBatch }` or `{ "write": WriteBatch }` |
+| `parameters` | no | object of JSON runtime values |
+| `parameter_types` | no | object of v3 parameter type descriptors |
 
----
+The batch variant must match `request_type`.
 
-## 5. Predicates
+## Batches and entries
 
-### `CompareOp`  (`sdks/rust/src/dsl.rs:1545`)
-
-Unit variants as bare strings: `"Eq"`, `"Neq"`, `"Gt"`, `"Gte"`, `"Lt"`, `"Lte"`.
-
-### `Predicate`  (`sdks/rust/src/dsl.rs:1564`)
-
-| Variant | JSON |
-|---|---|
-| `Eq(prop, val)` | `{"Eq": ["<prop>", <PropertyValue>]}` |
-| `Neq(prop, val)` | `{"Neq": ["<prop>", <PropertyValue>]}` |
-| `Gt(prop, val)` | `{"Gt": ["<prop>", <PropertyValue>]}` |
-| `Gte(prop, val)` | `{"Gte": ["<prop>", <PropertyValue>]}` |
-| `Lt(prop, val)` | `{"Lt": ["<prop>", <PropertyValue>]}` |
-| `Lte(prop, val)` | `{"Lte": ["<prop>", <PropertyValue>]}` |
-| `Between(prop, min, max)` | `{"Between": ["<prop>", <PropertyValue>, <PropertyValue>]}` |
-| `HasKey(prop)` | `{"HasKey": "<prop>"}` |
-| `IsNull(prop)` | `{"IsNull": "<prop>"}` |
-| `IsNotNull(prop)` | `{"IsNotNull": "<prop>"}` |
-| `StartsWith(prop, s)` | `{"StartsWith": ["<prop>", "<s>"]}` |
-| `EndsWith(prop, s)` | `{"EndsWith": ["<prop>", "<s>"]}` |
-| `Contains(prop, s)` | `{"Contains": ["<prop>", "<s>"]}` |
-| `ContainsExpr(prop, expr)` | `{"ContainsExpr": ["<prop>", <Expr>]}` — e.g. from `contains_param` |
-| `IsIn(prop, values)` | `{"IsIn": ["<prop>", <PropertyValue>]}` — value usually an array variant |
-| `IsInExpr(prop, expr)` | `{"IsInExpr": ["<prop>", <Expr>]}` — from `is_in_param` |
-| `And(ps)` | `{"And": [<Predicate>, ...]}` |
-| `Or(ps)` | `{"Or": [<Predicate>, ...]}` |
-| `Not(p)` | `{"Not": <Predicate>}` |
-| `Compare { left, op, right }` | `{"Compare": {"left": <Expr>, "op": <CompareOp>, "right": <Expr>}}` |
-
-Every `<prop>` string in this table may be a dotted object path such as
-`metadata.externalID`. Dotted predicates are scan-only in V1; pair them with indexed top-level
-anchors such as label, tenant, status, or id when possible.
-
-`Predicate::eq_param("prop", "param")` is syntactic sugar for:
-
-```json
-{"Compare": {"left": {"Property": "prop"}, "op": "Eq", "right": {"Param": "param"}}}
-```
-
-Same pattern for `neq_param`, `gt_param`, `gte_param`, `lt_param`, `lte_param`.
-
-### `SourcePredicate`  (`sdks/rust/src/dsl.rs:1619`) — used in `NWhere` / `EWhere`
-
-Strict subset of `Predicate`. Same JSON shape for the shared variants; the following are **not allowed** at source-step position: `IsNull`, `IsNotNull`, `Contains`, `ContainsExpr`, `EndsWith`, `IsIn`, `IsInExpr`, `Not`, `Compare`. Use `Step::Where` for those after the source.
-
----
-
-## 6. Projections
-
-### `PropertyProjection`  (`sdks/rust/src/dsl.rs:1988`)
-
-```json
-{"source": "<property>", "alias": "<output_name>"}
-```
-
-Both fields required; set them equal for no-rename. Virtual fields (`$id`, `$label`, `$distance`, `$from`, `$to`) are legal `source` values.
-
-On edge streams, endpoint-qualified sources read properties from the endpoint
-nodes without an explicit traversal: `"$from.resource_id"` projects the source
-node's `resource_id`, and `"$to.resource_id"` projects the target node's
-`resource_id`. These are still plain `PropertyProjection` objects; do not invent
-an `EdgeEndpointProperties` or `EndpointProjection` AST variant.
-
-### `ExprProjection`  (`sdks/rust/src/dsl.rs:2016`)
-
-```json
-{"alias": "<output_name>", "expr": <Expr>}
-```
-
-### `Projection`  (`sdks/rust/src/dsl.rs:2036`)  —  `#[serde(untagged)]`
-
-A `Vec<Projection>` inside a `Project` step contains a mix of `PropertyProjection` and `ExprProjection` objects **without variant wrappers**. Disambiguation is by field shape (`source + alias` vs `alias + expr`):
-
-```json
-[
-  {"source": "$id", "alias": "id"},
-  {"source": "name", "alias": "name"},
-  {"alias": "age_plus_one", "expr": {"Add": [{"Property": "age"}, {"Constant": {"I64": 1}}]}}
-]
-```
-
-### `BindingProjection`  (`sdks/rust/src/dsl.rs:2130`)  —  internally tagged by `kind`
-
-Used inside the `ProjectBindings` step (see Step Catalog). Two variants:
-
-```json
-{"kind": "Property", "target": <BindingTarget>, "source": "<property>", "alias": "<output_name>"}
-{"kind": "Coalesce", "refs": [<BindingValueRef>, ...], "alias": "<output_name>"}
-```
-
-`Coalesce` projects the first present non-null `ref`, in order. `source` accepts
-the same virtual fields as `PropertyProjection` (`$id`, `$label`, `$distance`,
-`$from`, `$to`, `$score`).
-
-`BindingTarget`  (`sdks/rust/src/dsl.rs:2080`) — `"Current"` (the current
-traverser element) or `{"Binding": "<name>"}` (a row-local binding captured by a
-`Bind` step):
-
-```json
-"Current"
-{"Binding": "service"}
-```
-
-`BindingValueRef`  (`sdks/rust/src/dsl.rs:2102`):
-
-```json
-{"target": <BindingTarget>, "source": "<property>"}
-```
-
----
-
-## 7. Order, Emit, Aggregation
-
-### `Order`  (`sdks/rust/src/dsl.rs:2069`)
-
-Bare strings: `"Asc"`, `"Desc"`.
-
-### `EmitBehavior`  (`sdks/rust/src/dsl.rs:2084`)
-
-Bare strings: `"None"`, `"Before"`, `"After"`, `"All"`.
-
-### `AggregateFunction`  (`sdks/rust/src/dsl.rs:2103`)
-
-Bare strings: `"Count"`, `"Sum"`, `"Min"`, `"Max"`, `"Mean"`.
-
----
-
-## 8. SubTraversal & RepeatConfig
-
-### `SubTraversal`  (`sdks/rust/src/dsl.rs:2124`)
-
-```json
-{"steps": [<Step>, ...]}
-```
-
-Used wherever an inner traversal is needed: `Union`, `Choose.then_traversal`, `Choose.else_traversal`, `Coalesce`, `Optional`, `Repeat.traversal`.
-
-### `RepeatConfig`  (`sdks/rust/src/dsl.rs:2350`)
+A batch contains entries in execution order and the variable names to return:
 
 ```json
 {
-  "traversal": <SubTraversal>,
-  "times": <usize> | null,
-  "until": <Predicate> | null,
-  "emit": <EmitBehavior>,
-  "emit_predicate": <Predicate> | null,
-  "max_depth": <usize>
+  "read": {
+    "entries": [
+      {
+        "query": {
+          "name": "users",
+          "root": {
+            "nodes_where": {
+              "predicate": {
+                "eq": {
+                  "left": { "property": "$label" },
+                  "right": { "constant": { "string": "User" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "returns": ["users"]
+  }
 }
 ```
 
-- `times` — fixed number of iterations. At least one of `times` / `until` should be set to bound the loop.
-- `until` — stop when the predicate becomes true against the current stream.
-- `emit` — what to include in the result stream (default `"None"` emits only the final stream).
-- `emit_predicate` — if set, only emit elements matching this predicate (`emit` becomes effectively `"After"` when present).
-- `max_depth` — safety cap (default `100`).
-
----
-
-## 9. IndexSpec
-
-`IndexSpec`  (`sdks/rust/src/dsl.rs:2427`):
+`name` is optional in the underlying AST but should be present for normal `varAs`
+entries. `condition` is also optional:
 
 ```json
-{"NodeEquality": {"label": "<L>", "property": "<p>", "unique": false}}
-{"NodeRange":    {"label": "<L>", "property": "<p>", "direction": "Asc" | "Desc"}}
-{"EdgeEquality": {"label": "<L>", "property": "<p>"}}
-{"EdgeRange":    {"label": "<L>", "property": "<p>", "direction": "Asc" | "Desc"}}
-{"NodeVector":   {"label": "<L>", "property": "<p>", "tenant_property": "<tp>" | null}}
-{"NodeText":     {"label": "<L>", "property": "<p>", "tenant_property": "<tp>" | null}}
-{"EdgeVector":   {"label": "<L>", "property": "<p>", "tenant_property": "<tp>" | null}}
-{"EdgeText":     {"label": "<L>", "property": "<p>", "tenant_property": "<tp>" | null}}
+{
+  "query": {
+    "name": "created",
+    "condition": { "var_empty": "existing" },
+    "root": {
+      "add_n": {
+        "label": "User",
+        "properties": []
+      }
+    }
+  }
+}
 ```
 
-- `NodeEquality.unique` defaults to `false`. When `true`, insert / update of duplicate non-null values is rejected.
-- `NodeRange.direction` / `EdgeRange.direction` defaults to `"Asc"`; omit it for ascending indexes or set `"Desc"` for descending physical order.
-- `tenant_property` — if set, creates a multitenant index partitioned by that property.
-- Index properties are top-level only in V1. Do not declare `metadata.externalID` as a secondary,
-  vector, or text index; store indexed/searchable values as explicit top-level properties.
+The other entry form repeats a body for each object in a top-level array parameter:
 
----
+```json
+{
+  "for_each": {
+    "param": "users",
+    "body": [
+      {
+        "query": {
+          "name": "created",
+          "root": {
+            "add_n": {
+              "label": "User",
+              "properties": []
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+```
 
-## 10. Step Catalog
+Batch conditions serialize as `var_not_empty`, `var_empty`, `var_min_size`, or the
+unit string `"prev_not_empty"`.
 
-All Step variants (`sdks/rust/src/dsl.rs:2606-3062`) grouped by category. **TS** = typestate requirement (`E` = Empty source position, `N` = on nodes, `X` = on edges, `*` = any). **W** = write-only.
+## Recursive operation encoding
 
-### Sources (TS: `E` unless noted)
+`AstNode` is an externally tagged, `snake_case` enum. A source has no `input`:
 
-| Step | Rust | JSON |
+```json
+{
+  "nodes": {
+    "reference": { "ids": [0, 1] }
+  }
+}
+```
+
+```json
+{
+  "nodes_where": {
+    "predicate": {
+      "eq": {
+        "left": { "property": "$label" },
+        "right": { "constant": { "string": "User" } }
+      }
+    }
+  }
+}
+```
+
+Each following operation wraps the prior node under `input`:
+
+```json
+{
+  "value_map": {
+    "input": {
+      "limit": {
+        "input": {
+          "out": {
+            "input": {
+              "nodes": {
+                "reference": { "var": "user" }
+              }
+            },
+            "label": "FOLLOWS"
+          }
+        },
+        "count": { "literal": 25 }
+      }
+    },
+    "properties": ["$id", "name"]
+  }
+}
+```
+
+Common read nodes:
+
+| Builder idea | JSON variant | Important fields |
 |---|---|---|
-| `N(NodeRef)` | `.n(...)` | `{"N": <NodeRef>}` |
-| `NWhere(SourcePredicate)` | `.n_where(...)` | `{"NWhere": <SourcePredicate>}` |
-| `E(EdgeRef)` | `.e(...)` | `{"E": <EdgeRef>}` |
-| `EWhere(SourcePredicate)` | `.e_where(...)` | `{"EWhere": <SourcePredicate>}` |
-| `VectorSearchNodes { label, property, tenant_value?, query_vector, k }` | `.vector_search_nodes(...)` | `{"VectorSearchNodes": {"label":"...", "property":"...", "tenant_value": <PropertyInput>|null, "query_vector": <PropertyInput>, "k": <StreamBound>}}` |
-| `TextSearchNodes { label, property, tenant_value?, query_text, k }` | `.text_search_nodes(...)` | `{"TextSearchNodes": {"label":"...", "property":"...", "tenant_value": <PropertyInput>|null, "query_text": <PropertyInput>, "k": <StreamBound>}}` |
-| `VectorSearchEdges { ... }` | `.vector_search_edges(...)` | `{"VectorSearchEdges": {...}}` |
-| `TextSearchEdges { ... }` | `.text_search_edges(...)` | `{"TextSearchEdges": {...}}` |
+| node source | `nodes` | `reference` |
+| indexed/filterable node source | `nodes_where` | `predicate` |
+| edge source | `edges`, `edges_where` | `reference` or `predicate` |
+| traverse | `out`, `in`, `both` | `input`, optional `label` |
+| edge traversal | `out_e`, `in_e`, `both_e` | `input`, optional `label` |
+| edge to node | `out_n`, `in_n`, `other_n` | `input` |
+| filter | `where` | `input`, `predicate` |
+| bound stream | `limit`, `range`, `skip` | `input` plus bound fields |
+| deduplicate | `dedup` | `input` |
+| project properties | `value_map` | `input`, `properties` |
+| structured projection | `project` | `input`, `projections` |
+| aggregate | `count`, `exists`, `aggregate` | `input` |
+| order | `order_by`, `order_by_multiple` | `input` plus order fields |
+| vector search | `vector_search_nodes`, `vector_search_edges` | label, property, query vector, `k`, optional tenant |
+| text search | `text_search_nodes`, `text_search_edges` | label, property, query text, `k`, optional tenant |
 
-`n_with_label("User")` is sugar for `NWhere(SourcePredicate::Eq("$label", "User"))`.
+Common write nodes:
 
-### Node traversal (TS: `N`, produces `X` on `*E`)
-
-| Step | JSON |
-|---|---|
-| `Out(Option<String>)` | `{"Out": "LABEL"}` or `{"Out": null}` — outgoing nodes (via edges) |
-| `In(Option<String>)` | `{"In": "LABEL" | null}` |
-| `Both(Option<String>)` | `{"Both": "LABEL" | null}` |
-| `OutE(Option<String>)` | `{"OutE": "LABEL" | null}` — switch to outgoing edges |
-| `InE(Option<String>)` | `{"InE": "LABEL" | null}` |
-| `BothE(Option<String>)` | `{"BothE": "LABEL" | null}` |
-
-### Edge traversal (TS: `X`, produces `N`)
-
-| Step | JSON |
-|---|---|
-| `OutN` | `"OutN"` — edge → target node |
-| `InN` | `"InN"` — edge → source node |
-| `OtherN` | `"OtherN"` — edge → the "other" endpoint relative to prior context |
-
-### Filters (TS: `N` or `X` where it makes sense)
-
-| Step | JSON |
-|---|---|
-| `Has(String, PropertyValue)` | `{"Has": ["<prop>", <PropertyValue>]}` |
-| `HasLabel(String)` | `{"HasLabel": "<L>"}` |
-| `HasKey(String)` | `{"HasKey": "<prop>"}` |
-| `Where(Predicate)` | `{"Where": <Predicate>}` |
-| `Dedup` | `"Dedup"` |
-| `Within(String)` | `{"Within": "<var>"}` |
-| `Without(String)` | `{"Without": "<var>"}` |
-| `EdgeHas(String, PropertyInput)` | `{"EdgeHas": ["<prop>", <PropertyInput>]}` (TS: `X`) |
-| `EdgeHasLabel(String)` | `{"EdgeHasLabel": "<L>"}` (TS: `X`) |
-
-`Has`, `HasLabel`, `HasKey`, and `Where` are valid on node and edge streams. On
-edge streams they evaluate stored edge properties plus virtual fields `$id`,
-`$label`, `$from`, `$to`, `$distance`, and `$score`. Use `EdgeHas` when the
-right-hand side must be a `PropertyInput` expression or runtime parameter.
-
-### Limits (TS: `N` or `X`)
-
-| Step | JSON |
-|---|---|
-| `Limit(usize)` | `{"Limit": 10}` |
-| `LimitBy(Expr)` | `{"LimitBy": <Expr>}` |
-| `Skip(usize)` | `{"Skip": 5}` |
-| `SkipBy(Expr)` | `{"SkipBy": <Expr>}` |
-| `Range(usize, usize)` | `{"Range": [0, 25]}` |
-| `RangeBy(StreamBound, StreamBound)` | `{"RangeBy": [<StreamBound>, <StreamBound>]}` |
-
-### Variables
-
-| Step | JSON |
-|---|---|
-| `As(String)` | `{"As": "<var>"}` — store current stream |
-| `Store(String)` | `{"Store": "<var>"}` — alias of `As` |
-| `Select(String)` | `{"Select": "<var>"}` — replace stream with a stored var |
-| `Inject(String)` | `{"Inject": "<var>"}` — start from or merge with a stored var |
-| `Bind(String)` | `{"Bind": "<name>"}` — tag current element as a row-local binding; enters row mode. Name must be non-empty. |
-
-### Ordering (TS: `N` or `X`)
-
-| Step | JSON |
-|---|---|
-| `OrderBy(String, Order)` | `{"OrderBy": ["<prop>", "Desc"]}` |
-| `OrderByMultiple(Vec<(String, Order)>)` | `{"OrderByMultiple": [["priority","Desc"],["name","Asc"]]}` |
-
-`<prop>` may be a dotted object path for fallback ordering, but nested paths are not backed by
-range indexes in V1.
-
-### Aggregation (TS: `N`)
-
-| Step | JSON |
-|---|---|
-| `Group(String)` | `{"Group": "<prop>"}` |
-| `GroupCount(String)` | `{"GroupCount": "<prop>"}` |
-| `AggregateBy(AggregateFunction, String)` | `{"AggregateBy": ["Sum", "<prop>"]}` |
-
-### Branching
-
-| Step | JSON |
-|---|---|
-| `Union(Vec<SubTraversal>)` | `{"Union": [<SubTraversal>, ...]}` |
-| `Choose { condition, then_traversal, else_traversal }` | `{"Choose": {"condition": <Predicate>, "then_traversal": <SubTraversal>, "else_traversal": <SubTraversal>|null}}` |
-| `Coalesce(Vec<SubTraversal>)` | `{"Coalesce": [<SubTraversal>, ...]}` |
-| `Optional(SubTraversal)` | `{"Optional": <SubTraversal>}` |
-
-### Repeat
-
-| Step | JSON |
-|---|---|
-| `Repeat(RepeatConfig)` | `{"Repeat": <RepeatConfig>}` |
-
-### Projections (terminal)
-
-| Step | JSON |
-|---|---|
-| `Values(Vec<String>)` | `{"Values": ["name", "email"]}` |
-| `ValueMap(Option<Vec<String>>)` | `{"ValueMap": ["$id", "name"]}` or `{"ValueMap": null}` |
-| `Project(Vec<Projection>)` | `{"Project": [<Projection>, ...]}` — Projection entries are **untagged** |
-| `ProjectBindings { projections, distinct }` | `{"ProjectBindings": {"projections": [<BindingProjection>, ...], "distinct": false}}` — row-binding terminal; `BindingProjection` entries are tagged by `kind`. `distinct: true` dedups identical rows. |
-| `EdgeProperties` (TS: `X`) | `"EdgeProperties"` |
-
-Filtered `Values`, filtered `ValueMap`, `Project.source`, and `Expr.Property` accept dotted object
-paths. `ValueMap: null` returns top-level stored properties as-is and does not flatten nested
-objects.
-
-On edge streams, `Project.source` may also use endpoint-qualified sources such
-as `"$from.resource_id"` and `"$to.resource_id"` to project source/target node
-properties while preserving one output row per edge.
-
-### Terminals (scalar result)
-
-| Step | JSON |
-|---|---|
-| `Count` | `"Count"` |
-| `Exists` | `"Exists"` |
-| `Id` | `"Id"` |
-| `Label` | `"Label"` |
-
-### Mutations (write-only) — TS: `N` unless noted
-
-| Step | JSON |
-|---|---|
-| `AddN { label, properties }` (TS: `*` — switches to `N`) | `{"AddN": {"label": "User", "properties": [["name", <PropertyInput>], ...]}}` |
-| `AddE { label, to, properties }` (TS: `N`) | `{"AddE": {"label": "FOLLOWS", "to": <NodeRef>, "properties": [[<k>, <PropertyInput>], ...]}}` |
-| `SetProperty(String, PropertyInput)` | `{"SetProperty": ["<prop>", <PropertyInput>]}` |
-| `RemoveProperty(String)` | `{"RemoveProperty": "<prop>"}` |
-| `Drop` | `"Drop"` |
-| `DropEdge(NodeRef)` | `{"DropEdge": <NodeRef>}` — deletes ALL edges from current nodes to target |
-| `DropEdgeLabeled { to, label }` | `{"DropEdgeLabeled": {"to": <NodeRef>, "label": "<L>"}}` |
-| `DropEdgeById(EdgeRef)` (TS: `X`) | `{"DropEdgeById": <EdgeRef>}` — multigraph-safe |
-
-### Indexes (write-only)
-
-| Step | JSON |
-|---|---|
-| `CreateIndex { spec, if_not_exists }` | `{"CreateIndex": {"spec": <IndexSpec>, "if_not_exists": true}}` |
-| `DropIndex { spec }` | `{"DropIndex": {"spec": <IndexSpec>}}` |
-| `CreateVectorIndexNodes { label, property, tenant_property? }` | `{"CreateVectorIndexNodes": {"label":"...", "property":"...", "tenant_property":"..."|null}}` |
-| `CreateVectorIndexEdges { ... }` | `{"CreateVectorIndexEdges": {...}}` |
-| `CreateTextIndexNodes { ... }` | `{"CreateTextIndexNodes": {...}}` |
-| `CreateTextIndexEdges { ... }` | `{"CreateTextIndexEdges": {...}}` |
-
-### Reserved / currently no-op
-
-Present in the AST for forward compatibility. Safe to include; the current Helix interpreter treats them as pass-throughs.
-
-| Step | JSON |
-|---|---|
-| `Fold` | `"Fold"` |
-| `Unfold` | `"Unfold"` |
-| `Path` | `"Path"` |
-| `SimplePath` | `"SimplePath"` |
-| `WithSack(PropertyValue)` | `{"WithSack": <PropertyValue>}` |
-| `SackSet(String)` | `{"SackSet": "<prop>"}` |
-| `SackAdd(String)` | `{"SackAdd": "<prop>"}` |
-| `SackGet` | `"SackGet"` |
-
----
-
-## 11. Virtual Fields
-
-Available in `Values`, `ValueMap`, `Project` (as a `PropertyProjection.source`), and as `Expr::Property` references inside predicates / expressions:
-
-| Field | Where valid | Notes |
+| Builder idea | JSON variant | Important fields |
 |---|---|---|
-| `$id` | any node or edge stream | the element's id |
-| `$label` | any node or edge stream | the element's label |
-| `$distance` | direct hits from `VectorSearchNodes`/`VectorSearchEdges`/`TextSearchNodes`/`TextSearchEdges` | ascending = closer; lost after `Out`/`In`/`Both`/`OutN`/`InN`/`OtherN` |
-| `$score` | direct ranked text/vector hits when populated by the engine | ranking score metadata; lost after traversal steps that change stream |
-| `$from`, `$to` | edge streams, including `EdgeProperties` and edge vector/text hits | source and target node ids |
-| `$from.<prop>`, `$to.<prop>` | `Project.source` on edge streams | source/target endpoint node property; cheaper than traversing to every endpoint |
+| add node | `add_n` | optional `input`, `label`, ordered `properties` |
+| add edge | `add_e` | `input`, `label`, `to`, ordered `properties` |
+| set property | `set_property` | `input`, `property`, `value` |
+| drop current elements | `drop` | `input` |
+| create index | `create_index` | `spec` |
+| drop index | `drop_index` | `name` |
 
-**Rule:** if you need `$distance` in the result, include it in the first terminal projection *before* any traversal step that changes the stream.
+Use the SDK builders when a less-common node is needed. Serialize with
+`toQueryJson`/`to_query_json` or the Rust/Go JSON encoder and treat that output as
+canonical rather than guessing a field.
 
-## 12. Multitenancy Contract
+## References
 
-For `VectorSearch*` / `TextSearch*` and the corresponding indexes:
+`NodeRef` and `EdgeRef` are `snake_case` variants:
 
-- **No tenant_property on index + no tenant_value on search:** normal single-tenant behavior.
-- **Index has tenant_property + search supplies `tenant_value`:** results scoped to that partition.
-- **Index has tenant_property + search omits `tenant_value`:** request fails (tenant required).
-- **Index has tenant_property + search supplies an unknown tenant value:** empty result.
-- **Writing a vector to a multitenant-indexed property without the tenant property on the node/edge:** write fails.
+```json
+{
+  "reference": { "var": "alice" }
+}
+```
 
-## 13. Common Foot-Guns
+```json
+{
+  "reference": { "ids": [0, 1] }
+}
+```
 
-- Using `{"N": {"Id": 644}}` — rejected: `unknown variant 'Id', expected one of 'Ids', 'Var', 'Param'`. Wrap as `{"N": {"Ids": [644]}}`.
-- Writing `{"request_type": "Read"}` — rejected: must be lowercase `"read"`.
-- Wrapping `Projection` entries: `{"Project": [{"Property": {...}}]}` — the enum is `#[serde(untagged)]`. Emit the inner `PropertyProjection`/`ExprProjection` directly.
-- Wrapping top-level parameter values: `"parameters": {"n": {"I64": 25}}` — wrong. That's `PropertyValue` encoding; parameter values use the untagged `DynamicQueryValue`: `"parameters": {"n": 25}`.
-- Sending `DateTime` as a plain string with no `parameter_types` entry — the runtime will treat it as a `String`. Always declare `"p": "DateTime"`.
-- Setting `Repeat.times: null` **and** leaving `until: null` — the loop is bounded only by `max_depth` (100). Either set `times` or a terminating `until`.
-- Using `Contains` / `IsIn` / `Not` / `Compare` / `IsNull` in `n_where` / `e_where` — rejected by `SourcePredicate`. Push them into a `Where` step after the source.
-- Mixing a mutation step with `request_type: "read"` — rejected by the gateway.
+```json
+{
+  "reference": { "param": "user_ids" }
+}
+```
+
+## Values and inputs
+
+`PropertyValue` values are tagged:
+
+```json
+{
+  "string": "Alice"
+}
+```
+
+```json
+{
+  "i64": 25
+}
+```
+
+```json
+{
+  "f64_array": [0.1, 0.2, 0.3]
+}
+```
+
+`PropertyInput` distinguishes a literal value from an expression:
+
+```json
+{
+  "value": { "string": "Alice" }
+}
+```
+
+```json
+{
+  "expr": { "param": "name" }
+}
+```
+
+Properties on `add_n` and `add_e` are ordered pairs:
+
+```json
+{
+  "properties": [
+    ["name", { "value": { "string": "Alice" } }],
+    ["active", { "value": { "bool": true } }]
+  ]
+}
+```
+
+## Predicates
+
+Predicates are expression trees, not positional arrays:
+
+```json
+{
+  "eq": {
+    "left": { "property": "status" },
+    "right": { "constant": { "string": "active" } }
+  }
+}
+```
+
+```json
+{
+  "and": [
+    {
+      "eq": {
+        "left": { "property": "$label" },
+        "right": { "constant": { "string": "User" } }
+      }
+    },
+    {
+      "gte": {
+        "left": { "property": "age" },
+        "right": { "param": "minimum_age" }
+      }
+    }
+  ]
+}
+```
+
+Use `constant` for a literal, `param` for a runtime parameter, and `property` for the
+current element's property.
+
+## Parameter schemas
+
+Scalar schema names include `string`, `i64`, `f64`, `bool`, `date_time`, and `bytes`.
+Arrays and objects use their structured schema form as serialized by the SDK. Keep
+`parameters` and `parameter_types` aligned.
+
+```json
+{
+  "parameters": {
+    "minimum_age": 18
+  },
+  "parameter_types": {
+    "minimum_age": "i64"
+  }
+}
+```
+
+## Responses
+
+The server returns one top-level member per returned batch name. Nodes and edges are
+normalized user-facing objects.
+
+```json
+{
+  "users": [
+    { "$id": 0, "name": "Alice" },
+    { "$id": 1, "name": "Bob" }
+  ]
+}
+```
+
+Do not document internal `current`/`bindings` rows as the public response.
+
+## Validation checklist
+
+- Parse every complete `json` fence.
+- Confirm `request_type` and batch variant match.
+- Confirm every returned name exists in an entry.
+- Confirm every non-source operation has the correct nested `input`.
+- Confirm all enum tags are `snake_case`.
+- Compare hand-written JSON with an SDK serializer for the same query.
+- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.1`.

@@ -1,165 +1,162 @@
 ---
 name: helix-query-optimize
-description: Review and improve HelixDB query performance against the actual interpreter behavior — index push-down, label scope, distance lifecycle, limit/dedup pushdown, range-index ordering, repeat/branching cost, and write-path foot-guns. Use when the task is to optimize a slow Helix query, decide why a query is doing a full scan, fix a missed index, tighten BM25 or vector search scope, or slim projections. See REFERENCE.md for the mechanism catalog with file:line citations and EXAMPLES.md for paired Rust DSL + JSON dynamic patterns.
+description: Review and improve HelixDB v3 query performance. Use for index-aware sources, label scope, equality and range indexes, bounded traversals, projection size, vector and BM25 search, tenant-scoped indexes, and safe write batches. Examples use direct v3 SDK requests and the nested JSON AST.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.2.0
+  version: 3.0.0
 ---
 
-# Helix Query Optimization
+# HelixDB v3 Query Optimization
 
-Optimize Helix queries by aligning their shape with what the Helix interpreter actually does at each step. Every rule in this skill is grounded in the source — see `REFERENCE.md` for the mechanism and the file:line cite, and `EXAMPLES.md` for paired Rust DSL + JSON forms.
+Optimize the query shape before tuning the transport. The forthcoming v3 SDKs all
+serialize the same direct operation tree, so the same rules apply to Rust,
+TypeScript, Python, Go, and raw JSON.
 
-## When To Use
+## Review order
 
-Use this skill when the task is to:
+1. Identify the first source operation.
+2. Find the narrowest label and property predicate available.
+3. Confirm a compatible index exists and is active.
+4. Bound expansion with filters, `dedup`, and `limit`.
+5. Project only the fields the caller uses.
+6. Check search tenant scope and rank-field lifetime.
+7. Check write idempotency and batch cardinality.
 
-- understand why a Helix query is slow
-- review a query for missed index push-down or accidental full scans
-- decide if a `where_(...)` or `has(...)` is filtering at the index or in memory
-- tighten BM25 or vector search routes (tenant scope, distance lifecycle, projection)
-- bound `Repeat` traversals or order `Coalesce` branches by cost
-- audit write-path safety (`drop_edge` vs `drop_edge_by_id`, `add_n` dupes, `for_each_param` cost)
+## 1. Start from the narrowest source
 
-## Reference Files
+Prefer, in order:
 
-- `REFERENCE.md` — full optimizer mental model: index types, source dispatch table, predicate-index resolution catalog, `RuntimeState` transitions, limit/dedup pushdown, OrderBy paths, projection rules, repeat/branching cost, batch semantics, write-path mechanics, dynamic query cost. Every claim cites `enterprise/helix/src/traversal/interpreter.rs` (helix-hyperscale) or `sdks/rust/src/dsl.rs` (the `helix-db` DSL crate).
-- `EXAMPLES.md` — paired Rust DSL + JSON dynamic patterns for every optimization rule below: weaker form, stronger form, what changed and why.
+- exact node or edge IDs
+- a labeled source with an indexed property predicate
+- a label-only source
+- an unconstrained scan
 
-When the JSON encoding rules are not obvious, cross-reference `../helix-query-json-dynamic/REFERENCE.md` (it is the authoritative AST encoding catalog).
+Use a source predicate when the filter can anchor the query:
 
-## First Steps
+```rust
+g().n_with_label_where(
+    "User",
+    SourcePredicate::eq("status", "active"),
+)
+```
 
-Before suggesting any change:
+```ts
+g().nWithLabelWhere(
+  "User",
+  SourcePredicate.eq("status", "active"),
+)
+```
 
-1. **Read the query** and identify the source step (the first AST step). Is it `N(Ids)`, `N(Var)`, `N(Param)`, `NWhere`, `E*`, `VectorSearchNodes`, `TextSearchNodes`?
-2. **Identify the effective label scope.** `n_with_label("X")` desugars to `n_where(SourcePredicate::Eq("$label", "X"))` (`sdks/rust/src/dsl.rs:3221`). Without an effective label scope, scoped equality/range indexes are not consulted (`interpreter.rs:2707, 2794, 2832`).
-3. **List the predicates and ask: are they `SourcePredicate`-eligible?** Only `SourcePredicate` (Eq, Neq, Gt, Gte, Lt, Lte, Between, HasKey, StartsWith, And, Or — `sdks/rust/src/dsl.rs:1619`) reaches the index dispatcher when used as a source. The full `Predicate` enum has more variants but most are not index-eligible.
-4. **Check which indexes exist** in the application — equality, range, node-label, vector (HNSW), text (BM25), and tenant-scoped vector/text. The interpreter never warns on a missed index — it silently falls back.
-5. **Decide whether the route is read or write.** Writes use `request_type: "write"` on the dynamic route; warming is read-only.
+`where` is still useful after a traversal, but starting broad and filtering later can
+materialize more elements.
 
-Do not suggest optimizations before you understand the anchor, the label scope, and the index inventory.
+## 2. Match the index to the predicate
 
-Nested dotted paths such as `metadata.externalID` are scan-only in V1. If a route filters or orders on one, optimize by adding an indexed top-level anchor first, or duplicate the frequently queried value onto a top-level indexed property.
+| Workload | Index |
+|---|---|
+| equality and membership | node or edge equality |
+| range predicates and large ordered result sets | node or edge range |
+| nearest-neighbor search | node or edge vector |
+| full-text relevance | node or edge text |
 
-## The Seven Levers
+Do not expect an equality index to accelerate an arbitrary range, substring, or
+full-text query. Create indexes through a write request and wait for the returned DDL
+operation to become active before relying on indexed performance.
 
-### 1. Anchor on an index-eligible predicate
+## 3. Keep label scope
 
-**Why it matters.** The index dispatcher (`try_resolve_predicate_from_indexes`, `interpreter.rs:2610-2948`) only recognizes a fixed set of predicate shapes: `Eq`, `Gt/Gte/Lt/Lte`, `Between`, `IsIn`, `IsInExpr`, `HasKey`, `StartsWith`, `And` (recurses), `Or` (requires every child indexable), and `Compare` when its right-side param resolves to a literal (`interpreter.rs:2928-2944`). Everything else falls through to `_ => Ok(None)` at `interpreter.rs:2946` and the caller scans at `interpreter.rs:5966` (`vertices_where(...)`).
+Equality and range indexes are label-scoped. Prefer
+`nWithLabelWhere("User", ...)`/`n_with_label_where("User", ...)` when the label is
+known. A property predicate without label scope may require a wider scan.
 
-`SourcePredicate::eq(prop, value)` takes a literal `PropertyValue` (compile-time known). For runtime parameters, the DSL builds `where_(Predicate::eq_param(prop, name))` which compiles to `Predicate::Compare { left: Property(prop), op: Eq, right: Param(name) }`. The dispatcher does index-resolve `Compare` (path 2928-2944), so a parameterized `where_` after a labeled source is still on the fast path **as long as the label scope is set** — see lever 2.
+## 4. Push bounds close to expansion
 
-**Fix.** Use `SourcePredicate::eq` / `between` / `gt` / `is_in` for literal predicates inside `n_with_label_where` / `n_where`. Use `where_(Predicate::eq_param(...))` for parameterized predicates, anchored on `n_with_label("X")` so the dispatcher has a label scope. Avoid index-blind predicates at any position: `Contains`, `EndsWith`, `Not`, `IsNull`, `IsNotNull`, and any `Or` mixing index-eligible and non-eligible arms — these always force load-then-filter (REFERENCE.md §4). See `EXAMPLES.md §2`.
+Apply `dedup` and `limit` immediately after the source or traversal they should bound:
 
-### 2. Provide a label scope
+```ts
+g()
+  .nWithLabel("User")
+  .out("FOLLOWS")
+  .dedup()
+  .limit(25)
+  .valueMap(["$id", "name"])
+```
 
-**Why it matters.** Scoped equality indexes are keyed by `scoped_secondary_index_property(label, property)` (`interpreter.rs:2601, 2709, 2795, 2831`). Without an `effective_label_scope` (either set explicitly via `n_with_label*` or derived from a `SourcePredicate::Eq("$label", ...)` at `interpreter.rs:2620-2621`), those gates short-circuit and the predicate is not index-resolvable — even if `(Label, Property)` is indexed.
+Avoid expanding a large subgraph, applying several broad filters, and limiting only
+at the end.
 
-`HasKey("$label")` and `StartsWith("$label", ...)` have a node-label-index fast path (`interpreter.rs:2782, 2819`); other predicates do not.
+## 5. Project narrowly
 
-**Fix.** Always anchor with a label. Prefer `n_with_label_where("User", SourcePredicate::eq("userId", id))` over `n_where(SourcePredicate::eq("userId", id))`. The DSL convenience function `n_with_label_where` builds an `And([Eq("$label", L), pred])` for you (`sdks/rust/src/dsl.rs:3233`).
+Prefer:
 
-### 3. Match the index kind to the predicate
+```ts
+.valueMap(["$id", "name"])
+```
 
-**Why it matters.** The dispatcher uses a different index for each predicate kind (`REFERENCE.md §Predicate-index resolution`):
+over loading every property when the response needs only two. For a count, finish
+with `count` rather than returning every matching object to the client.
 
-- `Eq` → equality index (`interpreter.rs:2623`)
-- `Gt/Gte/Lt/Lte` → range index (`interpreter.rs:2638-2700`)
-- `Between` → range index only (`interpreter.rs:2702-2722`); falls back if only equality index exists
-- `IsIn` / `IsInExpr` → union of equality lookups (`interpreter.rs:2723-2780`); needs equality index
-- `HasKey` → equality property prefix scan (`interpreter.rs:2781`)
-- `StartsWith` → range index preferred, equality prefix as fallback (`interpreter.rs:2818-2853`); returns `Candidates` (verification after)
+## 6. Treat search scope as part of the index lookup
 
-Predicates that are **never** index-eligible (always full scan + post-filter): `Contains`, `EndsWith`, `Not`, `IsNull`, `IsNotNull`, `Or` of mixed kinds, `Compare` with non-resolvable param. Source-position `Or`/`And` recurse, so each child still needs an index.
+Vector and text index definitions may include a tenant property. Pass the matching
+tenant value to the search operation itself. A later `where` cannot repair a search
+that selected top-k hits from the wrong partition.
 
-**Fix.** Match the index to the predicate. If you need range queries, create a range index (`IndexSpec::node_range`) — equality indexes don't satisfy `Between`. If you need substring search, use BM25 (`text_search_nodes_with`) — `Predicate::Contains` will scan.
+Project `$distance` for vector results or `$score` for text results before traversing
+away from the ranked hit stream.
 
-### 4. Pass `tenant_value` for tenant-scoped vector/text
+## 7. Use range indexes for large ordered reads
 
-**Why it matters.** Vector and text indexes can be created with a `tenant_property` (`IndexSpec::node_vector(label, property, tenant_property)`). The interpreter resolves the index name via `resolve_vector_search_index_name` (`interpreter.rs:5222`); if the index has a tenant property and `tenant_value` is `None`, it errors at `interpreter.rs:5234-5237` or — when the resolved index is missing — silently catches `IndexNotFound` and returns `Vec::new()` (`interpreter.rs:6048-6052`). A tenant index plus a `where_("tenant_id", ...)` post-filter is wrong: the post-filter cannot widen a search that was scoped to the wrong tenant, and it cannot narrow a search that was unscoped (because k-NN/BM25 already returned the top-k from the wrong/global pool).
+`orderBy`/`order_by` may otherwise require materializing and sorting the matching
+stream. If ordering is a frequent large query, create a range index for the same
+label and property, then apply a practical limit.
 
-**Fix.** Always pass `Some(PropertyInput::param("tenantId"))` (or a literal `Some(PropertyInput::value(...))`) as the last argument to `vector_search_nodes_with` / `text_search_nodes_with`. Verify the tenant-scoped index actually exists before relying on the path.
+Deep offset pagination still does work proportional to the skipped prefix. Prefer a
+cursor predicate on the ordered property where possible.
 
-### 5. Project before traversing off the hit stream
+## 8. Bound recursive and branching work
 
-**Why it matters.** Vector and text search produce `RuntimeState::RankedVertices { vertices, hits }` / `RankedEdges { edges, hits }` (`interpreter.rs:1359-1404`). Each hit carries `distance`/`score`. As soon as a step calls `as_vertices()` (`interpreter.rs:1407-1411`) the hits are dropped. Steps that drop ranking metadata: `Out`, `In`, `Both`, `OutN`, `InN`, `OtherN` (post `Out/In/Both` at `interpreter.rs:6753-6795`), `Where` and `OrderBy` transitions that produce plain `Vertices`/`OrderedVertices` (`interpreter.rs:7054, 7088`).
+- Set an explicit maximum depth on recursive traversal.
+- Put cheap `coalesce` probes before expensive fallbacks.
+- Keep `forEachParam`/`for_each_param` arrays bounded.
+- Break large bulk writes into measured pages.
 
-Steps that **preserve** ranking: `As`, `Store`, `Select`, plus terminal projections (`value_map`, `project`, `values`, `edge_properties`) which read `distance`/`score` from state via the virtual fields `$distance` and `$score`.
+## 9. Make writes idempotent where required
 
-**Fix.** Project before traversing. If you need both the distance and the post-traversal node, store the hit ids first: `vector_search_nodes_with(...).as_("hits").project(vec![..., PropertyProjection::renamed("$distance", "distance")])`, then in a separate variable do the traversal.
+`addN`/`add_n` creates new data. For an upsert:
 
-For large edge streams that need endpoint resource ids, project endpoint fields
-directly from the edge stream with `$from.<prop>` / `$to.<prop>` (SDK helpers:
-`Projection::from_endpoint`, `Projection.fromEndpoint`,
-`Projection.from_endpoint`, `helix.ProjectFromEndpoint`) instead of doing
-`out_n` / `in_n` per edge.
+1. Load the existing object by an equality-indexed unique property.
+2. Conditionally update when the named result is non-empty.
+3. Conditionally create when it is empty.
 
-### 6. Pair `Limit` with `Dedup` (and `OrderBy` with a range index)
+On multigraphs, identify the exact edge or use a label-scoped drop. Avoid a broad
+source/target deletion when parallel edges may exist.
 
-**Why it matters.** The interpreter peeks one step ahead via `consume_limit_after` (`interpreter.rs:787-827`) to detect `step → Limit/Range/LimitBy/RangeBy` and `step → Dedup → Limit` patterns; when matched it sets `LimitPushdown { limit, dedup }` and threads it into source/traversal collection (`collect_set_limited`). Without that exact lookahead, the interpreter materializes the full result set then trims. Limit pushdown is **disabled** for edge-side filters (`EWhere`, `EdgeHas`, `EdgeHasLabel` — `interpreter.rs:807-812`).
+## Direct requests only
 
-`OrderBy` over a property with a scoped range index uses `order_by_from_range_index` (`interpreter.rs:829-863`) — a prefix scan in key order, no in-memory sort. Without a range index, `OrderBy` loads all properties, sorts in memory (`interpreter.rs:7061-7091`).
+The v3 SDKs build `QueryRequest` values and execute them directly:
 
-**Fix.** Put `Limit`/`Range` directly after the source or traversal step you want bounded — not after a chain of filters. When ordering, ensure a range index exists for that property if the result set is large; otherwise expect a full materialize+sort. Deep pagination (`skip(100000).limit(10)`) still requires reading and discarding the first 100,000 — design around it (cursor-by-property with `Gt(prop, last_value)`).
+- TypeScript: `Client.query(request)`
+- Rust: `client.query(request)`
+- Python: `Client(...).query(request)`
+- Go: `Client.Exec(ctx, request)`
 
-### 7. Bound `Repeat` and order `Coalesce` by cost
+Stored routes, registration, `defineQueries`, and `queries.json` bundles are not part
+of the v3 SDK contract. Authoring with Rust `#[query]` still produces a direct request.
 
-**Why it matters.** `Step::Repeat` enforces `max_depth` only when set (`interpreter.rs:9291`); a missing `max_depth` plus an `until` predicate that never matches loops until OOM. `Step::Coalesce` evaluates each branch in order until the first non-empty result (`interpreter.rs:7593-7610`); branches before the first hit are *always* evaluated. `Step::Choose` runs both arms unless the condition partitions the input. `Step::Optional` always runs its body (the absence of results is the "optional" semantics, not skipping work).
+## Checklist
 
-**Fix.** Always set `max_depth` (e.g., `RepeatConfig::new(sub).times(5).max_depth(10)`). Order `Coalesce` branches by ascending cost — the cheapest probe first, the expensive fallback last. Avoid `Optional` for expensive arms; use `var_as_if(BatchCondition::VarEmpty(...), ...)` at the batch level instead.
+- [ ] source is the narrowest practical indexed set
+- [ ] label scope is present for label-scoped indexes
+- [ ] index family matches the predicate or search
+- [ ] index creation has completed before performance is measured
+- [ ] expansion is bounded near its source
+- [ ] projection includes only required fields
+- [ ] tenant-scoped search passes the tenant value at search time
+- [ ] `$distance` or `$score` is projected before leaving the hit stream
+- [ ] large ordering has a range index or an accepted sort cost
+- [ ] recursive depth and bulk batch sizes are bounded
+- [ ] writes are idempotent where the application requires it
 
-## Read-vs-Write Foot-Guns
-
-Writes share the same anti-patterns regardless of how they are built (write detection lives in `request_type` on the dynamic route; the interpreter executes the same Steps either way).
-
-- **`add_n` without an existence check creates duplicates.** Every `Step::AddN` allocates a fresh node id (`interpreter.rs:8954-8967`). Build upserts as `var_as("existing", ...) → var_as_if(VarNotEmpty, set_property...) → var_as_if(VarEmpty, add_n...)`. See `EXAMPLES.md §9`.
-- **`drop_edge(to)` is multigraph-unsafe.** It calls `tx.remove_edge(from, to)` which removes *all* edges between source and target, regardless of label (`interpreter.rs:9095`). Use `drop_edge_labeled(to, label)` to scope by label, or `drop_edge_by_id(EdgeRef::Ids([...]))` for surgical deletion (`interpreter.rs:9136-9149`).
-- **`set_property` on missing nodes is a silent no-op.** If the traversal yields ids that don't exist, the property write is skipped. Validate with `var_as("target", ...)` then `var_as_if(VarNotEmpty("target"), ...)`.
-- **`for_each_param` over a large array is O(rows × body cost).** Each iteration runs the body fresh; there's no batched merge. For bulk inserts, prefer building one `WriteBatch` per request when the cardinality is bounded, or break into pages.
-- **Upsert lookups need an index.** The "load existing" step in an upsert (`var_as("existing", g().n_with_label_where(L, SourcePredicate::eq("uniqueId", param)))`) must hit an equality index — otherwise every upsert is a full scan.
-
-## Query Cost & Warming
-
-- **The dynamic route parses and validates the AST per request.** This is inherent to dynamic execution. The Rust `#[register]` macro is the authoring path — calling a registered function yields a `DynamicQueryRequest` you POST to `/v1/query`; it does not change the per-request cost.
-- **Warm steady-traffic reads.** Query warming is read-only: send the same body with header `X-Helix-Warm: true`; the gateway returns `204 No Content` on success. Writes with the warm header are rejected.
-- **No `"mcp"` request_type on the dynamic route.** That value belongs to the MCP tool surface only.
-
-## Anti-Patterns
-
-Do not:
-
-- start a query with a non-`SourcePredicate` predicate at the source (it becomes a full scan + post-filter; `REFERENCE.md §Predicate-index resolution`)
-- omit a label when filtering on a property — scoped indexes won't be consulted (`interpreter.rs:2707, 2794`)
-- use `Predicate::eq_param` at the source position when you have a known label and an indexed property — prefer `SourcePredicate::eq` inside `n_with_label_where`
-- omit `tenant_value` on tenant-scoped vector/text search
-- traverse off the hit stream (`out`/`in_`/`both`) before projecting `$distance` / `$score`
-- expect `OrderBy` to be cheap without a range index
-- expect dotted nested paths to use secondary, vector, or text indexes
-- write `Repeat` without `max_depth`
-- order `Coalesce` branches by intuition rather than cost
-- use `value_map(None)` on nodes that store embeddings or other large fields
-- use `drop_edge(to)` on a multigraph
-- run `for_each_param` over an unbounded array
-
-## Validation Checklist
-
-Before finishing a review:
-
-- [ ] the source step is the narrowest practical indexed set (id > unique property > equality-indexed property > scoped label scan > broad scan)
-- [ ] every property predicate is in an index-eligible shape (`Eq`, `Gt/Gte/Lt/Lte`, `Between`, `IsIn`, `HasKey`, `StartsWith`, `And` over those, or `Compare` resolving to one of them)
-- [ ] every property predicate has a matching index (equality / range / vector / text)
-- [ ] every property predicate has an effective label scope (explicit `n_with_label*` or `$label`-derived)
-- [ ] runtime-parameter predicates use `where_(Predicate::eq_param(...))` after `n_with_label*` (not unanchored `n_where`)
-- [ ] tenant-scoped vector/text routes pass `tenant_value`
-- [ ] BM25 and vector routes preserve scope (no post-filter scoping that defeats the index)
-- [ ] `$distance` / `$score` are projected before any `Out`/`In`/`Both`/`OrderBy` step
-- [ ] `Limit` is paired with the step it should bound (no chain of filters in between)
-- [ ] `OrderBy` has a backing range index, or the cost is acceptable
-- [ ] `Repeat` has a `max_depth` and a sane `until`
-- [ ] `Coalesce` branches are cheapest-first
-- [ ] `value_map(None)` is not used on nodes that hold heavy properties
-- [ ] writes use `drop_edge_by_id` on multigraphs
-- [ ] upsert lookups hit an indexed property
-- [ ] steady-traffic reads are warmed where it helps; warming is read-only
+See `REFERENCE.md` for the mechanism map and `EXAMPLES.md` for stronger query shapes.

@@ -1,6 +1,8 @@
 # Helix Query Authoring — Rust Examples
 
-Each numbered scenario corresponds 1:1 with `../helix-query-typescript/EXAMPLES.md` and `../helix-query-json-dynamic/EXAMPLES.md`. When moving between the Rust DSL, TypeScript DSL, and inline JSON, open the same scenario in each file.
+Each numbered scenario corresponds 1:1 with `../helix-query-typescript/EXAMPLES.md`.
+When moving between Rust and TypeScript, open the same scenario in each file, then
+serialize either builder for the canonical direct JSON request.
 
 All snippets assume `use helix_db::dsl::prelude::*;`.
 
@@ -343,16 +345,8 @@ pub fn list_describes_relationships() -> ReadBatch {
 }
 ```
 
-Wire format:
-
-```json
-{"Project": [
-  {"source": "$from.resource_id", "alias": "from_id"},
-  {"source": "$to.resource_id", "alias": "to_id"},
-  {"source": "$id", "alias": "edge_id"},
-  {"source": "confidence", "alias": "confidence"}
-]}
-```
+The direct request nests this projection under the `project` root. Endpoint
+helpers serialize their sources as `$from.resource_id` and `$to.resource_id`.
 
 ---
 
@@ -394,22 +388,8 @@ pub fn service_topology() -> ReadBatch {
 }
 ```
 
-Wire format (each tag is a `Bind` step; the terminal is `ProjectBindings`):
-
-```json
-{"Bind": "service"}
-{"ProjectBindings": {
-  "projections": [
-    {"kind": "Property", "target": {"Binding": "service"}, "source": "$id", "alias": "service_id"},
-    {"kind": "Property", "target": {"Binding": "pod"}, "source": "name", "alias": "pod_name"},
-    {"kind": "Coalesce", "refs": [
-      {"target": {"Binding": "deployment"}, "source": "$id"},
-      {"target": {"Binding": "owner"}, "source": "$id"}
-    ], "alias": "workload_id"}
-  ],
-  "distinct": true
-}}
-```
+The binding projection serializes as the nested `project_bindings` operation in a
+normal direct request.
 
 This binding projection is part of a normal direct request and is also
 available in the Python v3 SDK.
@@ -507,7 +487,9 @@ pub fn bulk_create_users(data: Vec<ParamObject>) -> WriteBatch {
 }
 ```
 
-Inside `body`, the parameter names resolve against each object's fields. Registering with `data: Vec<ParamObject>` makes the macro record `QueryParamType::Array(Box::new(QueryParamType::Object))`, which is exactly `{"Array": "Object"}` on the wire.
+Inside `body`, the parameter names resolve against each object's fields. A
+`data: Vec<ParamObject>` argument makes `#[query]` record a structured
+array-of-object parameter schema.
 
 ---
 
@@ -586,7 +568,9 @@ pub fn users_filtered(
 }
 ```
 
-The macro records `statuses` as `{"Array": "String"}` and `since` as `"DateTime"`. On the client, pass any RFC3339 string or epoch-millis integer; the wrapper normalizes to UTC RFC3339 before serializing.
+The macro records `statuses` as an array-of-string schema and `since` as
+`"date_time"`. On the client, pass any RFC3339 string or epoch-millis integer;
+the wrapper normalizes to UTC RFC3339 before serializing.
 
 ---
 

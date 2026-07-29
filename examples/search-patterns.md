@@ -1,6 +1,7 @@
-# Search Patterns
+# v3 Search Patterns
 
-Generic Helix patterns for BM25, vector search, and bounded expansion.
+Generic forthcoming `helix-db = "3.0.0"` Rust SDK patterns for BM25, vector
+search, and bounded expansion. These builders serialize direct requests.
 
 ## Tenant-Scoped BM25 Search
 
@@ -18,6 +19,7 @@ read_batch()
         .project(vec![
             PropertyProjection::new("$id"),
             PropertyProjection::new("title"),
+            PropertyProjection::renamed("$score", "score"),
         ]),
     )
     .returning(["results"])
@@ -46,7 +48,9 @@ read_batch()
     .returning(["results"])
 ```
 
-Use this when the search API cannot fully express the scope at index lookup time.
+Use this only when the index is not tenant-partitioned and the search API cannot
+express the filter at lookup time. For a tenant-partitioned index, pass the tenant
+input to the search itself.
 
 ## Tenant-Scoped Vector Search
 

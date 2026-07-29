@@ -434,4 +434,4 @@ Never include embedding arrays in normal responses.
 | `Expr.prop("accessCount").add(Expr.val(1))` | `Expr::prop("accessCount").add(Expr::val(1))` | increment |
 | `.drop()` / `.dropEdgeById(...)` | `.drop()` / `.drop_edge_by_id(...)` | `dropEdgeById` is surgical on multigraphs |
 | `createIndexIfNotExists(IndexSpec.nodeVector(...))` | `create_index_if_not_exists(IndexSpec::node_vector(...))` | prefer explicit `IndexSpec` in examples |
-| `param.string()/i64()/f64()/array(param.f32())/dateTime()` | `#[register] pub fn route(...) -> ReadBatch` | parameterisation + transport |
+| `param.string()/i64()/f64()/array(param.f32())/dateTime()` | `#[query] pub fn route(...) -> ReadBatch` | parameterisation + transport |

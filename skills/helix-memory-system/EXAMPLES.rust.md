@@ -2,7 +2,11 @@
 
 The same lifecycle patterns as `EXAMPLES.md`, in the Rust DSL. Use this when the app/runtime is Rust or the team ships Rust queries. TypeScript is the default for Node/TS services.
 
-Each query is a `#[register]` function. Parameters are bound by name, and calling the generated route yields a request that can be sent to Helix. Data model and indexes are in `REFERENCE.md`. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model. The examples also filter user-private memories and chunks by `userId`; replace that with `containerId`, `scopeId`, or app ACL filtering for project/team/workspace memory.
+Each query is a `#[query]` function. Parameters are bound by name, and calling
+the function yields a direct `QueryRequest` for `Client::query`. Data model and
+indexes are in `REFERENCE.md`. Default to OpenAI
+`text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has
+explicitly standardised on another model.
 
 ```rust
 use helix_db::dsl::prelude::*;
@@ -58,7 +62,7 @@ fn live_user_chunk_predicate(user_param: &str) -> Predicate {
 ## 1. Bootstrap indexes (run once)
 
 ```rust
-#[register]
+#[query]
 pub fn bootstrap_memory_indexes() -> WriteBatch {
     write_batch()
         .var_as("tenant",      g().create_index_if_not_exists(IndexSpec::node_unique_equality("Tenant", "tenant_id")))
@@ -100,7 +104,7 @@ pub fn bootstrap_memory_indexes() -> WriteBatch {
 ## 2. Source document + chunk ingestion
 
 ```rust
-#[register]
+#[query]
 pub fn ingest_chunk(
     tenant_id: String,
     userId: String,
@@ -189,7 +193,7 @@ pub fn ingest_chunk(
 ## 3. Generation — read-then-write semantic dedup
 
 ```rust
-#[register]
+#[query]
 pub fn nearest_current_memory(tenant_id: String, userId: String, embedding: Vec<f32>, now: DateTime) -> ReadBatch {
     let _ = (&tenant_id, &userId, &embedding, &now);
 
@@ -219,7 +223,7 @@ pub fn nearest_current_memory(tenant_id: String, userId: String, embedding: Vec<
 ## 4. Create memory with tenant-scoped user/session upserts
 
 ```rust
-#[register]
+#[query]
 pub fn create_memory(
     tenant_id: String,
     userId: String,
@@ -337,7 +341,7 @@ pub fn create_memory(
 ## 5. Categorisation and entity linking
 
 ```rust
-#[register]
+#[query]
 pub fn categorise_memory(
     tenant_id: String,
     userId: String,
@@ -421,7 +425,7 @@ pub fn categorise_memory(
 ## 6. Updating — reinforce on access
 
 ```rust
-#[register]
+#[query]
 pub fn reinforce_memory(tenant_id: String, userId: String, memoryId: String, now: DateTime) -> WriteBatch {
     let _ = (&tenant_id, &userId, &memoryId, &now);
 
@@ -443,7 +447,7 @@ pub fn reinforce_memory(tenant_id: String, userId: String, memoryId: String, now
 ## 7. Correct/update — new memory supersedes old
 
 ```rust
-#[register]
+#[query]
 pub fn mark_memory_updated(tenant_id: String, userId: String, newId: String, oldId: String, reason: String) -> WriteBatch {
     let _ = (&tenant_id, &userId, &newId, &oldId, &reason);
 
@@ -485,7 +489,7 @@ pub fn mark_memory_updated(tenant_id: String, userId: String, newId: String, old
 ## 8. Forgetting sweeps
 
 ```rust
-#[register]
+#[query]
 pub fn soft_delete_memory(tenant_id: String, userId: String, memoryId: String) -> WriteBatch {
     let _ = (&tenant_id, &userId, &memoryId);
 
@@ -501,7 +505,7 @@ pub fn soft_delete_memory(tenant_id: String, userId: String, memoryId: String) -
 ```
 
 ```rust
-#[register]
+#[query]
 pub fn decay_sweep(tenant_id: String, cutoff: DateTime, minSalience: f64, minAccess: i64) -> WriteBatch {
     let _ = (&tenant_id, &cutoff, &minSalience, &minAccess);
 
@@ -523,7 +527,7 @@ pub fn decay_sweep(tenant_id: String, cutoff: DateTime, minSalience: f64, minAcc
 ```
 
 ```rust
-#[register]
+#[query]
 pub fn expiry_sweep(tenant_id: String, now: DateTime) -> WriteBatch {
     let _ = (&tenant_id, &now);
 
@@ -547,7 +551,7 @@ pub fn expiry_sweep(tenant_id: String, now: DateTime) -> WriteBatch {
 ## 9. Hybrid retrieval — profile + memories + source chunks
 
 ```rust
-#[register]
+#[query]
 pub fn hybrid_recall(
     tenant_id: String,
     userId: String,
@@ -657,7 +661,7 @@ Fuse and rerank the returned lists in application code with RRF as shown in `EXA
 ## 10. Bounded graph expansion
 
 ```rust
-#[register]
+#[query]
 pub fn expand_via_entities(tenant_id: String, userId: String, memoryId: String, now: DateTime) -> ReadBatch {
     let _ = (&tenant_id, &userId, &memoryId, &now);
 

@@ -87,7 +87,8 @@ It points to the `helix-query-*` skills for the query bodies themselves; see its
 
 ### `helix-query-json-dynamic`
 
-Use this skill when an agent needs to build or debug dynamic inline-query requests for `POST /v1/query`.
+Use this skill when an agent needs to build or debug direct JSON requests for
+`POST /v1/query`.
 
 It teaches agents to:
 

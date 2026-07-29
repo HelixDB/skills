@@ -44,7 +44,8 @@ Before writing any query code:
 If the local repo is thin on examples, use the companion files:
 
 1. `EXAMPLES.md` — working end-to-end TypeScript queries (reads, writes, search, repeat, branching, upsert, `forEachParam`, index management). Scenarios are numbered to match `../helix-query-rust/EXAMPLES.md` and `../helix-query-json-dynamic/EXAMPLES.md` 1:1.
-2. `REFERENCE.md` — full builder catalog organized by category, with typestate notes and `src/index.ts` line citations.
+2. `REFERENCE.md` — full builder catalog organized by category, with typestate
+   notes and future `HelixDB/helix-db` `main` source links.
 
 Open `REFERENCE.md` whenever you need a builder beyond the common surface (`addE`, `dropEdgeById`, `createVectorIndexNodes`, `repeat`, `choose`, `coalesce`, `optional`, `aggregateBy`, `groupCount`, `inject`, `orderByMultiple`, `Expr.case`, the `*With` search variants, etc.) — do not invent method names from memory.
 

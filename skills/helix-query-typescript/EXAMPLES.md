@@ -1,6 +1,8 @@
 # Helix Query Authoring — TypeScript Examples
 
-Each numbered scenario corresponds 1:1 with `../helix-query-rust/EXAMPLES.md` and `../helix-query-json-dynamic/EXAMPLES.md`. When moving between TypeScript, Rust, and inline JSON, open the same scenario in each file.
+Each numbered scenario corresponds 1:1 with `../helix-query-rust/EXAMPLES.md`.
+When moving between TypeScript and Rust, open the same scenario in each file, then
+serialize either builder for the canonical direct JSON request.
 
 All snippets assume `import { ... } from "@helix-db/helix-db";`. Query
 builders are plain functions returning a `ReadBatch` or `WriteBatch`. Build a
@@ -315,16 +317,8 @@ function listDescribesRelationships() {
 }
 ```
 
-Wire format:
-
-```json
-{"Project": [
-  {"source": "$from.resource_id", "alias": "from_id"},
-  {"source": "$to.resource_id", "alias": "to_id"},
-  {"source": "$id", "alias": "edge_id"},
-  {"source": "confidence", "alias": "confidence"}
-]}
-```
+The direct request nests this projection under the `project` root. Endpoint
+helpers serialize their sources as `$from.resource_id` and `$to.resource_id`.
 
 ---
 
@@ -363,24 +357,7 @@ function serviceTopology() {
 }
 ```
 
-Wire format (each tag is a `Bind` step; the terminal is `ProjectBindings`):
-
-```json
-{"Bind": "service"}
-{"ProjectBindings": {
-  "projections": [
-    {"kind": "Property", "target": {"Binding": "service"}, "source": "$id", "alias": "service_id"},
-    {"kind": "Property", "target": {"Binding": "pod"}, "source": "name", "alias": "pod_name"},
-    {"kind": "Coalesce", "refs": [
-      {"target": {"Binding": "deployment"}, "source": "$id"},
-      {"target": {"Binding": "owner"}, "source": "$id"}
-    ], "alias": "workload_id"}
-  ],
-  "distinct": true
-}}
-```
-
-This binding projection is part of a normal direct request and is also
+This binding projection is part of a normal direct request and is
 available in the Python v3 SDK.
 
 ---
@@ -454,7 +431,9 @@ function bulkCreateUsers(p = bulkParams) {
 }
 ```
 
-Inside `body`, parameter names resolve against each object's fields. `param.array(param.object(param.value()))` records the parameter as `{"Array": "Object"}` on the wire — exactly the Rust `QueryParamType::Array(Box::new(QueryParamType::Object))`.
+Inside `body`, parameter names resolve against each object's fields.
+`param.array(param.object(param.value()))` records a structured array-of-object
+schema matching Rust `QueryParamType::Array(Box::new(QueryParamType::Object))`.
 
 ---
 
@@ -525,7 +504,9 @@ const body = usersFiltered().toQueryJson(filteredParams, {
 });
 ```
 
-`statuses` records as `{"Array": "String"}` and `since` as `"DateTime"`. Pass a `DateTime`; the request normalizes to UTC RFC3339 with millisecond precision before serializing.
+`statuses` records as an array-of-string schema and `since` as
+`"date_time"`. Pass a `DateTime`; the request normalizes to UTC RFC3339 with
+millisecond precision before serializing.
 
 ---
 

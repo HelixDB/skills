@@ -1,15 +1,18 @@
 ---
 name: helix-query-from-cypher
-description: Translate Cypher and Neo4j-style queries into HelixDB Rust DSL queries. Use when the input contains Cypher, Neo4j, MATCH, OPTIONAL MATCH, WHERE, RETURN, ORDER BY, LIMIT, DISTINCT, MERGE, CASE, UNWIND, FOREACH, DETACH DELETE, IS NULL, or variable-length path patterns and the goal is to produce an equivalent Helix Rust query.
+description: Translate Cypher and Neo4j-style queries into direct HelixDB v3 Rust SDK requests. Use when the input contains Cypher, Neo4j, MATCH, OPTIONAL MATCH, WHERE, RETURN, ORDER BY, LIMIT, DISTINCT, MERGE, CASE, UNWIND, FOREACH, DETACH DELETE, IS NULL, or variable-length path patterns.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.0
+  version: 3.0.0
 ---
 
-# Cypher To Helix Queries
+# Cypher To HelixDB v3 Requests
 
-Translate Cypher into Helix Rust DSL by mapping patterns into explicit anchors, traversals, predicates, and return shaping.
+Translate Cypher into the forthcoming `helix-db = "3.0.0"` Rust SDK by mapping
+patterns into explicit anchors, traversals, predicates, and return shaping. The
+resulting builder or `#[query]` function produces a direct `QueryRequest` for
+`client.query(request)`; do not introduce stored routes or registration.
 
 ## When To Use
 
@@ -20,7 +23,7 @@ Use this skill when the task is to:
 - replace `MATCH`, `OPTIONAL MATCH`, `WHERE`, `RETURN`, `DISTINCT`, `ORDER BY`, `LIMIT`, `MERGE`, `CASE`, `UNWIND`, `FOREACH`, or `DETACH DELETE` with Helix DSL equivalents
 - explain how a Cypher graph pattern should be expressed in Helix Rust
 
-Do not use this skill as the main guide for Gremlin, SQL, or dynamic inline-query JSON.
+Do not use this skill as the main guide for Gremlin, SQL, or direct raw JSON.
 
 ## First Steps
 
@@ -31,6 +34,8 @@ Before translating:
 3. Decide whether the target route is read or write.
 4. Identify optional branches, per-element writes, null or existence checks, and timestamp usage.
 5. Identify any Cypher constructs that need semantic rather than literal translation.
+6. Serialize the finished builder and compare it with the v3 nested JSON AST when
+   exact wire behavior matters.
 
 If the local repo does not already contain an obvious Helix pattern, use:
 
@@ -217,4 +222,4 @@ For shared references in this repo, see:
 
 - `helix-query-rust` — full Rust DSL builder catalog and authoring rules; use it to validate the query you produce.
 - `helix-query-typescript` — the TypeScript DSL emits the same JSON AST, if the target is TypeScript rather than Rust.
-- `helix-query-json-dynamic` — the inline JSON form of the same query.
+- `helix-query-json-dynamic` — the direct JSON form of the same request.
