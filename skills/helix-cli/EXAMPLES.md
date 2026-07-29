@@ -33,21 +33,31 @@ A minimal `examples/request.json` (count `User` nodes):
   "request_type": "read",
   "query_name": "node_count",
   "query": {
-    "queries": [
-      {
-        "Query": {
-          "name": "node_count",
-          "steps": [
-            { "NWhere": { "Eq": ["$label", { "String": "User" }] } },
-            "Count"
-          ],
-          "condition": null
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "node_count",
+            "root": {
+              "count": {
+                "input": {
+                  "nodes_where": {
+                    "predicate": {
+                      "eq": {
+                        "left": { "property": "$label" },
+                        "right": { "constant": { "string": "User" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
-      }
-    ],
-    "returns": ["node_count"]
-  },
-  "parameters": {}
+      ],
+      "returns": ["node_count"]
+    }
+  }
 }
 ```
 
@@ -76,7 +86,7 @@ helix prune staging
 helix query dev --file examples/request.json
 
 # (b) Inline JSON string
-helix query dev --json '{"request_type":"read","query_name":"ping","query":{"queries":[],"returns":[]},"parameters":{}}'
+helix query dev --json '{"request_type":"read","query_name":"ping","query":{"read":{"entries":[],"returns":[]}},"parameters":{}}'
 
 # (c) Inline TypeScript DSL expression (like `mysql -e`; needs Node 20+)
 helix query dev -e 'readBatch().varAs("c", g().nWithLabel("User").count()).returning(["c"])'

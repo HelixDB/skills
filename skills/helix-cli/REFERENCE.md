@@ -65,7 +65,7 @@ Add an instance to an existing `helix.toml` without clobbering others.
 
 ### `helix start [INSTANCE] [OPTIONS]` (alias `run`)
 
-Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/enterprise-dev:latest`, publishes the host port to container port 8080, and waits (~30s) until `POST /v1/query` is ready before returning.
+Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/helixdb:v0.0.1`, publishes the host port to container port 8080, and waits (~30s) until `POST /v1/query` is ready before returning.
 
 | Flag | Purpose |
 |---|---|
@@ -75,7 +75,22 @@ Start a local container (named `helix-<project>-<instance>`) in the background. 
 | `--disk` | Use on-disk/MinIO storage for this run (starts a MinIO sidecar + network + volume; creates a `helix-db` bucket). |
 | `--persist` | Write the resolved port/storage back to `helix.toml`. |
 
-In-memory is the default; the data-loss warning is shown once per instance.
+In-memory is the default; the CLI leaves `S3_BUCKET` unset and the data-loss
+warning is shown once per instance. Never use `S3_BUCKET=IN_MEMORY`: any
+defined bucket value selects S3-compatible storage.
+
+Disk mode runs the same image against a CLI-managed MinIO service. The storage
+contract is:
+
+| Variable | Meaning |
+|---|---|
+| `S3_BUCKET` | Selects S3-compatible storage and names the bucket; omit for memory mode. |
+| `S3_REGION` | S3 region; falls back to `AWS_REGION`, `AWS_DEFAULT_REGION`, then `us-east-1`. |
+| `DB_PATH` | Logical object-store prefix, default `db/`; it is not a host directory. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Object-store credentials. |
+| `AWS_SESSION_TOKEN` | Optional temporary-credential token. |
+| `AWS_ENDPOINT` or `AWS_ENDPOINT_URL_S3` | Endpoint for MinIO or another non-AWS object store. |
+| `AWS_ALLOW_HTTP` | Set to `true` or `1` when the endpoint uses plain HTTP. |
 
 ### `helix stop [INSTANCE]`
 
@@ -135,24 +150,34 @@ Options:
 
 ```json
 {
-  "request_type": "read",          // lowercase "read" or "write" (required)
-  "query_name": "node_count",      // optional; defaults to __dynamic__
-  "query": {                        // required
-    "queries": [
-      {
-        "Query": {
-          "name": "node_count",
-          "steps": [
-            { "NWhere": { "Eq": ["$label", { "String": "User" }] } },
-            "Count"
-          ],
-          "condition": null
+  "request_type": "read",
+  "query_name": "node_count",
+  "query": {
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "node_count",
+            "root": {
+              "count": {
+                "input": {
+                  "nodes_where": {
+                    "predicate": {
+                      "eq": {
+                        "left": { "property": "$label" },
+                        "right": { "constant": { "string": "User" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
-      }
-    ],
-    "returns": ["node_count"]
-  },
-  "parameters": {}                  // optional
+      ],
+      "returns": ["node_count"]
+    }
+  }
 }
 ```
 
@@ -161,8 +186,8 @@ See `helix-query-json-dynamic` for the full inline-AST grammar.
 **TypeScript DSL** (`-e` / `--ts-file`):
 
 - Auto-imports in scope: `g`, `readBatch`, `writeBatch`, `defineParams`, `param`.
-- The CLI evaluates the expression in Node (needs Node 20+ on PATH), calls `.toDynamicJson()`, and infers `request_type` from read-vs-write batch.
-- The `@helix-db/helix-db` SDK is `npm install`ed once into `<helix cache>/ts-runtime/` (spec `^2.0.6`, i.e. the latest 2.x), reused thereafter.
+- The CLI evaluates the expression in Node (needs Node 20+ on PATH), calls `.toQueryJson()`, and infers `request_type` from read-vs-write batch.
+- The forthcoming v3 `@helix-db/helix-db@3.0.0` SDK is installed once into `<helix cache>/ts-runtime/` and reused thereafter.
 
 **Cloud auth:** for an `[enterprise.<instance>]` target, the CLI posts to `<gateway_url>/v1/query` with the header named by `query_auth_header` (default `Authorization`), valued from the env named by `query_auth_env` (default `HELIX_API_KEY`), read from the shell or a project-root `.env`.
 
@@ -262,8 +287,8 @@ container_runtime = "docker"    # "docker" (default) or "podman"
 
 [local.dev]                     # one block per local instance
 port = 6969                     # default 6969 (host → container port 8080)
-image = "ghcr.io/helixdb/enterprise-dev"   # default
-tag = "latest"                  # default
+image = "ghcr.io/helixdb/helixdb"   # default
+tag = "v0.0.1"                       # default
 storage = "memory"              # "memory" (default) or "disk"
 
 [local.staging]
@@ -304,7 +329,7 @@ max_instances = 1               # default 1
 | Constant | Value |
 |---|---|
 | Default local port | `6969` |
-| Dev image / tag | `ghcr.io/helixdb/enterprise-dev` / `latest` |
+| Dev image / tag | `ghcr.io/helixdb/helixdb` / `v0.0.1` |
 | Container name | `helix-<project>-<instance>` |
 | Container internal port | `8080` |
 | Default auth header | `Authorization` |

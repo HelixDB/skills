@@ -10,28 +10,35 @@ When an agent is writing or reviewing Helix query code, it should use sources in
 2. this repository's canonical docs in `docs/`
 3. this repository's generic examples in `examples/`
 4. public Helix documentation for product semantics and public behavior
-5. public skill-format docs for packaging and discovery behavior
+5. the v3 SDK source on `HelixDB/helix-db` `main` for exact public names
+6. public skill-format docs for packaging and discovery behavior
 
-This ordering is intentional. The skills in this repo may document supported Helix patterns that are newer or more task-specific than the currently published public docs. Public docs are still important, but the repo-local canon should be the first fallback after the user's actual codebase.
+This ordering is intentional. The skills in this repo describe the forthcoming
+v3 SDKs and may lead the currently published packages. Public documentation is
+the behavior contract; use the SDK source to confirm exact identifiers rather
+than guessing from an older release.
 
 ## Public Helix References
 
 Use these for product semantics and supported behavior:
 
-- `https://docs.helix-db.com/database/working-with-enterprise`
-- `https://docs.helix-db.com/database/local-development`
-- `https://docs.helix-db.com/database/go-project-setup`
-- `https://docs.helix-db.com/database/python-project-setup`
-- `https://docs.helix-db.com/database/querying`
-- `https://docs.helix-db.com/database/querying-guide/overview`
-- `https://docs.helix-db.com/database/querying-guide/reading-nodes`
-- `https://docs.helix-db.com/database/querying-guide/traversals`
-- `https://docs.helix-db.com/database/querying-guide/filtering`
-- `https://docs.helix-db.com/database/querying-guide/projections`
-- `https://docs.helix-db.com/database/querying-guide/mutations`
-- `https://docs.helix-db.com/database/querying-guide/search`
-- `https://docs.helix-db.com/database/querying-guide/advanced`
-- `https://docs.helix-db.com/database/querying-guide/parameters-bundles`
+- `https://docs.helix-db.com/database/helix-db/start-here/quickstart`
+- `https://docs.helix-db.com/database/helix-db/start-here/local-development/local-server`
+- `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/rust-project-setup`
+- `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/typescript-project-setup`
+- `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/go-project-setup`
+- `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/python-project-setup`
+- `https://docs.helix-db.com/database/helix-db/core-concepts/overview`
+- `https://docs.helix-db.com/database/helix-db/query-guides/writing-data`
+- `https://docs.helix-db.com/database/helix-db/query-guides/reading-data`
+- `https://docs.helix-db.com/database/helix-db/query-guides/traversals`
+- `https://docs.helix-db.com/database/helix-db/query-guides/filtering`
+- `https://docs.helix-db.com/database/helix-db/query-guides/projections`
+- `https://docs.helix-db.com/database/helix-db/query-guides/secondary-indexes`
+- `https://docs.helix-db.com/database/helix-db/query-guides/vector-indexes`
+- `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
+- `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
+- `https://docs.helix-db.com/database/helix-db/query-guides/parameters`
 - `https://docs.helix-db.com/documentation/hql/traversals`
 - `https://docs.helix-db.com/documentation/hql/conditionals`
 - `https://docs.helix-db.com/documentation/hql/result_ops`
@@ -43,6 +50,13 @@ Use these for skill packaging and discovery behavior:
 
 - `https://skills.sh/docs`
 - `https://opencode.ai/docs/skills`
+
+Use these `main` branches for exact v3 SDK identifiers:
+
+- `https://github.com/HelixDB/helix-db/tree/main/sdks/rust`
+- `https://github.com/HelixDB/helix-db/tree/main/sdks/typescript`
+- `https://github.com/HelixDB/helix-db/tree/main/sdks/go`
+- `https://github.com/HelixDB/helix-db/tree/main/sdks/python`
 
 ## Repo-Local Canonical References
 
@@ -65,7 +79,8 @@ These files should be self-contained enough that public skills can point to them
 - Do not use machine-local filesystem paths as published source pointers.
 - Do not treat application-specific implementations as canonical Helix references.
 - If a useful idea is learned from an implementation, convert it into a generic documented pattern before publishing it here.
-- If public docs lag a supported Helix capability that this repo is intentionally teaching, prefer the repo-local canonical doc until the public docs catch up.
+- Treat v3 installation commands as forward-looking until the coordinated release; do not substitute an older published SDK.
+- Do not use a feature branch in a published source link. The coordinated repositories are consumed from `main`.
 - Prefer generic labels, properties, and edge names in published examples unless a public Helix doc requires a more specific term.
 - Use the user's local repo as the authority for their actual schema, naming, and route style.
 

@@ -4,7 +4,7 @@ description: Drive the HelixDB `helix` CLI to run, query, and deploy Helix insta
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.0
+  version: 3.0.0
 ---
 
 # Helix CLI
@@ -15,7 +15,7 @@ The mental model that matters most:
 
 - **There is no `helix compile`, no `helix check`, and no `.hx` query workflow.** Those are stale v2 concepts — the v3 CLI hides them and errors with a hint if you try them.
 - **Queries are JSON "dynamic queries"** sent to a *running* instance via `POST /v1/query` (`helix query`). Validation happens server-side, in the instance.
-- **Local instances are Docker/Podman containers** (image `ghcr.io/helixdb/enterprise-dev:latest`). `helix start` runs one; in-memory by default, on-disk (MinIO-backed) with `--disk`.
+- **Local instances are Docker/Podman containers** (image `ghcr.io/helixdb/helixdb:v0.0.1`). `helix start` runs one; in-memory by default, MinIO-backed with `--disk`.
 - **Helix Cloud instances deploy via `helix push`**, with auth and metadata managed by `helix auth`, `helix sync`, and the `workspace`/`project`/`cluster` commands.
 
 This skill is about *driving the CLI*. For authoring the query bodies themselves, use the query skills (`helix-query-rust`, `helix-query-typescript`, `helix-query-json-dynamic`, etc.).
@@ -61,7 +61,7 @@ helix stop dev                            # stop the container
 Key facts:
 
 - The instance name defaults to `dev`; the default port is **6969** (host → container port 8080).
-- **In-memory is the default — data is wiped on `stop` and `restart`.** Use `--disk` for persistence (MinIO-backed). With disk mode, `stop` keeps the volume; use `helix prune <instance>` to delete the data.
+- **In-memory is the default — the runtime leaves `S3_BUCKET` unset and data is lost when the container is replaced.** Use `--disk` for persistence (MinIO-backed). With disk mode, `stop` keeps the volume; use `helix prune <instance>` to delete the data. Never set `S3_BUCKET=IN_MEMORY`: every defined bucket value selects S3-compatible storage.
 - `--port <p>` and `--disk` apply to a single `start`; add `--persist` to write those choices back to `helix.toml`.
 - `helix logs dev -f` streams container logs; `helix restart dev` restarts in place (re-creating fresh if the container was removed).
 
@@ -93,7 +93,7 @@ Key facts:
 
 ### 2. Exactly One Query Input Flag
 
-`helix query` requires exactly one of `--file <req.json>`, `--json '<body>'`, `-e/--ts '<expr>'`, or `--ts-file <query.ts>` (enforced by a clap arg group). `--file`/`--json` carry raw dynamic-query JSON; `-e`/`--ts-file` carry a TypeScript DSL expression that the CLI evaluates in Node (needs Node 20+) and converts via `.toDynamicJson()`.
+`helix query` requires exactly one of `--file <req.json>`, `--json '<body>'`, `-e/--ts '<expr>'`, or `--ts-file <query.ts>` (enforced by a clap arg group). `--file`/`--json` carry raw dynamic-query JSON; `-e`/`--ts-file` carry a TypeScript DSL expression that the CLI evaluates in Node (needs Node 20+) and converts via `.toQueryJson()`.
 
 ### 3. `request_type` Is Lowercase
 
