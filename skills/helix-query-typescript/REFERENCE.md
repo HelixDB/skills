@@ -1,6 +1,8 @@
 # Helix Query Authoring — TypeScript DSL Reference
 
-Exhaustive builder catalog for the `@helix-db/helix-db` TypeScript DSL. Use when `SKILL.md` points you at a category or when you need a signature confirmed. Categories line up 1:1 with `../helix-query-rust/REFERENCE.md` and `../helix-query-json-dynamic/REFERENCE.md` so you can jump between TypeScript, Rust, and JSON forms.
+Exhaustive builder catalog for the forthcoming
+`@helix-db/helix-db@3.0.0` TypeScript DSL. Use when `SKILL.md` points
+you at a category or when you need a signature confirmed.
 
 All signatures come from `sdks/typescript/src/index.ts`; line numbers are cited inline. The builder is intentionally close to the Rust enum names *on the wire* (e.g. `Step`, `Predicate` variants serialize identically) while exposing camelCase TypeScript methods. The compatibility target is structural JSON equality with Rust serde output — encoding rules live in `../helix-query-json-dynamic/REFERENCE.md`.
 
@@ -10,8 +12,8 @@ All signatures come from `sdks/typescript/src/index.ts`; line numbers are cited 
 import { g, sub, readBatch, writeBatch, NodeRef, EdgeRef, Predicate, SourcePredicate,
          PropertyValue, PropertyInput, Expr, StreamBound, PropertyProjection, ExprProjection,
          Projection, RepeatConfig, IndexSpec, Order, EmitBehavior, AggregateFunction, CompareOp,
-         BatchCondition, DateTime, RangeIndexDirection, defineParams, param, registerRead, registerWrite, defineQueries,
-         serializeQueryBundle, stringifyJson, i64, f32, f64, bytes, dateTime } from "@helix-db/helix-db";
+         BatchCondition, DateTime, RangeIndexDirection, QueryRequest, defineParams, param,
+         stringifyJson, i64, f32, f64, bytes, dateTime } from "@helix-db/helix-db";
 ```
 
 A `prelude` object (`src/index.ts:2467`) re-exports all of the above for convenience.
@@ -65,10 +67,10 @@ writeBatch(): WriteBatch
 .returning(vars: Iterable<string>)                              // restrict response variables
 .toJsonString(): string                                         // raw batch JSON (inline query body)
 .toJsonBytes(): Uint8Array
-.toDynamicJson(options?: DynamicQueryOptions): string           // no-param dynamic request JSON
-.toDynamicJson(params: DefinedParams<T>, values: ParamInputs<T>, options?: DynamicQueryOptions): string
-.toDynamicRequest(..., options?: DynamicQueryOptions): DynamicQueryRequest
-.toDynamicBytes(..., options?: DynamicQueryOptions): Uint8Array
+.toQueryJson(options?: QueryOptions): string           // no-param dynamic request JSON
+.toQueryJson(params: DefinedParams<T>, values: ParamInputs<T>, options?: QueryOptions): string
+.toQueryRequest(..., options?: QueryOptions): QueryRequest
+.toQueryBytes(..., options?: QueryOptions): Uint8Array
 ```
 
 ### `BatchCondition`  (`src/index.ts:1779`)
@@ -249,7 +251,7 @@ SourcePredicate.eq / neq / gt / gte / lt / lte / between / hasKey / startsWith /
 
 Each comparison **auto-routes** by argument type: a literal keeps the plain variant (`SourcePredicate.eq("u","alice")` → `{"Eq": ["u", {"String": "alice"}]}`); an `Expr`/`ParamRef` routes to the `*Expr` variant (`SourcePredicate.eq("u", Expr.param("name"))` → `{"EqExpr": ["u", {"Param": "name"}]}`). `.toPredicate()` converts `*Expr` variants to `Compare`. Not available at source position: `isNull`, `isNotNull`, `contains[Param]`, `endsWith`, `isIn*`, `not`, `compare` — push those into a following `.where(Predicate....)`.
 
-Property-name strings in filters can be dotted object paths, for example `Predicate.eq("metadata.externalID", "crm-42")`. Lookup is exact-first: a top-level property named `metadata.externalID` wins before walking the `metadata` object. Dotted paths are scan-only in V1; secondary, text, and vector indexes remain top-level only. Arrays are opaque and do not support `tags.0` syntax.
+Property-name strings in filters can be dotted object paths, for example `Predicate.eq("metadata.externalID", "crm-42")`. Lookup is exact-first: a top-level property named `metadata.externalID` wins before walking the `metadata` object. Dotted paths are scan-only in the current runtime; secondary, text, and vector indexes remain top-level only. Arrays are opaque and do not support `tags.0` syntax.
 
 ### `CompareOp`  (`src/index.ts:517`)
 
@@ -469,9 +471,8 @@ g().nWithLabel("Service")
   ]);
 ```
 
-Emits a query bundle at **v5** (`QUERY_BUNDLE_VERSION = 5`, `dsl.ts:2447-2449`;
-v4 is still accepted on read via `SUPPORTED_QUERY_BUNDLE_VERSIONS`). See
-`../helix-query-json-dynamic/REFERENCE.md` for the JSON wire shape.
+The binding projection is part of the normal direct `QueryRequest`. See
+`../helix-query-json-dynamic/REFERENCE.md` for its JSON wire shape.
 
 ---
 
@@ -543,7 +544,7 @@ IndexSpec.edgeText(label, property, tenantProperty?)
 Range indexes default to ascending physical order. Use `RangeIndexDirection.Desc` for descending indexes that primarily serve newest-first or high-score-first scans.
 
 `createVectorIndexNodes(...)` serializes identically to `createIndexIfNotExists(IndexSpec.nodeVector(...))` — `{"CreateIndex": {"spec": {"NodeVector": {...}}, "if_not_exists": true}}`.
-Index properties are top-level only in V1. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
+Index properties are top-level only in the current runtime. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
 
 ---
 
@@ -578,54 +579,38 @@ param.object()  param.object(inner)  param.array(inner)
 
 `QueryParamType` (`src/index.ts:1937`) is the on-the-wire parameter type: unit scalars serialize as bare strings (`"String"`, `"I64"`, `"DateTime"`, …); `array` is a single-field tuple (`{"Array": "String"}`).
 
-`param.bytes()` cannot be sent through the dynamic route — conversion throws `DynamicQueryError` (`UnsupportedBytesParameter`).
+`param.bytes()` cannot be sent through the JSON route — conversion throws
+`QueryError.UnsupportedBytesParameter`.
 
 ---
 
-## Registration & Bundles
+## Direct Requests
 
 ```ts
-registerRead(builder, params): RegisteredReadQuery    // src/index.ts:2299
-registerWrite(builder, params): RegisteredWriteQuery  // src/index.ts:2308
+type QueryOptions = { queryName?: string | null }
 
-const queries = defineQueries({                       // src/index.ts:2416
-  read:  { route_a: registerRead(builderA, paramsA) },
-  write: { route_b: registerWrite(builderB, paramsB) },
-});
-
-queries.call.route_a({ ... })       // -> DynamicQueryRequest with query_name="route_a" (typed input; unknown keys throw TypeError)
-queries.buildQueryBundle()          // -> QueryBundle (version 4)
-await queries.generate("queries.json")  // write bundle to path
-
-serializeQueryBundle(bundle)        // src/index.ts:2439  (pretty JSON string)
-deserializeQueryBundle(json)        // src/index.ts:2443  (validates version)
-```
-
-`DefinedQueries` is at `src/index.ts:2329`; `QUERY_BUNDLE_VERSION = 5` (`dsl.ts:2447-2449`) — bundles serialize at v5; v4 is still accepted on read via `SUPPORTED_QUERY_BUNDLE_VERSIONS = [4, 5]`; `QueryBundle` shape (`version`, `read_routes`, `write_routes`, `read_parameters`, `write_parameters`). Route names must be unique across read + write — duplicates throw `GenerateError` (`src/index.ts:197`).
-
----
-
-## Dynamic Requests
-
-```ts
-type DynamicQueryOptions = { queryName?: string | null }
-
-DynamicQueryRequest.read(batch: ReadBatch, queryName?: string | null)     // src/index.ts:2191
-DynamicQueryRequest.write(batch: WriteBatch, queryName?: string | null)
+QueryRequest.read(batch: ReadBatch, queryName?: string | null)     // src/index.ts:2191
+QueryRequest.write(batch: WriteBatch, queryName?: string | null)
 req.insertParameterValue(name, value)   req.insertParameterType(name, ty)
 req.withParameterValue(name, value)      req.withParameterType(name, ty)
 req.setQueryName(name)                   req.clearQueryName()
 req.withQueryName(name)
 req.toJsonString()   req.toJsonBytes()
-// req.requestType -> "read" | "write"   (DynamicQueryRequestType, src/index.ts:2174, lowercase on the wire)
+// req.requestType -> "read" | "write"   (QueryRequestType, src/index.ts:2174, lowercase on the wire)
 // req.queryName -> string | null         (serialized as top-level query_name)
 ```
 
-Most code reaches dynamic requests through `batch.toDynamicJson(params, values, { queryName })` / `.toDynamicRequest(...)` or `queries.call.route(...)`, which fill `parameters` and `parameter_types` automatically. Direct unnamed requests serialize `query_name: null`; `queries.call.route(...)` sets `query_name` to the registered route key automatically.
+Most code reaches requests through
+`batch.toQueryJson(params, values, { queryName })` or
+`.toQueryRequest(...)`, which fill `parameters` and `parameter_types`
+automatically. Direct unnamed requests serialize `query_name: null`.
 
-`DynamicQueryValue` (`src/index.ts:2179`) provides bare-JSON value helpers (`.null/.bool/.i64/.f64/.f32/.string/.array/.object`) for the top-level `parameters` map — these are untagged, distinct from the tagged `PropertyValue` used inside the AST.
+`QueryValue` is an untagged JSON value in the top-level `parameters` map,
+distinct from the tagged `PropertyValue` used inside the AST.
 
-For the exact JSON wire encoding these produce (externally-tagged enums, untagged `Projection`/`BatchQuery`/`DynamicQueryValue`, `parameter_types` rules, `DateTime` coercion), see `../helix-query-json-dynamic/REFERENCE.md`.
+For the exact JSON wire encoding these produce (externally-tagged enums,
+untagged `Projection`/`BatchQuery`/`QueryValue`, `parameter_types` rules, and
+`DateTime` coercion), see `../helix-query-json-dynamic/REFERENCE.md`.
 
 ---
 
@@ -634,17 +619,17 @@ For the exact JSON wire encoding these produce (externally-tagged enums, untagge
 Built-in HTTP client for running a request against a Helix instance. Uses the global `fetch`, so there are no extra dependencies. Strict port of the Rust `helix_db::Client`.
 
 ```ts
-new Client(url?: string | null)          // default "http://localhost:6969"; throws HelixError (InvalidUrl) on a bad URL
+new Client(url?: string | null)           // defaults to http://localhost:6969
+Client.server(url?: string | null)
   .withApiKey(key?: string | null)        // Authorization: Bearer <key> (null/undefined clears it)
-  .query<R = unknown>()                    // -> QueryBuilder<R>
+  .query<R = unknown>(request)             // direct POST /v1/query
 
-// QueryBuilder<R> — request headers + body, then pick a route:
+// Advanced server-only request headers:
+client.requestBuilder<R>()
   .writerOnly()                            // X-Helix-Require-Writer: true
   .warmOnly()                              // X-Helix-Warm: true
   .shouldAwaitDurability(b: boolean)       // X-Helix-Await-Durable: true|false
-  .body(data: unknown)                     // JSON body for a stored route (bigint-safe)
-  .dynamic(req: DynamicQueryRequest)       // -> QueryRequest<R>  (POST /v1/query)
-  .stored(name: string)                    // -> QueryRequest<R>  (POST /v1/query/{name})
+  .query(request)
 
 await request.send(): Promise<R>           // 200 -> parsed JSON (parseJsonStructural); any other status -> throws HelixError
 ```
@@ -656,21 +641,23 @@ import { Client, HelixError } from "@helix-db/helix-db";
 
 const client = new Client("https://helix.example.com").withApiKey(apiKey);
 
-const users = await client
-  .query<UserRow[]>()
-  .dynamic(findUsers().toDynamicRequest(params, { tenantId: "acme", limit: 25n }))
-  .send();
+const request = findUsers().toQueryRequest(params, {
+  tenantId: "acme",
+  limit: 25n,
+});
+const users = await client.query<UserRow[]>(request).send();
 ```
 
-Only HTTP `200` is treated as success (mirrors the Rust client). Build the `DynamicQueryRequest` argument with `batch.toDynamicRequest(...)` or `queries.call.route(...)`.
+Build the `QueryRequest` with `batch.toQueryRequest(...)`. Stored routes,
+registration, and query bundles are not supported.
 
 ---
 
 ## Errors
 
 - `HelixError` (`src/index.ts`) — raised by `Client`/`send()`. `kind` ∈ `Network | Remote | Serialization | InvalidUrl`; `Remote` carries the server response body in `details`.
-- `DynamicQueryError` (`src/index.ts:158`) — `kind` ∈ `Serialize | Utf8 | UnsupportedBytesParameter | InvalidDateTimeParameter`.
-- `GenerateError` (`src/index.ts:197`) — `kind` ∈ `DuplicateQueryName | Io | Json | UnsupportedVersion`.
+- `QueryError` — invalid parameter values, unknown parameters, serialization,
+  or unsupported bytes parameters.
 
 ---
 
@@ -681,14 +668,17 @@ CompareOp.{Eq, Neq, Gt, Gte, Lt, Lte}                // src/index.ts:517
 Order.{Asc, Desc}                                    // src/index.ts:525  (bare strings on the wire)
 EmitBehavior.{None, Before, After, All}              // src/index.ts:529
 AggregateFunction.{Count, Sum, Min, Max, Mean}       // src/index.ts:535
-DynamicQueryRequestType.{Read, Write}                // src/index.ts:2174 (lowercase on the wire)
+QueryRequestType.{Read, Write}                // src/index.ts:2174 (lowercase on the wire)
 ```
 
 ---
 
 ## JSON Utilities
 
-`stringifyJson(value, pretty?)`, `parseJsonStructural(json)`, `structuralJsonEqual(a, b)`, `canonicalizeJson(value)` (`src/index.ts:48-69`). Use `stringifyJson` (or `toJsonString` / `serializeQueryBundle`) instead of raw `JSON.stringify` whenever a payload may contain `bigint`.
+`stringifyJson(value, pretty?)`, `parseJsonStructural(json)`,
+`structuralJsonEqual(a, b)`, and `canonicalizeJson(value)` are the bigint-safe
+JSON utilities. Use `stringifyJson` or `toJsonString` instead of raw
+`JSON.stringify` whenever a payload may contain `bigint`.
 
 ---
 
@@ -712,9 +702,9 @@ DynamicQueryRequestType.{Read, Write}                // src/index.ts:2174 (lower
 | `SourcePredicate::eq(...)` | `SourcePredicate.eq(...)` |
 | `Predicate::eq_param(...)` | `Predicate.eqParam(...)` |
 | `vector_search_nodes_with(...)` | `vectorSearchNodesWith(...)` |
-| `#[register] fn` + fn params | `defineParams(...)` + `registerRead/registerWrite` |
-| `DynamicQueryRequest::read(b).with_query_name("route").to_json_string()` | `batch.toDynamicJson(params, values, { queryName: "route" })` |
+| `#[query] fn` + fn params | `defineParams(...)` + a normal builder function |
+| `QueryRequest::read(b).with_query_name("route").to_json_string()` | `batch.toQueryJson(params, values, { queryName: "route" })` |
 | `Client::new(Some(url))?` / `.with_api_key(...)` | `new Client(url)` / `.withApiKey(...)` |
-| `client.query().warm_only().dynamic(r).send()` | `client.query().warmOnly().dynamic(r).send()` |
+| `client.request_builder().warm_only().query(r).send()` | `client.requestBuilder().warmOnly().query(r).send()` |
 
 The wire output (enum tags, field names, omitted/null fields) is identical between the two DSLs — only the surface naming differs.

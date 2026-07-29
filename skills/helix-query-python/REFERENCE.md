@@ -1,11 +1,14 @@
 # Helix Query Authoring - Python Reference
 
-Use this reference to confirm Python SDK method names and request patterns. Import from `helixdb`:
+Use this reference to confirm forthcoming v3 Python SDK method names and
+request patterns. The package is `helix-db` and the import is `helixdb`; no
+package version is claimed before publication.
 
 ```python
 from helixdb import (
     AggregateFunction,
     BatchCondition,
+    BindingProjection,
     Client,
     CompareOp,
     DateTime,
@@ -35,16 +38,16 @@ from helixdb import (
 ```python
 read_batch() -> ReadBatch
 write_batch() -> WriteBatch
-DynamicQueryRequest.read(batch, query_name=None)
-DynamicQueryRequest.write(batch, query_name=None)
+QueryRequest.read(batch, query_name=None)
+QueryRequest.write(batch, query_name=None)
 ```
 
 Batches serialize to the same JSON shape as Rust and TypeScript:
 
 ```python
-batch.to_json_string()      # raw {queries, returns} batch JSON
-batch.to_dynamic_request()  # dynamic request object
-batch.to_dynamic_json()     # request JSON string for POST /v1/query
+batch.to_json_string()     # raw typed batch JSON
+batch.to_query_request()   # direct QueryRequest object
+batch.to_query_json()      # request JSON string for POST /v1/query
 ```
 
 ## Batch Builders
@@ -348,29 +351,29 @@ client.with_api_key(None)  # clear
 client.base_url
 ```
 
-Request builder:
+Execute a request directly:
 
 ```python
-client.query().dynamic(request).send()
-client.query().body({"tenant_id": "acme"}).stored("find_users").send()
-client.query().writer_only().dynamic(request).send()
-client.query().warm_only().dynamic(request).send()
-client.query().should_await_durability(True).dynamic(request).send()
+client.query(request)
+client.execute(request, writer_only=True)
+client.execute(request, warm_only=True)
+client.execute(request, await_durability=True)
 ```
 
-`send()` returns parsed JSON on HTTP 200, returns `None` for an empty 200 body, and raises `HelixError` with `kind` in `Network`, `Remote`, `Serialization`, or `InvalidUrl` otherwise.
+The client returns parsed JSON and raises `HelixError` for network, remote,
+serialization, URL, or request failures.
 
-## Bundles
+## Row Bindings
 
 ```python
-queries = define_queries({
-    "read": {"find_users": register_read(find_users, params)},
-    "write": {"add_user": register_write(add_user, add_user_params)},
-})
-
-queries.call.find_users({"tenant_id": "acme", "limit": 25})
-bundle = queries.build_query_bundle()
-queries.generate("queries.json")
+g().n_with_label("User") \
+    .bind("user") \
+    .out("FOLLOWS") \
+    .bind("friend") \
+    .project_distinct_bindings([
+        BindingProjection.binding("user", "$id", "user_id"),
+        BindingProjection.binding("friend", "$id", "friend_id"),
+    ])
 ```
 
-Route names must be unique across read and write routes. The Python SDK serializes and reads **only** `QUERY_BUNDLE_VERSION = 4`. The Rust, TypeScript, and Go SDKs are at v5 (they read both v4 and v5); a v5 bundle — for example one using row bindings, which Python does not support — will not deserialize in the Python SDK.
+Stored routes, registration, and query bundles are not supported.

@@ -5,6 +5,7 @@ All snippets assume:
 ```python
 from helixdb import (
     BatchCondition,
+    BindingProjection,
     Client,
     DateTime,
     EdgeRef,
@@ -18,12 +19,9 @@ from helixdb import (
     PropertyValue,
     RepeatConfig,
     define_params,
-    define_queries,
     g,
     param,
     read_batch,
-    register_read,
-    register_write,
     sub,
     write_batch,
 )
@@ -42,7 +40,7 @@ def active_user_count():
         .returning(["active_count"])
     )
 
-request = active_user_count().to_dynamic_request(query_name="active_user_count")
+request = active_user_count().to_query_request(query_name="active_user_count")
 ```
 
 ## 2. Read Users With Runtime Params
@@ -72,7 +70,7 @@ def find_users(p=find_users_params):
         .returning(["users"])
     )
 
-request = find_users().to_dynamic_request(
+request = find_users().to_query_request(
     find_users_params,
     {"tenant_id": "acme", "limit": 25},
     query_name="find_users",
@@ -85,7 +83,7 @@ Direct values such as `Predicate.eq("tenantId", "acme")` are literals in the AST
 
 ```python
 client = Client("http://localhost:6969")
-response = client.query().dynamic(request).send()
+response = client.query(request)
 users = response["users"]
 ```
 
@@ -93,7 +91,7 @@ With Helix Cloud auth:
 
 ```python
 client = Client("https://helix.example.com", api_key="hx_secret")
-response = client.query().dynamic(request).send()
+response = client.query(request)
 ```
 
 ## 4. Create A Node
@@ -112,13 +110,15 @@ def create_user(p=create_user_params):
         .returning(["user"])
     )
 
-created = (
-    client
-    .query()
-    .writer_only()
-    .should_await_durability(True)
-    .dynamic(create_user().to_dynamic_request(create_user_params, {"name": "Alice", "tenant_id": "acme"}, query_name="create_user"))
-    .send()
+create_request = create_user().to_query_request(
+    create_user_params,
+    {"name": "Alice", "tenant_id": "acme"},
+    query_name="create_user",
+)
+created = client.execute(
+    create_request,
+    writer_only=True,
+    await_durability=True,
 )
 ```
 
@@ -274,35 +274,35 @@ def create_events(p=create_events_params):
     return write_batch().for_each_param("rows", body).returning(["created"])
 ```
 
-## 10. Query Bundles
+## 10. Correlated Row Bindings
 
 ```python
-queries = define_queries({
-    "read": {"find_users": register_read(find_users, find_users_params)},
-    "write": {"create_user": register_write(create_user, create_user_params)},
-})
-
-# Dynamic request with query_name="find_users" and converted parameters.
-request = queries.call.find_users({"tenant_id": "acme", "limit": 25})
-
-# Write queries.json for deploy/runtime workflows that consume bundles.
-queries.generate("queries.json")
+def user_friend_pairs():
+    return (
+        read_batch()
+        .var_as(
+            "pairs",
+            g()
+            .n_with_label("User")
+            .bind("user")
+            .out("FOLLOWS")
+            .bind("friend")
+            .project_distinct_bindings([
+                BindingProjection.binding("user", "$id", "user_id"),
+                BindingProjection.binding("friend", "$id", "friend_id"),
+            ]),
+        )
+        .returning(["pairs"])
+    )
 ```
 
-## 11. Stored Routes
-
-```python
-client = Client("https://helix.example.com", api_key="hx_secret")
-response = client.query().body({"tenant_id": "acme", "limit": 25}).stored("find_users").send()
-```
-
-Stored routes post to `/v1/query/{name}`. Dynamic requests post to `/v1/query`.
+The v3 Python SDK does not expose stored routes or query bundles.
 
 ## 12. Inspect Request JSON In A Test
 
 ```python
 def test_find_users_request_json():
-    body = find_users().to_dynamic_json(
+    body = find_users().to_query_json(
         find_users_params,
         {"tenant_id": "acme", "limit": 25},
         query_name="find_users",

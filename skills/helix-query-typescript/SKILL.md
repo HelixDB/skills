@@ -1,15 +1,18 @@
 ---
 name: helix-query-typescript
-description: Write and revise HelixDB queries with the TypeScript DSL (@helix-db/helix-db). Use when the task is to add, update, or review a Helix query built in TypeScript with readBatch, writeBatch, g(), traversal builders, projections, indexes, BM25 text search, or vector search — producing dynamic POST /v1/query requests (toDynamicJson/toDynamicRequest) and, optionally, a query bundle (defineQueries/registerRead/registerWrite). Inspect local labels, edges, properties, and existing query patterns before inventing new code. See REFERENCE.md for the full builder catalog and EXAMPLES.md for end-to-end patterns.
+description: Write and revise queries with the forthcoming HelixDB v3 TypeScript SDK (`@helix-db/helix-db@3.0.0`). Use for `readBatch`, `writeBatch`, traversal builders, direct `toQueryRequest`/`toQueryJson` payloads, projections, indexes, BM25 text search, vector search, and `Client.query`. Stored routes, registration, and query bundles are not v3 SDK APIs.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.2.0
+  version: 3.0.0
 ---
 
 # Helix Query Authoring — TypeScript
 
-Write Helix TypeScript DSL queries in a way that is schema-aware, explicit, and easy for agents to reason about. The TypeScript builder (`@helix-db/helix-db`) produces the same JSON AST as the Rust DSL; the compatibility target is structural JSON equality with Rust serde output.
+Write Helix TypeScript DSL queries in a way that is schema-aware, explicit,
+and easy for agents to reason about. Install the forthcoming package with
+`npm install @helix-db/helix-db@3.0.0`. It is not published yet; do not
+substitute the currently published older SDK.
 
 This is the preferred way to author Helix queries in a TypeScript codebase — type-checked, and it emits the dynamic-request JSON for you. Drop to raw dynamic JSON (`helix-query-json-dynamic`) only for debugging or dynamically-shaped requests.
 
@@ -19,13 +22,15 @@ Use this skill when the task is to:
 
 - write a new Helix query in TypeScript
 - revise an existing TypeScript query function
-- produce a dynamic `POST /v1/query` request from TypeScript (`toDynamicJson` / `toDynamicRequest`)
-- send a request to a running Helix instance with the built-in `Client` (`client.query().dynamic(req).send()`)
-- generate a query bundle (`defineQueries(...).generate("queries.json")`)
+- produce a dynamic `POST /v1/query` request from TypeScript (`toQueryJson` / `toQueryRequest`)
+- send a request to a running Helix instance with the built-in `Client` (`client.query(req).send()`)
 - add traversal, projection, pagination, BM25 search, or vector search to an existing query
-- migrate a Rust DSL query (`#[register]`, `read_batch()`, …) to TypeScript
+- migrate a Rust v3 DSL query (`#[query]`, `read_batch()`, …) to TypeScript
 
-Do not use this skill for inline JSON AST hand-authoring — for the wire format and serde rules that govern what these builders emit, use `helix-query-json-dynamic`. For the Rust DSL, use `helix-query-rust`.
+Do not use this skill for inline JSON AST hand-authoring — for the wire format
+and serde rules that govern what these builders emit, use
+`helix-query-json-dynamic`. Stored routes, query registration, and
+`queries.json` bundles are not supported by the v3 SDK.
 
 ## First Steps
 
@@ -115,35 +120,18 @@ function findUsers(p = params) {
 - Predicate `*Param` helpers (`Predicate.eqParam(prop, paramName)`) and `PropertyInput.param(paramName)` reference parameters by **name string**.
 - Supported schemas: `param.bool/i64/f64/f32/string/dateTime/bytes/value/object/object(inner)/array(inner)`.
 
-### 9. Choose The Output Path
+### 9. Build And Execute A Direct Request
 
-- **Dynamic request:** `findUsers().toDynamicJson(params, { tenantId: "acme", limit: 25n }, { queryName: "find_users" })` → request JSON string for `POST /v1/query`. Use `toDynamicRequest(...)` for the object, `toDynamicBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toDynamicJson({ queryName: "count_users" })`. Unnamed requests serialize `query_name: null`, which the gateway records as `__dynamic__`.
+- **Request:** `findUsers().toQueryJson(params, { tenantId: "acme", limit: 25n }, { queryName: "find_users" })` produces JSON for `POST /v1/query`. Use `toQueryRequest(...)` for the object or `toQueryBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toQueryJson({ queryName: "count_users" })`. Unnamed requests serialize `query_name: null`.
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
-- **Bundle:** register queries and generate a `queries.json` (see Rule 10).
-- **Send it with the client:** `new Client(url).withApiKey(key).query<R>().dynamic(findUsers().toDynamicRequest(params, values, { queryName: "find_users" })).send()` POSTs to `/v1/query` and returns the parsed JSON on HTTP 200, else throws `HelixError`. Add `.warmOnly()` / `.writerOnly()` / `.shouldAwaitDurability(b)` for the matching request headers; use `.stored(name).body(x)` for a deployed named route. Prefer `.shouldAwaitDurability(true)` on writes — under concurrent writers it reduces HTTP 409 write conflicts (callers still own retry). See REFERENCE.md → "Client".
-
-### 10. Bundles: `registerRead` / `registerWrite` / `defineQueries`
-
-Registration is needed when bundling queries into a `queries.json`:
-
-```ts
-export const queries = defineQueries({
-  read: { find_users: registerRead(findUsers, params) },
-  write: { add_user: registerWrite(addUser, addUserParams) },
-});
-
-queries.call.find_users({ tenantId: "acme", limit: 25n }); // -> DynamicQueryRequest with query_name="find_users"
-await queries.generate("queries.json");                    // bundle, version 4
-```
-
-Route names must be unique across read and write routes — duplicates throw `GenerateError`.
+- **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v1/query`. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
 
 ## Number & DateTime Handling
 
 - Use `bigint` (`25n`) or `i64(...)` for full `i64` range; plain `number` is accepted only for safe integers when an integer is required.
-- Serialize bigint-bearing payloads with `toJsonString()` / `stringifyJson()` / `serializeQueryBundle()`, **never** raw `JSON.stringify`.
+- Serialize bigint-bearing payloads with `toJsonString()` or `stringifyJson()`, **never** raw `JSON.stringify`.
 - `DateTime` stores epoch milliseconds (negative allowed): `DateTime.fromMillis(ms)`, `DateTime.parseRfc3339(s)`, `.toRfc3339()`. Declare the parameter as `param.dateTime()`; dynamic request values render as UTC RFC3339 with millisecond precision.
-- Nested object/array property values are supported through normal object and array inputs or `PropertyValue.object/array`. Read nested object fields with dotted property strings such as `metadata.externalID`; lookup is exact-first and scan-only in V1.
+- Nested object/array property values are supported through normal object and array inputs or `PropertyValue.object/array`. Read nested object fields with dotted property strings such as `metadata.externalID`; lookup is exact-first and scan-only in the current runtime.
 
 ## Builder Surface At A Glance
 
@@ -163,9 +151,8 @@ Route names must be unique across read and write routes — duplicates throw `Ge
 | Expressions | `Expr.prop/val/id/timestamp/datetime/param`, `.add/.sub/.mul/.div/.modulo/.neg`, `Expr.case` | `Expr.timestamp()` writes server UTC millis; `Expr.datetime()` writes typed datetime. |
 | Mutations | `addN`, `addE`, `setProperty`, `removeProperty`, `drop`, `dropEdge`, `dropEdgeLabeled`, `dropEdgeById` | `dropEdgeById` is multigraph-safe. |
 | Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/nodeRangeDesc/nodeRangeWithDirection/edgeEquality/edgeRange/edgeRangeDesc/edgeRangeWithDirection/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. `RangeIndexDirection.Desc` sets descending physical order. |
-| Output | `toJsonString`, `toDynamicJson`, `toDynamicRequest`, `toDynamicBytes` | Dynamic forms take `(params, values, options)` unless the query has no parameters; pass `{ queryName }` to set top-level `query_name`. |
-| Client / transport | `new Client(url)`, `.withApiKey`, `.query<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.body`, `.dynamic`/`.stored`, `.send()` | Sends to `POST /v1/query`; `send()` resolves parsed JSON on 200, else throws `HelixError`. |
-| Bundles | `defineParams`, `param.*`, `registerRead`, `registerWrite`, `defineQueries`, `serializeQueryBundle`, `.buildQueryBundle()`, `.generate()` | `QUERY_BUNDLE_VERSION = 5` (reads v4 + v5). |
+| Output | `toJsonString`, `toQueryJson`, `toQueryRequest`, `toQueryBytes` | Dynamic forms take `(params, values, options)` unless the query has no parameters; pass `{ queryName }` to set top-level `query_name`. |
+| Client / transport | `new Client(url)`, `Client.server(url)`, `.withApiKey`, `.query<R>(request)`, `.requestBuilder<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.send()` | Direct requests use `POST /v1/query`; stored routes are not supported. |
 
 See `REFERENCE.md` for full signatures and typestate constraints.
 
@@ -192,7 +179,7 @@ function userById(p = params) {
     .returning(["user"]);
 }
 
-const body = userById().toDynamicJson(params, { userId: "u-42" });
+const body = userById().toQueryJson(params, { userId: "u-42" });
 ```
 
 ### Explicit Create Or Update
@@ -247,8 +234,7 @@ Do not:
 - return embeddings by default in search results, or ignore tenant scope on text/vector search
 - add `dedup` or `limit` without a reason
 - call `JSON.stringify` on a payload that may contain `bigint` — use `toJsonString` / `stringifyJson`
-- pass a `param.bytes()` parameter through the dynamic route — it throws `DynamicQueryError` (`UnsupportedBytesParameter`)
-- reuse a route name across read and write routes — `defineQueries` throws `GenerateError`
+- pass a `param.bytes()` parameter through the JSON route — it throws `QueryError.UnsupportedBytesParameter`
 - put a write traversal into `readBatch().varAs(...)` — it is rejected at compile time and throws at runtime
 - traverse off a vector/text hit stream before projecting `$distance`
 
@@ -263,10 +249,9 @@ Before finishing:
 - verify text/vector routes pass the tenant value when the index is scoped, and project `$distance` before navigating
 - verify `bigint`/`i64(...)` is used for large integers and serialization goes through `toJsonString`/`stringifyJson`
 - verify `DateTime` parameters use `param.dateTime()` and `DateTime.*` values
-- verify route names are unique if registering a bundle
 - verify the query matches surrounding local style more than any generic example
 
 ## Reference Files
 
-- `REFERENCE.md` — full builder catalog (entry points, scalars, refs, expressions, predicates, projections, branching, repeat, mutations, indexes, batches, parameters, registration/bundles, dynamic requests), with `src/index.ts` citations and a Rust↔TS naming map.
+- `REFERENCE.md` — full builder catalog (entry points, scalars, refs, expressions, predicates, projections, branching, repeat, mutations, indexes, batches, parameters, direct requests), with a Rust↔TS naming map.
 - `EXAMPLES.md` — end-to-end TypeScript queries mirroring the scenarios in `../helix-query-rust/EXAMPLES.md` and `../helix-query-json-dynamic/EXAMPLES.md`, so you can move fluently between the Rust DSL, TypeScript DSL, and JSON forms.

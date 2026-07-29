@@ -4,14 +4,14 @@ Each numbered scenario corresponds 1:1 with `../helix-query-typescript/EXAMPLES.
 
 All snippets assume `use helix_db::dsl::prelude::*;`.
 
-Calling a public `#[register]` function returns a `DynamicQueryRequest` whose top-level `query_name` is the Rust function name. Direct `DynamicQueryRequest::read/write` builders serialize `query_name: null` until `.with_query_name(...)` or `.set_query_name(...)` is used.
+Calling a public `#[query]` function returns a `QueryRequest` whose top-level `query_name` is the Rust function name. Direct `QueryRequest::read/write` builders serialize `query_name: null` until `.with_query_name(...)` or `.set_query_name(...)` is used.
 
 ---
 
 ## 1. Count nodes matching label + predicate
 
 ```rust
-#[register]
+#[query]
 pub fn active_user_count() -> ReadBatch {
     read_batch()
         .var_as(
@@ -31,7 +31,7 @@ pub fn active_user_count() -> ReadBatch {
 Literal form:
 
 ```rust
-#[register]
+#[query]
 pub fn user_by_id_literal() -> ReadBatch {
     read_batch()
         .var_as(
@@ -53,7 +53,7 @@ pub fn user_by_id_literal() -> ReadBatch {
 Parameterized form (preferred):
 
 ```rust
-#[register]
+#[query]
 pub fn user_by_id(userId: String) -> ReadBatch {
     let _ = &userId;
     read_batch()
@@ -75,7 +75,7 @@ pub fn user_by_id(userId: String) -> ReadBatch {
 ## 3. Multi-hop traversal with `dedup` + `limit`
 
 ```rust
-#[register]
+#[query]
 pub fn friends_of_friends(userId: Vec<i64>) -> ReadBatch {
     let _ = &userId;
     read_batch()
@@ -97,7 +97,7 @@ pub fn friends_of_friends(userId: Vec<i64>) -> ReadBatch {
 ## 4. Vector search with tenant + distance in projection
 
 ```rust
-#[register]
+#[query]
 pub fn nearest_documents(
     tenantId: String,
     queryVector: Vec<f64>,
@@ -131,7 +131,7 @@ Project `$distance` before any `.out`/`.in_`/`.both` — traversal off the hit s
 ## 5. BM25 text search with post-filter
 
 ```rust
-#[register]
+#[query]
 pub fn document_search(
     tenantId: String,
     q: String,
@@ -164,7 +164,7 @@ pub fn document_search(
 ## 6. `Repeat` traversal with `until` + `emit_after`
 
 ```rust
-#[register]
+#[query]
 pub fn management_chain(startId: Vec<i64>) -> ReadBatch {
     let _ = &startId;
     read_batch()
@@ -192,7 +192,7 @@ pub fn management_chain(startId: Vec<i64>) -> ReadBatch {
 ## 7. `Union` of two sub-traversals
 
 ```rust
-#[register]
+#[query]
 pub fn user_network(userId: Vec<i64>) -> ReadBatch {
     let _ = &userId;
     read_batch()
@@ -215,7 +215,7 @@ pub fn user_network(userId: Vec<i64>) -> ReadBatch {
 ## 8. `Choose` (conditional traversal)
 
 ```rust
-#[register]
+#[query]
 pub fn user_content(userId: Vec<i64>) -> ReadBatch {
     let _ = &userId;
     read_batch()
@@ -239,7 +239,7 @@ pub fn user_content(userId: Vec<i64>) -> ReadBatch {
 ## 9. `Coalesce` (fallback traversal)
 
 ```rust
-#[register]
+#[query]
 pub fn preferred_team(userId: Vec<i64>) -> ReadBatch {
     let _ = &userId;
     read_batch()
@@ -262,7 +262,7 @@ pub fn preferred_team(userId: Vec<i64>) -> ReadBatch {
 ## 10. `Project` with `Expr::case` (computed field)
 
 ```rust
-#[register]
+#[query]
 pub fn users_with_bucket() -> ReadBatch {
     read_batch()
         .var_as(
@@ -297,7 +297,7 @@ pub fn users_with_bucket() -> ReadBatch {
 ## 11. Aggregation: `group_count` and `aggregate_by`
 
 ```rust
-#[register]
+#[query]
 pub fn users_by_status() -> ReadBatch {
     read_batch()
         .var_as(
@@ -307,7 +307,7 @@ pub fn users_by_status() -> ReadBatch {
         .returning(["by_status"])
 }
 
-#[register]
+#[query]
 pub fn total_revenue() -> ReadBatch {
     read_batch()
         .var_as(
@@ -327,7 +327,7 @@ Use this when an edge list needs stable source/target resource ids. It keeps one
 output row per edge and avoids traversing to every endpoint node.
 
 ```rust
-#[register]
+#[query]
 pub fn list_describes_relationships() -> ReadBatch {
     read_batch()
         .var_as(
@@ -365,7 +365,7 @@ with `.bind(name)` as you pass them, then assemble rows with
 duplicates). `coalesce` picks the first present non-null reference.
 
 ```rust
-#[register]
+#[query]
 pub fn service_topology() -> ReadBatch {
     read_batch()
         .var_as(
@@ -411,15 +411,15 @@ Wire format (each tag is a `Bind` step; the terminal is `ProjectBindings`):
 }}
 ```
 
-This emits a **v5** query bundle. Not available in the Python SDK yet — use
-another SDK or hand-write the JSON for binding queries from Python.
+This binding projection is part of a normal direct request and is also
+available in the Python v3 SDK.
 
 ---
 
 ## 12. Write: `add_n` + `add_e` in one batch with cross-entry `Var` reference
 
 ```rust
-#[register]
+#[query]
 pub fn create_user_and_link_post(
     userId: String,
     name: String,
@@ -453,7 +453,7 @@ pub fn create_user_and_link_post(
 ## 13. Write: upsert via `var_as_if`
 
 ```rust
-#[register]
+#[query]
 pub fn upsert_user(userId: String, name: String) -> WriteBatch {
     let _ = (&userId, &name);
     write_batch()
@@ -488,7 +488,7 @@ pub fn upsert_user(userId: String, name: String) -> WriteBatch {
 ## 14. Write: `for_each_param` over an array of objects
 
 ```rust
-#[register]
+#[query]
 pub fn bulk_create_users(data: Vec<ParamObject>) -> WriteBatch {
     let _ = &data;
     let body = write_batch().var_as(
@@ -514,7 +514,7 @@ Inside `body`, the parameter names resolve against each object's fields. Registe
 ## 15. Nested object properties + dotted paths
 
 ```rust
-#[register]
+#[query]
 pub fn create_user_with_metadata() -> WriteBatch {
     let metadata = PropertyValue::object(vec![
         ("externalID", PropertyValue::from("crm-42")),
@@ -543,7 +543,7 @@ pub fn create_user_with_metadata() -> WriteBatch {
         .returning(["user"])
 }
 
-#[register]
+#[query]
 pub fn users_by_external_id() -> ReadBatch {
     read_batch()
         .var_as(
@@ -559,14 +559,14 @@ pub fn users_by_external_id() -> ReadBatch {
 }
 ```
 
-Dotted property lookup is exact-first and scan-only in V1. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
+Dotted property lookup is exact-first and scan-only in the current runtime. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
 
 ---
 
 ## 16. Typed-array parameter + `DateTime` parameter
 
 ```rust
-#[register]
+#[query]
 pub fn users_filtered(
     statuses: Vec<String>,
     since: DateTime,
@@ -593,7 +593,7 @@ The macro records `statuses` as `{"Array": "String"}` and `since` as `"DateTime"
 ## 17. Write: index management
 
 ```rust
-#[register]
+#[query]
 pub fn bootstrap_indexes() -> WriteBatch {
     write_batch()
         .var_as(
@@ -635,9 +635,9 @@ let client = Client::new(Some("https://helix.example.com"))?.with_api_key(Some(&
 
 // .warm_only() sets X-Helix-Warm: true. A successful warm returns 204 No Content; writes reject warming.
 let _: serde_json::Value = client
-    .query()
+    .request_builder()
     .warm_only()
-    .dynamic(user_by_id("u-42".to_string())?)
+    .query(user_by_id("u-42".to_string()))
     .send()
     .await?;
 ```

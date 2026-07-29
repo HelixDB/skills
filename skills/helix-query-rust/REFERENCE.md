@@ -1,6 +1,8 @@
 # Helix Query Authoring — Rust DSL Reference
 
-Exhaustive builder catalog for the `helix-db` Rust crate (`sdks/rust`). Use when `SKILL.md` points you at a specific category or when you need a signature confirmed. Every entry is grouped by category; categories line up 1:1 with `../helix-query-typescript/REFERENCE.md` and `../helix-query-json-dynamic/REFERENCE.md` so you can jump between the Rust DSL, TypeScript DSL, and JSON forms.
+Exhaustive builder catalog for the forthcoming `helix-db = "3.0.0"` Rust
+crate, imported as `helix_db`. The crate is not published yet; these names
+follow the v3 source that will land on `HelixDB/helix-db` `main`.
 
 Import: `use helix_db::dsl::prelude::*;`. All signatures come from `sdks/rust/src/dsl.rs` (re-exported at the crate root via `pub use dsl::*`); line numbers are cited inline.
 
@@ -184,7 +186,7 @@ Each comparison **auto-routes** by argument type. A literal keeps the plain vari
 
 **Not available** at source position: `is_null`, `is_not_null`, `contains[_param]`, `ends_with`, `is_in*`, `not`, `compare`. Push those into a following `.where_(Predicate::...)`.
 
-Property-name strings in filters can be dotted object paths, for example `Predicate::eq("metadata.externalID", "crm-42")`. Lookup is exact-first: a top-level property named `metadata.externalID` wins before walking the `metadata` object. Dotted paths are scan-only in V1; secondary, text, and vector indexes remain top-level only. Arrays are opaque and do not support `tags.0` syntax.
+Property-name strings in filters can be dotted object paths, for example `Predicate::eq("metadata.externalID", "crm-42")`. Lookup is exact-first: a top-level property named `metadata.externalID` wins before walking the `metadata` object. Dotted paths are scan-only in the current runtime; secondary, text, and vector indexes remain top-level only. Arrays are opaque and do not support `tags.0` syntax.
 
 ### `CompareOp`
 
@@ -406,8 +408,8 @@ g().n_with_label("Service")
     ]);
 ```
 
-Serializes to query bundle **v5** (`QUERY_BUNDLE_VERSION = 5`; v4 still accepted
-on read). See `../helix-query-json-dynamic/REFERENCE.md` for the wire shape.
+The binding projection is part of a normal direct `QueryRequest`. See
+`../helix-query-json-dynamic/REFERENCE.md` for the wire shape.
 
 ---
 
@@ -498,7 +500,7 @@ IndexSpec::edge_text(label, property, tenant_property)
 
 Range indexes default to ascending physical order. Use `RangeIndexDirection::Desc` for descending indexes that primarily serve newest-first or high-score-first scans.
 
-Index properties are top-level only in V1. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
+Index properties are top-level only in the current runtime. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
 
 ---
 
@@ -514,12 +516,12 @@ Emit the corresponding steps but have no effect in the current interpreter. Safe
 
 ---
 
-## `#[register]` Macro & Dynamic Transport
+## `#[query]` Macro And Direct Requests
 
-`sdks/rust/helix-dsl-macros/src/lib.rs`. Apply to a top-level function returning `ReadBatch` or `WriteBatch`; the macro generates a wrapper that constructs a `DynamicQueryRequest` with the function's arguments as typed parameters and sets top-level `query_name` to the Rust function name.
+`sdks/rust/helix-dsl-macros/src/lib.rs`. Apply to a top-level function returning `ReadBatch` or `WriteBatch`; the macro generates a wrapper that constructs a `QueryRequest` with the function's arguments as typed parameters and sets top-level `query_name` to the Rust function name.
 
 ```rust
-#[register]
+#[query]
 pub fn find_user(tenant_id: String, limit: i64) -> ReadBatch {
     read_batch()
         .var_as(
@@ -532,74 +534,64 @@ pub fn find_user(tenant_id: String, limit: i64) -> ReadBatch {
         .returning(["users"])
 }
 
-// Generated: callable fn that returns DynamicQueryRequest
-let req = find_user("acme".to_string(), 25)?;  // Result<DynamicQueryRequest, DynamicQueryError>
+// Generated: callable function that returns QueryRequest directly.
+let req = find_user("acme".to_string(), 25);
 let json = req.to_json_string()?;
 ```
 
-The serialized request from the registered helper includes `"query_name":"find_user"`, so gateway logs and slow-query diagnostics can group this inline request by name.
+The serialized request includes `"query_name":"find_user"`, so logs and
+diagnostics can group the direct request by name.
 
-Supported param types: primitives (`bool`, `i64`, `f64`, `f32`, `String`, `DateTime`), `PropertyValue`, `ParamValue`, `ParamObject`, `Vec<T>` (any supported `T`), `BTreeMap<String, T>`, `HashMap<String, T>`, `Vec<u8>` (bytes — **not supported** over the dynamic JSON route, raises `DynamicQueryError::UnsupportedBytesParameter`).
+Supported param types include primitives (`bool`, `i64`, `f64`, `f32`,
+`String`, `DateTime`), `PropertyValue`, `ParamValue`, `ParamObject`,
+`Vec<T>`, and string-keyed maps. Bytes cannot be represented on the JSON query
+route and raise `QueryError::UnsupportedBytesParameter`.
 
-### Query bundles
-
-`sdks/rust/src/query_generator.rs`:
-
-```rust
-pub fn build_query_bundle() -> Result<QueryBundle, GenerateError>
-pub fn serialize_query_bundle(bundle: &QueryBundle) -> Result<Vec<u8>, GenerateError>
-pub fn deserialize_query_bundle(bytes: &[u8]) -> Result<QueryBundle, GenerateError>
-pub fn write_query_bundle_to_path<P: AsRef<Path>>(bundle: &QueryBundle, path: P) -> Result<(), GenerateError>
-pub fn read_query_bundle_from_path<P: AsRef<Path>>(path: P)  -> Result<QueryBundle, GenerateError>
-pub fn generate() -> Result<PathBuf, GenerateError>               // writes queries.json in CWD
-pub fn generate_to_path<P: AsRef<Path>>(path: P) -> Result<PathBuf, GenerateError>
-```
-
-Wire format version: `QUERY_BUNDLE_VERSION = 5` (`sdks/rust/src/query_generator.rs:6-13`). Bundles serialize at v5; `deserialize_query_bundle` accepts both v4 and v5 (`SUPPORTED_QUERY_BUNDLE_VERSIONS = [4, 5]`) and rejects any other version.
-
-### `DynamicQueryRequest`
+### `QueryRequest`
 
 ```rust
-DynamicQueryRequest::read(batch: ReadBatch)
-DynamicQueryRequest::write(batch: WriteBatch)
+QueryRequest::read(batch: ReadBatch)
+QueryRequest::write(batch: WriteBatch)
 req.set_query_name("find_users")
 req.clear_query_name()
 req.with_query_name("find_users")
-req.with_parameter_value(name, DynamicQueryValue::String("x".into()))
+req.with_parameter_value(name, QueryValue::String("x".into()))
 req.with_parameter_type(name, QueryParamType::DateTime)
-req.to_json_string()   // Result<String, DynamicQueryError>
+req.to_json_string()   // Result<String, QueryError>
 req.to_json_bytes()
 ```
 
-Direct requests built with `DynamicQueryRequest::read/write` serialize `query_name: null` until a name is set. Missing or `null` falls back to `__dynamic__` at the gateway; blank names are rejected.
+Direct requests built with `QueryRequest::read/write` serialize `query_name: null` until a name is set. Missing or `null` falls back to `__dynamic__` at the gateway; blank names are rejected.
 
 For the JSON wire encoding this produces, see `../helix-query-json-dynamic/REFERENCE.md`.
 
 ### `Client` (sending requests)
 
-Async HTTP client for running a request against a Helix instance (`reqwest`-based).
+Async HTTP client for running a direct request against a Helix instance.
 
 ```rust
 use helix_db::{Client, HelixError};
 
 Client::new(url: Option<&str>) -> Result<Self, HelixError>   // default "http://localhost:6969"; InvalidURL on bad url
     .with_api_key(api_key: Option<&str>) -> Self              // Authorization: Bearer <key>
-    .query::<R: Deserialize>() -> QueryBuilder<R>
+    .query::<R: Deserialize>(request) -> QueryExecutionRequest<R>
 
-// QueryBuilder — request headers + body, then pick a route:
+// Advanced server headers:
+client.request_builder::<R>()
     .writer_only()                       // X-Helix-Require-Writer: true
     .warm_only()                         // X-Helix-Warm: true
     .should_await_durability(b: bool)    // X-Helix-Await-Durable: true|false
-    .body(&data)? -> Self                // JSON body for a stored route
-    .dynamic(req: DynamicQueryRequest) -> QueryRequest<R>     // POST /v1/query
-    .stored(name: String) -> QueryRequest<R>                 // POST /v1/query/{name}
+    .query(request)
 
 request.send().await -> Result<R, HelixError>                // 200 -> R; any other status -> HelixError::RemoteError
 ```
 
 Prefer `.should_await_durability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 
-`HelixError` variants: `ReqwestError` (transport), `RemoteError { details }` (non-200), `SerializationError`, `InvalidURL`. Build the `DynamicQueryRequest` from a registered fn call (`count_users()`) or `DynamicQueryRequest::read(batch)`.
+`HelixError` distinguishes transport, remote, serialization, and invalid URL
+failures. Build the request from a `#[query]` function call or
+`QueryRequest::read/write(batch)`. Stored routes, registration, and bundles
+are not supported.
 
 ---
 

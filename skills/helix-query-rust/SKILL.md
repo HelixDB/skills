@@ -1,15 +1,19 @@
 ---
 name: helix-query-rust
-description: Write and revise HelixDB Rust DSL queries from scratch. Use when the task is to add, update, or review a Helix query built in Rust with read_batch, write_batch, traversal builders, projections, indexes, BM25 text search, or vector search — and for #[register] dynamic requests and queries.json bundles. Inspect local labels, edges, properties, and existing query patterns before inventing new code. See REFERENCE.md for the full builder catalog and EXAMPLES.md for end-to-end patterns. For the TypeScript DSL use helix-query-typescript; for inline JSON use helix-query-json-dynamic.
+description: Write and revise queries with the forthcoming HelixDB v3 Rust SDK (`helix-db = "3.0.0"`). Use for `read_batch`, `write_batch`, `#[query]`, direct `QueryRequest` values, traversal builders, projections, indexes, BM25 text search, vector search, and `Client::query`. Inspect local labels, edges, properties, and existing query patterns before inventing code. Stored routes, registration, and query bundles are not v3 SDK APIs.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.3.0
+  version: 3.0.0
 ---
 
 # Helix Query Authoring — Rust
 
-Write Helix Rust DSL queries in a way that is schema-aware, explicit, and easy for agents to reason about. The Rust builder is the `helix-db` crate (`sdks/rust`); the TypeScript DSL (`helix-query-typescript`) emits the same JSON AST.
+Write Helix Rust DSL queries in a way that is schema-aware, explicit, and easy
+for agents to reason about. The forthcoming package is
+`helix-db = "3.0.0"` and is imported as `helix_db`. These installation
+instructions are release-forward and are not expected to resolve before the
+coordinated v3 publication.
 
 This is the preferred way to author Helix queries in a Rust codebase. Drop to raw dynamic JSON (`helix-query-json-dynamic`) only for debugging or dynamically-shaped requests.
 
@@ -19,11 +23,13 @@ Use this skill when the task is to:
 
 - write a new Helix query in Rust
 - revise an existing Helix Rust DSL route
-- bundle queries into a `queries.json`
+- turn a batch into a direct `QueryRequest`
 - choose between `read_batch()` and `write_batch()`
 - add traversal, projection, pagination, BM25 search, or vector search to an existing query
 
-Do not use this skill as the main guide for inline `POST /v1/query` payloads — use `helix-query-json-dynamic`. For the TypeScript DSL, use `helix-query-typescript`.
+Do not use this skill as the main guide for hand-authored `POST /v1/query`
+payloads — use `helix-query-json-dynamic`. Stored routes, query registration,
+and `queries.json` bundles are not supported by the v3 SDK.
 
 ## First Steps
 
@@ -135,12 +141,12 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 | Expressions | `Expr::prop`, `Expr::val`, `Expr::id`, `Expr::timestamp`, `Expr::datetime`, `Expr::param`, `.add/.sub/.mul/.div/.modulo/.neg`, `Expr::case` | `Expr::Timestamp` writes server UTC millis; `Expr::DateTimeNow` writes typed datetime. |
 | Mutations | `add_n`, `add_e`, `set_property`, `remove_property`, `drop`, `drop_edge`, `drop_edge_labeled`, `drop_edge_by_id` | `drop_edge_by_id` is multigraph-safe. |
 | Indexes | `IndexSpec::node_equality / node_range / node_range_desc / node_range_with_direction / edge_equality / edge_range / edge_range_desc / edge_range_with_direction / node_vector / node_text / edge_vector / edge_text` plus `create_index` / `drop_index`; convenience: `create_vector_index_nodes`, `create_text_index_nodes`, edge variants | Use `.create_index(spec)` from a write batch. `RangeIndexDirection::Desc` sets descending physical order. |
-| Transport | `DynamicQueryRequest::{read,write}(batch).with_query_name("name").with_parameter_value(...).with_parameter_type(...).to_json_string()` | Bridge from Rust DSL to the JSON payload (`helix-query-json-dynamic`). Direct unnamed requests serialize `query_name: null`; `#[register]` callable helpers set `query_name` to the Rust function name. |
-| Client | `Client::new(Some(url))?.with_api_key(...).query().writer_only()/.warm_only()/.should_await_durability(b).dynamic(req)/.stored(name).send().await` | Sends to `POST /v1/query`; `send()` yields `R` on 200, else `HelixError`. Prefer `.should_await_durability(true)` on writes — reduces 409 conflicts under concurrency. See REFERENCE.md → "Client". |
+| Transport | `QueryRequest::{read,write}(batch).with_query_name("name").with_parameter_value(...).with_parameter_type(...).to_json_string()` | Bridge from Rust DSL to the JSON payload (`helix-query-json-dynamic`). Direct unnamed requests serialize `query_name: null`; `#[query]` callable helpers set `query_name` to the Rust function name. |
+| Client | `Client::new(Some(url))?.with_api_key(...).query(request).send().await` | Sends direct requests to `POST /v1/query`. Advanced headers use `request_builder::<R>().writer_only()/.warm_only()/.should_await_durability(b).query(request).send().await`. |
 
 See `REFERENCE.md` for signatures and typestate constraints.
 
-Nested object/array property values are supported with `PropertyValue::object(...)` and `PropertyValue::array(...)`. Read nested object fields with dotted property strings such as `metadata.externalID` in predicates, `Expr::prop`, `values`, `value_map`, `project`, and `order_by`. Dotted paths are exact-first and scan-only in V1; indexes remain top-level only.
+Nested object/array property values are supported with `PropertyValue::object(...)` and `PropertyValue::array(...)`. Read nested object fields with dotted property strings such as `metadata.externalID` in predicates, `Expr::prop`, `values`, `value_map`, `project`, and `order_by`. Dotted paths are exact-first and scan-only in the current runtime; indexes remain top-level only.
 
 ## Canonical Examples
 

@@ -1,17 +1,20 @@
 ---
 name: helix-query-python
-description: Write and revise HelixDB queries with the Python SDK (helix-db, imported as helixdb). Use when building dynamic Helix queries in Python with read_batch, write_batch, g(), traversal builders, projections, parameters, query bundles, vector/BM25 search, and the dependency-free Client. Pythonic snake_case API; emits the same dynamic POST /v1/query JSON AST as the Rust, TypeScript, and Go SDKs.
+description: Write and revise queries with the forthcoming HelixDB v3 Python SDK (package `helix-db`, import `helixdb`). Use for `read_batch`, `write_batch`, direct `to_query_request`/`to_query_json` payloads, row bindings, traversal builders, projections, parameters, vector/BM25 search, and `Client.query`. Stored routes and query bundles are not v3 SDK APIs.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.0
+  version: 3.0.0
 ---
 
 # Helix Query Authoring - Python
 
-Write HelixDB Python SDK queries that are schema-aware, explicit, and easy for application code to call. The package is `helix-db`, imported as `helixdb`. The Python API is intentionally snake_case (`read_batch`, `write_batch`, `var_as`, `value_map`, `to_dynamic_request`) while keeping compatibility aliases for users translating TypeScript examples.
+Write HelixDB Python SDK queries that are schema-aware, explicit, and easy for
+application code to call. The forthcoming package is `helix-db`, imported as
+`helixdb`. No Python package version is invented before publication.
 
-The Python DSL emits the same dynamic-query JSON AST as the Rust, TypeScript, and Go SDKs. Use the built-in `Client` to POST dynamic requests to `/v1/query` or stored route calls to `/v1/query/{name}`.
+The Python DSL emits the same direct-request JSON AST as the Rust, TypeScript,
+and Go SDKs. Use the built-in `Client` to post requests to `/v1/query`.
 
 ## When To Use
 
@@ -19,13 +22,15 @@ Use this skill when the task is to:
 
 - write a new Helix query in Python
 - revise an existing Python query function
-- produce a dynamic `POST /v1/query` request with `to_dynamic_json` / `to_dynamic_request`
-- send a request with `Client(...).query().dynamic(request).send()`
-- generate a query bundle with `define_queries`, `register_read`, and `register_write`
+- produce a dynamic `POST /v1/query` request with `to_query_json` / `to_query_request`
+- send a request with `Client(...).query(request)`
+- retain correlated traversal values with row bindings
 - add traversal, projection, pagination, BM25 text search, or vector search to Python code
 - translate a Rust or TypeScript DSL query into Python
 
-Do not use this skill for hand-authored JSON AST payloads; use `helix-query-json-dynamic` for wire-format work. For Rust, TypeScript, or Go source, use the language-specific skill.
+Do not use this skill for hand-authored JSON AST payloads; use
+`helix-query-json-dynamic` for wire-format work. Stored routes and query
+bundles are not supported by the v3 SDK.
 
 ## First Steps
 
@@ -57,7 +62,7 @@ Prefer snake_case in Python code:
 - `read_batch()` / `write_batch()`
 - `.var_as(...)`, `.var_as_if(...)`, `.for_each_param(...)`
 - `.n_with_label(...)`, `.value_map(...)`, `.order_by(...)`
-- `.to_dynamic_request(...)`, `.to_dynamic_json(...)`
+- `.to_query_request(...)`, `.to_query_json(...)`
 - `Client(...).with_api_key(...)`, `.warm_only()`, `.writer_only()`, `.should_await_durability(True)`
 
 Compatibility aliases such as `readBatch`, `varAs`, and `valueMap` exist for translation, but do not use them in fresh Python.
@@ -91,15 +96,15 @@ Direct values are serialized as literals in the AST. Use direct values only for 
 ### 4. Produce Dynamic Requests Explicitly
 
 ```python
-request = find_users().to_dynamic_request(
+request = find_users().to_query_request(
     params,
     {"tenant_id": "acme", "limit": 25},
     query_name="find_users",
 )
 ```
 
-- `to_dynamic_request(...)` returns a `DynamicQueryRequest` object.
-- `to_dynamic_json(...)` returns the JSON string for `POST /v1/query`.
+- `to_query_request(...)` returns a `QueryRequest` object.
+- `to_query_json(...)` returns the JSON string for `POST /v1/query`.
 - Omit `query_name` for ad-hoc requests (`query_name: null`); set it for logs and diagnostics.
 - If you pass parameter values without a schema, the SDK raises `TypeError`.
 
@@ -111,18 +116,17 @@ from helixdb import Client, HelixError
 client = Client("https://helix.example.com", api_key="hx_secret")
 
 try:
-    response = client.query().dynamic(request).send()
+    response = client.query(request)
 except HelixError as error:
     if error.kind == "Remote":
         raise RuntimeError(error.details) from error
 ```
 
-Transport toggles are request-builder methods:
+Transport toggles are available through `execute`:
 
 ```python
-client.query().writer_only().should_await_durability(True).dynamic(write_request).send()
-client.query().warm_only().dynamic(read_request).send()
-client.query().body({"tenant_id": "acme"}).stored("find_users").send()
+client.execute(write_request, writer_only=True, await_durability=True)
+client.execute(read_request, warm_only=True)
 ```
 
 Prefer `should_await_durability(True)` on writes. It reduces HTTP 409 conflicts under concurrent writers, but the SDK does not retry conflicts; application code owns retry policy and idempotency.
@@ -137,28 +141,29 @@ Prefer `should_await_durability(True)` on writes. It reduces HTTP 409 conflicts 
 - Avoid returning large properties such as embeddings unless the caller needs them.
 - Match `.returning([...])` names to the response keys your application expects.
 
-> **Row bindings are not available in the Python SDK yet.** The `bind` /
-> `project_bindings` / `project_distinct_bindings` multi-hop correlation steps
-> exist in the Rust, TypeScript, and Go SDKs but not in Python. If you need them
-> from Python, hand-write the `Bind` / `ProjectBindings` JSON AST (see
-> `helix-query-json-dynamic`) or generate the query from another SDK.
-
-### 7. Use Bundles Only When Needed
-
-Python supports the same bundle metadata shape as TypeScript:
+Python v3 supports row-local correlation with `bind`,
+`project_bindings`, and `project_distinct_bindings`:
 
 ```python
-from helixdb import define_queries, register_read
+from helixdb import BindingProjection, g, read_batch
 
-queries = define_queries({
-    "read": {"find_users": register_read(find_users, params)},
-})
-
-request = queries.call.find_users({"tenant_id": "acme", "limit": 25})
-queries.generate("queries.json")
+query = (
+    read_batch()
+    .var_as(
+        "pairs",
+        g()
+        .n_with_label("User")
+        .bind("user")
+        .out("FOLLOWS")
+        .bind("friend")
+        .project_distinct_bindings([
+            BindingProjection.binding("user", "$id", "user_id"),
+            BindingProjection.binding("friend", "$id", "friend_id"),
+        ]),
+    )
+    .returning(["pairs"])
+)
 ```
-
-Use bundles when your deployment or runtime workflow consumes `queries.json`. For direct dynamic calls, `to_dynamic_request` is simpler.
 
 ## Validation Checklist
 
@@ -176,4 +181,4 @@ Before finishing:
 ## Companion Files
 
 - `REFERENCE.md` - Python builder catalog and signatures.
-- `EXAMPLES.md` - canonical Python query functions for reads, writes, search, branching, bundles, and execution.
+- `EXAMPLES.md` - canonical Python query functions for reads, writes, search, branching, row bindings, and execution.

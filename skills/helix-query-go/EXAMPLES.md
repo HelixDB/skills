@@ -1,6 +1,6 @@
 # Helix Query Authoring - Go Examples
 
-All snippets assume:
+All snippets target the forthcoming v3 module and assume:
 
 ```go
 import helix "github.com/helixdb/helix-db/sdks/go"

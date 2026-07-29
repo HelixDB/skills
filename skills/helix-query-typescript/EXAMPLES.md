@@ -2,7 +2,12 @@
 
 Each numbered scenario corresponds 1:1 with `../helix-query-rust/EXAMPLES.md` and `../helix-query-json-dynamic/EXAMPLES.md`. When moving between TypeScript, Rust, and inline JSON, open the same scenario in each file.
 
-All snippets assume `import { ... } from "@helix-db/helix-db";`. Query builders are plain functions returning a `ReadBatch`/`WriteBatch`. Produce a dynamic request with `builder().toDynamicJson(params, values, { queryName: "route_name" })` (or `.toDynamicJson({ queryName: "route_name" })` when there are no parameters), or register the builder in `defineQueries({...})` for a query bundle. To run a request against a Helix instance, hand `builder().toDynamicRequest(params, values, { queryName: "route_name" })` to the built-in `Client`: `await new Client(url).withApiKey(key).query<R>().dynamic(req).send()` (see REFERENCE.md → "Client"). Unnamed direct requests serialize `query_name: null`; `queries.call.*` sets `query_name` to the registered route key automatically.
+All snippets assume `import { ... } from "@helix-db/helix-db";`. Query
+builders are plain functions returning a `ReadBatch` or `WriteBatch`. Build a
+direct request with
+`builder().toQueryRequest(params, values, { queryName: "route_name" })` and
+execute it with `await Client.server(url).query<R>(request).send()`. Use
+`toQueryJson` to inspect the exact `POST /v1/query` body.
 
 ---
 
@@ -15,7 +20,7 @@ function activeUserCount() {
     .returning(["active_count"]);
 }
 
-const body = activeUserCount().toDynamicJson(); // no parameters
+const body = activeUserCount().toQueryJson(); // no parameters
 ```
 
 ---
@@ -58,7 +63,7 @@ function userById(p = userByIdParams) {
     .returning(["user"]);
 }
 
-const body = userById().toDynamicJson(userByIdParams, { userId: "u-42" });
+const body = userById().toQueryJson(userByIdParams, { userId: "u-42" });
 ```
 
 ---
@@ -83,7 +88,7 @@ function friendsOfFriends(p = fofParams) {
     .returning(["fof"]);
 }
 
-const body = friendsOfFriends().toDynamicJson(fofParams, { userId: [1n, 2n] });
+const body = friendsOfFriends().toQueryJson(fofParams, { userId: [1n, 2n] });
 ```
 
 ---
@@ -375,7 +380,8 @@ Wire format (each tag is a `Bind` step; the terminal is `ProjectBindings`):
 }}
 ```
 
-This emits a **v5** query bundle. Not available in the Python SDK yet.
+This binding projection is part of a normal direct request and is also
+available in the Python v3 SDK.
 
 ---
 
@@ -489,7 +495,7 @@ function usersByExternalId() {
 }
 ```
 
-Dotted property lookup is exact-first and scan-only in V1. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
+Dotted property lookup is exact-first and scan-only in the current runtime. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
 
 ---
 
@@ -513,7 +519,7 @@ function usersFiltered(p = filteredParams) {
     .returning(["users"]);
 }
 
-const body = usersFiltered().toDynamicJson(filteredParams, {
+const body = usersFiltered().toQueryJson(filteredParams, {
   statuses: ["active", "pending"],
   since: DateTime.parseRfc3339("2026-04-05T10:00:00Z"),
 });
@@ -547,34 +553,14 @@ Warming uses the *same* query; `.warmOnly()` sets the `X-Helix-Warm: true` heade
 import { Client } from "@helix-db/helix-db";
 
 const client = new Client("https://helix.example.com").withApiKey(apiKey);
-const request = userById().toDynamicRequest(userByIdParams, { userId: "u-42" });
+const request = userById().toQueryRequest(userByIdParams, { userId: "u-42" });
 
-// .warmOnly() sets X-Helix-Warm: true. A successful warm returns 204 No Content; writes reject warming.
-await client.query().warmOnly().dynamic(request).send();
+// .warmOnly() sets X-Helix-Warm: true. Writes reject warming.
+await client.requestBuilder().warmOnly().query(request).send();
 ```
 
 Warming is strictly read-only; a `WriteBatch` with `X-Helix-Warm: true` is rejected by the gateway.
 
 ---
 
-## Registering a bundle
-
-Any of the parameterized builders above can be registered into a `queries.json` bundle in addition to being called dynamically:
-
-```ts
-export const queries = defineQueries({
-  read: {
-    user_by_id: registerRead(userById, userByIdParams),
-    nearest_documents: registerRead(nearestDocuments, nearestParams),
-  },
-  write: {
-    upsert_user: registerWrite(upsertUser, upsertParams),
-    bootstrap_indexes: registerWrite(bootstrapIndexes, defineParams({})),
-  },
-});
-
-queries.call.user_by_id({ userId: "u-42" }); // -> DynamicQueryRequest with query_name="user_by_id"
-await queries.generate("queries.json");       // bundle, version 4
-```
-
-Route names must be unique across read and write routes — duplicates throw `GenerateError`.
+The v3 SDK does not expose stored routes, registration, or query-bundle APIs.

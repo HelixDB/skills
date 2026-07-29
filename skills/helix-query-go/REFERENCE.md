@@ -1,6 +1,7 @@
 # Helix Query Authoring - Go Reference
 
-Use this reference to confirm Go SDK method names and request patterns. Import the module as:
+Use this reference to confirm forthcoming v3 Go SDK method names and request
+patterns. The module path intentionally has no `/v3` suffix:
 
 ```go
 import helix "github.com/helixdb/helix-db/sdks/go"
@@ -269,7 +270,8 @@ build a `BindingTarget`; `helix.ProjectBinding(target, source, alias)`,
 `ProjectNamedBinding`, `ProjectCurrentBinding`, and `ProjectBindingCoalesce`
 build `BindingProjection`s; `NamedBindingValue` / `CurrentBindingValue` build
 `BindingValueRef`s. `source` accepts stored properties and the virtual fields
-`$id`, `$label`, `$from`, `$to`, `$distance`, `$score`. Emits a **v5** bundle.
+`$id`, `$label`, `$from`, `$to`, `$distance`, `$score`. Binding projections
+serialize inside the normal direct request.
 
 Writes:
 
