@@ -650,8 +650,12 @@ client.requestBuilder<R>()
   .shouldAwaitDurability(b: boolean)       // X-Helix-Await-Durable: true|false
   .query(request)
 
-await request.send(): Promise<R>           // 200 -> parsed JSON (parseJsonStructural); any other status -> throws HelixError
+await request.send(): Promise<R>           // 200 -> parsed JSON; Cloud warm success -> 204/no payload; other status -> HelixError
 ```
+
+For Cloud warming, use a no-content response type such as
+`requestBuilder<void>()`. Partial target failure still succeeds when at least
+one backend warms successfully.
 
 Prefer `.shouldAwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 

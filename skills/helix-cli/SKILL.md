@@ -102,7 +102,10 @@ In a JSON request body, `request_type` must be lowercase `"read"` or `"write"`. 
 ### 4. `--warm` Is Read-Only
 
 `--warm` adds the `X-Helix-Warm` header to execute a read through warm mode and
-populate caches. It is read-only, and the normal query result is still printed.
+populate caches. It is read-only. A standalone local instance prints the normal
+query result; Helix Cloud fans out to every eligible backend and succeeds
+silently with `204 No Content` after at least one target succeeds. At the raw
+HTTP/SDK layer, add `X-Helix-Require-Writer: true` to warm only the writer.
 
 ### 5. Prefer `helix push`, Not Removed Commands
 

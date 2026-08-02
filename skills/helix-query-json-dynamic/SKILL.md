@@ -173,6 +173,20 @@ curl -sS "${HELIX_URL%/}/v2/query" \
 contract is the `x-helix-tenant-id` header. Omitting it in GA mode returns
 `400` with code `TENANT_ID_REQUIRED`.
 
+### Warm a read
+
+Add `X-Helix-Warm: true` to an ordinary read request. Helix Cloud fans the read
+out to every eligible backend and returns `204 No Content` with no query body
+after at least one succeeds. Add `X-Helix-Require-Writer: true` to target only
+the authoritative writer. Partial backend failure is best-effort success; if
+every target fails, the normal deterministic error is returned. A managed
+cluster with no eligible target returns `503 Service Unavailable`.
+
+The standalone `v0.0.1` runtime instead warms its single process and returns
+`200 OK` with the normal query body. Header values `false` and `0` use the
+ordinary query path; warm writes and any other header value return
+`400 Bad Request`.
+
 For the CLI, use the same file directly:
 
 ```bash

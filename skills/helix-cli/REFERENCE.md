@@ -141,7 +141,7 @@ Options:
 
 | Flag | Purpose |
 |---|---|
-| `--warm` | Add `X-Helix-Warm` to execute through warm mode and populate caches (read requests only); the normal result is printed. |
+| `--warm` | Add `X-Helix-Warm` to warm a read. Standalone local returns the normal result; Helix Cloud fans out and returns `204 No Content` after at least one target succeeds. |
 | `--host <HOST>` | Override host for local instances (default `localhost`). |
 | `--port <PORT>` | Override port for local instances. |
 | `--compact` | Print single-line JSON (default is pretty). |

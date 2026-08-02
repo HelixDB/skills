@@ -144,6 +144,11 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 | Transport | `QueryRequest::{read,write}(batch).with_query_name("name").with_parameter_value(...).with_parameter_type(...).to_json_string()` | Bridge from Rust DSL to the JSON payload (`helix-query-json-dynamic`). Direct unnamed requests serialize `query_name: null`; `#[query]` callable helpers set `query_name` to the Rust function name. |
 | Client | `Client::new(Some(url))?.with_api_key(...).query(request).send().await` | Sends direct requests to `POST /v2/query`. Advanced headers use `request_builder::<R>().writer_only()/.warm_only()/.should_await_durability(b).query(request).send().await`. |
 
+`warm_only()` is read-only. Helix Cloud fans the read out to every eligible
+backend and returns `204 No Content` with no query payload after at least one
+target succeeds; chain `writer_only()` to target only the authoritative writer.
+Standalone `v0.0.1` warming returns the normal query response.
+
 See `REFERENCE.md` for signatures and typestate constraints.
 
 Nested object/array property values are supported with `PropertyValue::object(...)` and `PropertyValue::array(...)`. Read nested object fields with dotted property strings such as `metadata.externalID` in predicates, `Expr::prop`, `values`, `value_map`, `project`, and `order_by`. Dotted paths are exact-first and scan-only in the current runtime; indexes remain top-level only.

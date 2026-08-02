@@ -130,6 +130,11 @@ client.execute(write_request, writer_only=True, await_durability=True)
 client.execute(read_request, warm_only=True)
 ```
 
+Helix Cloud fans a warm read out to every eligible backend and returns
+`204 No Content` with no query payload after at least one succeeds. Pass
+`writer_only=True` with `warm_only=True` to target only the authoritative
+writer. Standalone `v0.0.1` warming returns the normal query response.
+
 Prefer `await_durability=True` with `execute` or
 `client.request_builder().should_await_durability(True)` on writes. This
 reduces HTTP 409 conflicts under concurrent writers, but the SDK does not retry

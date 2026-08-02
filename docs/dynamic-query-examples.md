@@ -115,8 +115,20 @@ For a direct read request, warming uses the same body plus:
 X-Helix-Warm: true
 ```
 
-Successful warm reads return `200 OK` with the normal normalized JSON response
-while populating caches. Write warming is rejected.
+On the standalone `ghcr.io/helixdb/helixdb:v0.0.1` runtime, a warm read executes
+on the single process and returns `200 OK` with the normal normalized response.
+
+On Helix Cloud, the `/v2/query` gateway fans the same read out to every eligible
+database backend, discards the query responses, and returns `204 No Content`
+after at least one target succeeds. Partial backend failure still returns `204`;
+if every target fails, the gateway returns the normal deterministic error. Add
+`X-Helix-Require-Writer: true` to warm only the authoritative writer.
+
+`X-Helix-Warm: true` or `1` enables warming; `false` or `0` uses the ordinary
+query path. Any other value returns `400 Bad Request`. A warm write is rejected
+with `400 Bad Request` before backend execution, and a managed cluster with no
+eligible warming target returns `503 Service Unavailable`. Authentication, read
+rate limits, retries, and normal query timeouts still apply.
 
 ## Common mistakes
 

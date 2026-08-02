@@ -104,11 +104,15 @@ readBatch()
 ```
 
 Execute the read through warm mode to populate caches (the normal result is
-still printed):
+still printed by the standalone local runtime):
 
 ```bash
 helix query dev --file examples/request.json --warm
 ```
+
+For Helix Cloud, the same flag fans the read out to every eligible database
+backend. The CLI prints nothing when the gateway returns `204 No Content` after
+at least one target succeeds.
 
 ## 4. Full Helix Cloud Deploy
 

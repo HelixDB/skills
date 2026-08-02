@@ -547,11 +547,15 @@ import { Client } from "@helix-db/helix-db";
 const client = new Client("https://helix.example.com").withApiKey(apiKey);
 const request = userById().toQueryRequest(userByIdParams, { userId: "u-42" });
 
-// .warmOnly() sets X-Helix-Warm: true. Writes reject warming.
-await client.requestBuilder().warmOnly().query(request).send();
+// Helix Cloud returns 204 No Content after at least one warm target succeeds.
+await client.requestBuilder<void>().warmOnly().query(request).send();
 ```
 
-Warming is strictly read-only; a `WriteBatch` with `X-Helix-Warm: true` is rejected by the gateway.
+Helix Cloud fans the read out to every eligible backend and discards the result
+bodies. Chain `.writerOnly().warmOnly()` to warm only the authoritative writer.
+The standalone `v0.0.1` runtime warms one process and returns the normal query
+body. Warming is strictly read-only; a `WriteBatch` with
+`X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
 
 ---
 

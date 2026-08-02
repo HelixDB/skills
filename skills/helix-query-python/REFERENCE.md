@@ -363,7 +363,10 @@ client.execute(request, await_durability=True)
 ```
 
 The client returns parsed JSON and raises `HelixError` for network, remote,
-serialization, URL, or request failures.
+serialization, URL, or request failures. A Helix Cloud warm read returns
+`204 No Content` with no query payload after fanout; standalone `v0.0.1`
+warming returns the normal response. Combine `warm_only=True` with
+`writer_only=True` to warm only the authoritative writer.
 
 ## Row Bindings
 

@@ -586,8 +586,11 @@ client.request_builder::<R>()
     .should_await_durability(b: bool)    // X-Helix-Await-Durable: true|false
     .query(request)
 
-request.send().await -> Result<R, HelixError>                // 200 -> R; any other status -> HelixError::RemoteError
+request.send().await -> Result<R, HelixError>                // 200 -> R; Cloud warm success -> 204/no payload; other status -> RemoteError
 ```
+
+For Cloud warming, use the no-content/bytes response path. Partial target
+failure still succeeds when at least one backend warms successfully.
 
 Prefer `.should_await_durability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 

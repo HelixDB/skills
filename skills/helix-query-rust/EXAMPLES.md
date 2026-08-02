@@ -619,14 +619,18 @@ use helix_db::Client;
 
 let client = Client::new(Some("https://helix.example.com"))?.with_api_key(Some(&api_key));
 
-// .warm_only() sets X-Helix-Warm: true. Successful reads return their normal response;
-// writes reject warming.
-let _: serde_json::Value = client
-    .request_builder()
+// Helix Cloud returns 204 No Content after at least one warm target succeeds.
+let response = client
+    .request_builder::<serde_json::Value>()
     .warm_only()
     .query(user_by_id("u-42".to_string()))
-    .send()
+    .send_bytes()
     .await?;
+assert!(response.is_empty());
 ```
 
-Warming is strictly read-only; a `WriteBatch` with `X-Helix-Warm: true` is rejected by the gateway.
+Helix Cloud fans the read out to every eligible backend and discards the result
+bodies. Chain `.writer_only().warm_only()` to warm only the authoritative
+writer. The standalone `v0.0.1` runtime warms one process and returns the normal
+query body. Warming is strictly read-only; a `WriteBatch` with
+`X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.

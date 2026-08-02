@@ -132,6 +132,11 @@ function findUsers(p = params) {
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
 - **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v2/query`. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
 
+`warmOnly()` is read-only. Helix Cloud fans the read out to every eligible
+backend and returns `204 No Content` with no query payload after at least one
+target succeeds; chain `writerOnly()` to target only the authoritative writer.
+Standalone `v0.0.1` warming returns the normal query response.
+
 ## Number & DateTime Handling
 
 - Use `bigint` (`25n`) or `i64(...)` for full `i64` range; plain `number` is accepted only for safe integers when an integer is required.
