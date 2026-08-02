@@ -8,7 +8,7 @@ Copy-pasteable, end-to-end sessions for the `helix` CLI. Pair these with `REFERE
 # Scaffold a project (writes helix.toml, .helix/, examples/request.json, .gitignore entries)
 helix init local
 
-# Start the default 'dev' instance — pulls the image and waits until /v1/query is ready
+# Start the default 'dev' instance — pulls the image and waits until /v2/query is ready
 helix start dev
 
 # Confirm it is up and note the URL
@@ -172,7 +172,7 @@ HELIX_NO_UPDATE_CHECK=1 helix status # skip the update check in CI
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `helix compile` / `helix check` errors out | Removed in v3 (validation is server-side) | Drop the step; queries are validated when sent to `POST /v1/query`. |
+| `helix compile` / `helix check` errors out | Removed in v3 (validation is server-side) | Drop the step; queries are validated when sent to `POST /v2/query`. |
 | `helix deploy` errors out | Removed | Use `helix push <instance>`. |
 | `helix query` connection refused (local) | Instance not started / not ready | `helix status`, then `helix start <instance>`; the start command waits for readiness. |
 | `helix start` fails immediately | Container runtime not running | Start Docker/Podman; check `[project] container_runtime`. |

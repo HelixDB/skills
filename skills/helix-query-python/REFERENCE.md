@@ -48,7 +48,7 @@ Batches serialize to the same JSON shape as Rust and TypeScript:
 ```text
 batch.to_json_string()     # raw typed batch JSON
 batch.to_query_request()   # direct QueryRequest object
-batch.to_query_json()      # request JSON string for POST /v1/query
+batch.to_query_json()      # request JSON string for POST /v2/query
 ```
 
 ## Batch Builders

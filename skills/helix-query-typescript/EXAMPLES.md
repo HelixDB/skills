@@ -9,7 +9,7 @@ builders are plain functions returning a `ReadBatch` or `WriteBatch`. Build a
 direct request with
 `builder().toQueryRequest(params, values, { queryName: "route_name" })` and
 execute it with `await Client.server(url).query<R>(request).send()`. Use
-`toQueryJson` to inspect the exact `POST /v1/query` body.
+`toQueryJson` to inspect the exact `POST /v2/query` body.
 
 ---
 

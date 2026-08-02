@@ -12,7 +12,7 @@ These skills are for agents that need to:
 - write dynamic-first Helix queries in Go
 - translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
-- build correct dynamic `POST /v1/query` payloads
+- build correct dynamic `POST /v2/query` payloads
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 
 ## Status
@@ -56,8 +56,9 @@ These skills cover **authoring** Helix queries; they assume you already have a H
 
 The local runtime uses `ghcr.io/helixdb/helixdb:v0.0.1`. It is in-memory by
 default; `--disk` uses a CLI-managed MinIO service for persistence. The skills
-produce direct `POST /v1/query` requests for a running instance reachable at a
-server URL (plus an API key for Helix Cloud). There is no
+produce direct `POST /v2/query` requests for a running instance reachable at a
+server URL. Helix Cloud uses Bearer authentication; GA requests also require
+the tenant context in `x-helix-tenant-id`. There is no
 `helix compile`/`helix check` step — queries are validated server-side when
 sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and
 the non-interactive/agent path.
@@ -79,7 +80,7 @@ It teaches agents to:
 
 - use the v3 mental model: a runtime orchestrator, not a compiler (no `helix compile`/`helix check`, no `.hx` workflow)
 - run the local dev loop (`helix init local` → `start` → `query` → `stop`) with Docker/Podman, including in-memory vs `--disk` persistence
-- send dynamic queries to `POST /v1/query` via `helix query` (`--file`/`--json`/`-e` TypeScript DSL/`--ts-file`)
+- send dynamic queries to `POST /v2/query` via `helix query` (`--file`/`--json`/`-e` TypeScript DSL/`--ts-file`)
 - operate on Helix Cloud (`helix auth`, `push`, `sync`, `workspace`/`project`/`cluster`)
 - read and edit `helix.toml` and the `~/.helix/*` state files
 
@@ -88,12 +89,12 @@ It points to the `helix-query-*` skills for the query bodies themselves; see its
 ### `helix-query-json-dynamic`
 
 Use this skill when an agent needs to build or debug direct JSON requests for
-`POST /v1/query`.
+`POST /v2/query`.
 
 It teaches agents to:
 
 - use the correct request envelope
-- target the dynamic route (`POST /v1/query`) with an inline `query` object
+- target the dynamic route (`POST /v2/query`) with an inline `query` object
 - add `parameter_types` when typed coercion matters
 - send `DateTime` values correctly
 - avoid malformed bundle-shaped payloads

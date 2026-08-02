@@ -65,7 +65,7 @@ Add an instance to an existing `helix.toml` without clobbering others.
 
 ### `helix start [INSTANCE] [OPTIONS]` (alias `run`)
 
-Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/helixdb:v0.0.1`, publishes the host port to container port 8080, and waits (~30s) until `POST /v1/query` is ready before returning.
+Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/helixdb:v0.0.1`, publishes the host port to container port 8080, and waits (~30s) until `POST /v2/query` is ready before returning.
 
 | Flag | Purpose |
 |---|---|
@@ -126,7 +126,7 @@ Remove an instance from `helix.toml` **and** its local runtime state (containers
 
 ### `helix query [INSTANCE] <INPUT> [OPTIONS]`
 
-Send a dynamic query to `POST /v1/query`. `[INSTANCE]` defaults to `dev`.
+Send a dynamic query to `POST /v2/query`. `[INSTANCE]` defaults to `dev`.
 
 Exactly one input flag is required (mutually exclusive arg group):
 
@@ -189,7 +189,7 @@ See `helix-query-json-dynamic` for the full inline-AST grammar.
 - The CLI evaluates the expression in Node (needs Node 20+ on PATH), calls `.toQueryJson()`, and infers `request_type` from read-vs-write batch.
 - The forthcoming v3 `@helix-db/helix-db@3.0.0` SDK is installed once into `<helix cache>/ts-runtime/` and reused thereafter.
 
-**Cloud auth:** for an `[enterprise.<instance>]` target, the CLI posts to `<gateway_url>/v1/query` with the header named by `query_auth_header` (default `Authorization`), valued from the env named by `query_auth_env` (default `HELIX_API_KEY`), read from the shell or a project-root `.env`.
+**Cloud auth:** for an `[enterprise.<instance>]` target, the CLI posts to `<gateway_url>/v2/query` with the header named by `query_auth_header` (default `Authorization`), valued from the env named by `query_auth_env` (default `HELIX_API_KEY`), read from the shell or a project-root `.env`. The GA route also requires `x-helix-tenant-id` for the active tenant.
 
 **Connection errors:** if the instance is unreachable, the CLI reports `cannot reach Helix instance '<instance>' at <endpoint>` with a kind-specific hint — local: `helix start <instance>` then `helix status <instance>` (or pass `--host`/`--port`); enterprise: check `gateway_url` in `helix.toml` and run `helix sync <instance>`.
 

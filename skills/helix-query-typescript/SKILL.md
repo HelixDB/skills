@@ -22,7 +22,7 @@ Use this skill when the task is to:
 
 - write a new Helix query in TypeScript
 - revise an existing TypeScript query function
-- produce a dynamic `POST /v1/query` request from TypeScript (`toQueryJson` / `toQueryRequest`)
+- produce a dynamic `POST /v2/query` request from TypeScript (`toQueryJson` / `toQueryRequest`)
 - send a request to a running Helix instance with the built-in `Client` (`client.query(req).send()`)
 - add traversal, projection, pagination, BM25 search, or vector search to an existing query
 - migrate a Rust v3 DSL query (`#[query]`, `read_batch()`, …) to TypeScript
@@ -128,9 +128,9 @@ function findUsers(p = params) {
 
 ### 9. Build And Execute A Direct Request
 
-- **Request:** `findUsers().toQueryJson(params, { tenantId: "acme", limit: 25n }, { queryName: "find_users" })` produces JSON for `POST /v1/query`. Use `toQueryRequest(...)` for the object or `toQueryBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toQueryJson({ queryName: "count_users" })`. Unnamed requests serialize `query_name: null`.
+- **Request:** `findUsers().toQueryJson(params, { tenantId: "acme", limit: 25n }, { queryName: "find_users" })` produces JSON for `POST /v2/query`. Use `toQueryRequest(...)` for the object or `toQueryBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toQueryJson({ queryName: "count_users" })`. Unnamed requests serialize `query_name: null`.
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
-- **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v1/query`. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
+- **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v2/query`. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
 
 ## Number & DateTime Handling
 
@@ -158,7 +158,7 @@ function findUsers(p = params) {
 | Mutations | `addN`, `addE`, `setProperty`, `removeProperty`, `drop`, `dropEdge`, `dropEdgeLabeled`, `dropEdgeById` | `dropEdgeById` is multigraph-safe. |
 | Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/nodeRangeDesc/nodeRangeWithDirection/edgeEquality/edgeRange/edgeRangeDesc/edgeRangeWithDirection/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. `RangeIndexDirection.Desc` sets descending physical order. |
 | Output | `toJsonString`, `toQueryJson`, `toQueryRequest`, `toQueryBytes` | Dynamic forms take `(params, values, options)` unless the query has no parameters; pass `{ queryName }` to set top-level `query_name`. |
-| Client / transport | `new Client(url)`, `Client.server(url)`, `.withApiKey`, `.query<R>(request)`, `.requestBuilder<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.send()` | Direct requests use `POST /v1/query`; stored routes are not supported. |
+| Client / transport | `new Client(url)`, `Client.server(url)`, `.withApiKey`, `.query<R>(request)`, `.requestBuilder<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.send()` | Direct requests use `POST /v2/query`; stored routes are not supported. |
 
 See `REFERENCE.md` for full signatures and typestate constraints.
 

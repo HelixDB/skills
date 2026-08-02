@@ -252,7 +252,7 @@ The fidelity check is **compile → AST parity → run**:
    Rust `query_name` / TS `{ queryName }` (`req.to_json_string()` / `batch.toQueryJson(params, values, { queryName })`,
    and diff them. Identical JSON means the Rust and TS migrations
    agree and match the wire format.
-3. **Run.** POST both direct requests to a test Helix instance at `POST /v1/query` on the
+3. **Run.** POST both direct requests to a test Helix instance at `POST /v2/query` on the
    **same dataset** the original HQL ran on, and compare row counts, ordering, and projected fields against the
    HQL output. If the `helixdb-docs` MCP tools or a `helix` CLI are available, use them to sanity-check builder
    names and run the queries.

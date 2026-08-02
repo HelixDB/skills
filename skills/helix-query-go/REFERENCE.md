@@ -395,7 +395,7 @@ helix.WarmOnly()
 helix.AwaitDurability(true)
 ```
 
-`Exec` posts to `/v1/query`, serializes the request internally, and decodes responses with `json.Decoder.UseNumber()`.
+`Exec` posts to `/v2/query`, serializes the request internally, and decodes responses with `json.Decoder.UseNumber()`.
 
 Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more likely to hit HTTP 409 write conflicts, and awaiting durability reduces them. It does not eliminate conflicts, so callers still own retry policy.
 

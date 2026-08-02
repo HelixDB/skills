@@ -236,7 +236,7 @@ clearly during migration and **move the logic into application code** — do not
    the same Rust `query_name` / TS `{ queryName }` (`req.to_json_string()` /
    `batch.toQueryJson(params, values, { queryName })`). Diff the
    JSON. **Identical AST = the Rust and TS migrations agree** and match the wire format.
-3. **Run.** POST both direct requests to a test Helix instance at `POST /v1/query` on the
+3. **Run.** POST both direct requests to a test Helix instance at `POST /v2/query` on the
    same dataset the HQL query ran on. Compare row counts, ordering, and projected fields against the HQL output.
 
 See `EXAMPLES.md` for end-to-end HQL→Rust→TS migrations, including unsupported-feature cases.

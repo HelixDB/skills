@@ -128,7 +128,7 @@ For vector routes, check:
 
 ## 8. Steady-Traffic Reads
 
-Every query executes on the dynamic route (`POST /v1/query`), which parses and validates the inline AST per request. For stable, production-facing reads, warm the caches (see §9) rather than treating per-request parsing as the optimization target.
+Every query executes on the dynamic route (`POST /v2/query`), which parses and validates the inline AST per request. For stable, production-facing reads, warm the caches (see §9) rather than treating per-request parsing as the optimization target.
 
 ## 9. Query Warming
 

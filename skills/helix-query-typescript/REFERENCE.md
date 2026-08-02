@@ -641,7 +641,7 @@ Built-in HTTP client for running a request against a Helix instance. Uses the gl
 new Client(url?: string | null)           // defaults to http://localhost:6969
 Client.server(url?: string | null)
   .withApiKey(key?: string | null)        // Authorization: Bearer <key> (null/undefined clears it)
-  .query<R = unknown>(request)             // direct POST /v1/query
+  .query<R = unknown>(request)             // direct POST /v2/query
 
 // Advanced server-only request headers:
 client.requestBuilder<R>()

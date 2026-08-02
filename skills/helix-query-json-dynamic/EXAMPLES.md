@@ -1,6 +1,6 @@
 # HelixDB v3 JSON Examples
 
-These are direct request bodies for `POST /v1/query`. They use the same nested AST as
+These are direct request bodies for `POST /v2/query`. They use the same nested AST as
 the forthcoming v3 SDKs.
 
 ## Count nodes by label

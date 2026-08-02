@@ -1,6 +1,6 @@
 # Direct Query Examples
 
-Canonical examples for HelixDB v3 `POST /v1/query` requests.
+Canonical examples for HelixDB v3 `POST /v2/query` requests.
 
 ## Core rules
 

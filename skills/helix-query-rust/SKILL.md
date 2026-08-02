@@ -27,7 +27,7 @@ Use this skill when the task is to:
 - choose between `read_batch()` and `write_batch()`
 - add traversal, projection, pagination, BM25 search, or vector search to an existing query
 
-Do not use this skill as the main guide for hand-authored `POST /v1/query`
+Do not use this skill as the main guide for hand-authored `POST /v2/query`
 payloads — use `helix-query-json-dynamic`. Stored routes, query registration,
 and `queries.json` bundles are not supported by the v3 SDK.
 
@@ -142,7 +142,7 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 | Mutations | `add_n`, `add_e`, `set_property`, `remove_property`, `drop`, `drop_edge`, `drop_edge_labeled`, `drop_edge_by_id` | `drop_edge_by_id` is multigraph-safe. |
 | Indexes | `IndexSpec::node_equality / node_range / node_range_desc / node_range_with_direction / edge_equality / edge_range / edge_range_desc / edge_range_with_direction / node_vector / node_text / edge_vector / edge_text` plus `create_index` / `drop_index`; convenience: `create_vector_index_nodes`, `create_text_index_nodes`, edge variants | Use `.create_index(spec)` from a write batch. `RangeIndexDirection::Desc` sets descending physical order. |
 | Transport | `QueryRequest::{read,write}(batch).with_query_name("name").with_parameter_value(...).with_parameter_type(...).to_json_string()` | Bridge from Rust DSL to the JSON payload (`helix-query-json-dynamic`). Direct unnamed requests serialize `query_name: null`; `#[query]` callable helpers set `query_name` to the Rust function name. |
-| Client | `Client::new(Some(url))?.with_api_key(...).query(request).send().await` | Sends direct requests to `POST /v1/query`. Advanced headers use `request_builder::<R>().writer_only()/.warm_only()/.should_await_durability(b).query(request).send().await`. |
+| Client | `Client::new(Some(url))?.with_api_key(...).query(request).send().await` | Sends direct requests to `POST /v2/query`. Advanced headers use `request_builder::<R>().writer_only()/.warm_only()/.should_await_durability(b).query(request).send().await`. |
 
 See `REFERENCE.md` for signatures and typestate constraints.
 

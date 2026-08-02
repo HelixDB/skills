@@ -14,7 +14,7 @@ application code to call. The forthcoming package is `helix-db`, imported as
 `helixdb`. No Python package version is invented before publication.
 
 The Python DSL emits the same direct-request JSON AST as the Rust, TypeScript,
-and Go SDKs. Use the built-in `Client` to post requests to `/v1/query`.
+and Go SDKs. Use the built-in `Client` to post requests to `/v2/query`.
 
 ## When To Use
 
@@ -22,7 +22,7 @@ Use this skill when the task is to:
 
 - write a new Helix query in Python
 - revise an existing Python query function
-- produce a dynamic `POST /v1/query` request with `to_query_json` / `to_query_request`
+- produce a dynamic `POST /v2/query` request with `to_query_json` / `to_query_request`
 - send a request with `Client(...).query(request)`
 - retain correlated traversal values with row bindings
 - add traversal, projection, pagination, BM25 text search, or vector search to Python code
@@ -105,7 +105,7 @@ request = find_users().to_query_request(
 ```
 
 - `to_query_request(...)` returns a `QueryRequest` object.
-- `to_query_json(...)` returns the JSON string for `POST /v1/query`.
+- `to_query_json(...)` returns the JSON string for `POST /v2/query`.
 - Omit `query_name` for ad-hoc requests (`query_name: null`); set it for logs and diagnostics.
 - If you pass parameter values without a schema, the SDK raises `TypeError`.
 

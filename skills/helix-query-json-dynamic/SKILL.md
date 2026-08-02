@@ -1,6 +1,6 @@
 ---
 name: helix-query-json-dynamic
-description: Author and debug direct HelixDB v3 JSON query requests for POST /v1/query. Use for request envelopes, nested read/write batches, operation-tree AST nodes, parameters and parameter_types, and normalized response objects. Do not use the removed step-array or queries.json bundle formats.
+description: Author and debug direct HelixDB v3 JSON query requests for POST /v2/query. Use for request envelopes, nested read/write batches, operation-tree AST nodes, parameters and parameter_types, and normalized response objects. Do not use the removed step-array or queries.json bundle formats.
 license: MIT
 metadata:
   author: HelixDB
@@ -10,7 +10,7 @@ metadata:
 # HelixDB v3 JSON Requests
 
 Use this skill when a caller needs raw JSON rather than a v3 SDK builder. A request is
-one direct operation-tree query sent to `POST /v1/query`.
+one direct operation-tree query sent to `POST /v2/query`.
 
 ## Request contract
 
@@ -154,10 +154,24 @@ Parameters are untagged JSON values in `parameters` and their schemas are
 ## Execute a request
 
 ```bash
-curl -sS http://localhost:6969/v1/query \
+curl -sS http://localhost:6969/v2/query \
   -H 'content-type: application/json' \
   --data-binary @request.json
 ```
+
+For Helix Cloud GA, send both the Bearer API key and tenant context:
+
+```bash
+curl -sS "${HELIX_URL%/}/v2/query" \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer ${HELIX_API_KEY}" \
+  -H "x-helix-tenant-id: ${HELIX_TENANT_ID}" \
+  --data-binary @request.json
+```
+
+`HELIX_TENANT_ID` is an application-side variable in this example; the wire
+contract is the `x-helix-tenant-id` header. Omitting it in GA mode returns
+`400` with code `TENANT_ID_REQUIRED`.
 
 For the CLI, use the same file directly:
 

@@ -68,7 +68,7 @@ g().text_search_nodes_with(
 
 ## Warm reads, not writes
 
-All v3 SDK requests use the direct `POST /v1/query` route. Warm stable,
+All v3 SDK requests use the direct `POST /v2/query` route. Warm stable,
 performance-sensitive reads with `X-Helix-Warm: true`.
 
 Write warming is rejected. Fix a slow write's query and storage-access pattern.
