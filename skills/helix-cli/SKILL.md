@@ -15,7 +15,7 @@ The mental model that matters most:
 
 - **There is no `helix compile`, no `helix check`, and no `.hx` query workflow.** Those are stale v2 concepts — the v3 CLI hides them and errors with a hint if you try them.
 - **Queries are JSON "dynamic queries"** sent to a *running* instance via `POST /v2/query` (`helix query`). Validation happens server-side, in the instance.
-- **Local instances are Docker/Podman containers** (image `ghcr.io/helixdb/helixdb:v0.0.1`). `helix start` runs one; in-memory by default, MinIO-backed with `--disk`.
+- **Local instances are Docker/Podman containers** (image `ghcr.io/helixdb/helixdb:v0.0.3`). `helix start` runs one; in-memory by default, MinIO-backed with `--disk`.
 - **Helix Cloud instances deploy via `helix push`**, with auth and metadata managed by `helix auth`, `helix sync`, and the `workspace`/`project`/`cluster` commands.
 
 This skill is about *driving the CLI*. For authoring the query bodies themselves, use the query skills (`helix-query-rust`, `helix-query-typescript`, `helix-query-json-dynamic`, etc.).

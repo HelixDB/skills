@@ -54,7 +54,7 @@ These skills cover **authoring** Helix queries; they assume you already have a H
    ```
 4. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
 
-The local runtime uses `ghcr.io/helixdb/helixdb:v0.0.1`. It is in-memory by
+The local runtime uses `ghcr.io/helixdb/helixdb:v0.0.3`. It is in-memory by
 default; `--disk` uses a CLI-managed MinIO service for persistence. The skills
 produce direct `POST /v2/query` requests for a running instance reachable at a
 server URL. Helix Cloud uses Bearer authentication; GA requests also require

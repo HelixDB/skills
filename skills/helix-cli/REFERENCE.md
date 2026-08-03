@@ -65,7 +65,7 @@ Add an instance to an existing `helix.toml` without clobbering others.
 
 ### `helix start [INSTANCE] [OPTIONS]` (alias `run`)
 
-Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/helixdb:v0.0.1`, publishes the host port to container port 8080, and waits (~30s) until `POST /v2/query` is ready before returning.
+Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/helixdb:v0.0.3`, publishes the host port to container port 8080, and waits (~30s) until `POST /v2/query` is ready before returning.
 
 | Flag | Purpose |
 |---|---|
@@ -288,7 +288,7 @@ container_runtime = "docker"    # "docker" (default) or "podman"
 [local.dev]                     # one block per local instance
 port = 6969                     # default 6969 (host → container port 8080)
 image = "ghcr.io/helixdb/helixdb"   # default
-tag = "v0.0.1"                       # default
+tag = "v0.0.3"                       # default
 storage = "memory"              # "memory" (default) or "disk"
 
 [local.staging]
@@ -329,7 +329,7 @@ max_instances = 1               # default 1
 | Constant | Value |
 |---|---|
 | Default local port | `6969` |
-| Dev image / tag | `ghcr.io/helixdb/helixdb` / `v0.0.1` |
+| Dev image / tag | `ghcr.io/helixdb/helixdb` / `v0.0.3` |
 | Container name | `helix-<project>-<instance>` |
 | Container internal port | `8080` |
 | Default auth header | `Authorization` |

@@ -71,7 +71,7 @@ g().text_search_nodes_with(
 All v3 SDK requests use the direct `POST /v2/query` route. Warm stable,
 performance-sensitive reads with `X-Helix-Warm: true`.
 
-The standalone `v0.0.1` runtime warms its single process and returns the normal
+The standalone `v0.0.3` runtime warms its single process and returns the normal
 query body. Helix Cloud fans the read out to every eligible backend and returns
 `204 No Content` after at least one succeeds. Add
 `X-Helix-Require-Writer: true` to target only the writer.

@@ -351,4 +351,4 @@ Do not document internal `current`/`bindings` rows as the public response.
 - Confirm every non-source operation has the correct nested `input`.
 - Confirm all enum tags are `snake_case`.
 - Compare hand-written JSON with an SDK serializer for the same query.
-- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.1`.
+- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.3`.

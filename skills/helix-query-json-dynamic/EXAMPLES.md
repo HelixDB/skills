@@ -233,7 +233,7 @@ Expected shape:
 }
 ```
 
-Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.1` instance:
+Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.3` instance:
 
 ```json
 {

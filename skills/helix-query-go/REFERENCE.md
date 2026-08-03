@@ -400,7 +400,7 @@ helix.AwaitDurability(true)
 `helix.WarmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; combine it with `helix.WriterOnly()` to target only the
-authoritative writer. Standalone `v0.0.1` warming returns the normal response.
+authoritative writer. Standalone `v0.0.3` warming returns the normal response.
 
 Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more likely to hit HTTP 409 write conflicts, and awaiting durability reduces them. It does not eliminate conflicts, so callers still own retry policy.
 

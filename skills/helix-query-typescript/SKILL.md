@@ -135,7 +135,7 @@ function findUsers(p = params) {
 `warmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writerOnly()` to target only the authoritative writer.
-Standalone `v0.0.1` warming returns the normal query response.
+Standalone `v0.0.3` warming returns the normal query response.
 
 ## Number & DateTime Handling
 

@@ -138,7 +138,7 @@ Rules:
 
 - warming only supports reads
 - it uses the same request shape as the live read
-- standalone `v0.0.1` warms one process and returns `200 OK` with the normal response
+- standalone `v0.0.3` warms one process and returns `200 OK` with the normal response
 - Helix Cloud fans out to every eligible backend and returns `204 No Content`
   after at least one succeeds; partial backend failure is best-effort success
 - combine `X-Helix-Warm: true` with `X-Helix-Require-Writer: true` to warm only

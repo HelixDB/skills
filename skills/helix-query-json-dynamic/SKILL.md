@@ -182,7 +182,7 @@ the authoritative writer. Partial backend failure is best-effort success; if
 every target fails, the normal deterministic error is returned. A managed
 cluster with no eligible target returns `503 Service Unavailable`.
 
-The standalone `v0.0.1` runtime instead warms its single process and returns
+The standalone `v0.0.3` runtime instead warms its single process and returns
 `200 OK` with the normal query body. Header values `false` and `0` use the
 ordinary query path; warm writes and any other header value return
 `400 Bad Request`.

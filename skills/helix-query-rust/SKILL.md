@@ -147,7 +147,7 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 `warm_only()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writer_only()` to target only the authoritative writer.
-Standalone `v0.0.1` warming returns the normal query response.
+Standalone `v0.0.3` warming returns the normal query response.
 
 See `REFERENCE.md` for signatures and typestate constraints.
 

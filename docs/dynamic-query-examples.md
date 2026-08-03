@@ -99,7 +99,7 @@ A write request uses `request_type: "write"` and a `write` batch:
 }
 ```
 
-On a clean `ghcr.io/helixdb/helixdb:v0.0.1` instance, the response is normalized:
+On a clean `ghcr.io/helixdb/helixdb:v0.0.3` instance, the response is normalized:
 
 ```json
 {
@@ -115,7 +115,7 @@ For a direct read request, warming uses the same body plus:
 X-Helix-Warm: true
 ```
 
-On the standalone `ghcr.io/helixdb/helixdb:v0.0.1` runtime, a warm read executes
+On the standalone `ghcr.io/helixdb/helixdb:v0.0.3` runtime, a warm read executes
 on the single process and returns `200 OK` with the normal normalized response.
 
 On Helix Cloud, the `/v2/query` gateway fans the same read out to every eligible

@@ -631,6 +631,6 @@ assert!(response.is_empty());
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writer_only().warm_only()` to warm only the authoritative
-writer. The standalone `v0.0.1` runtime warms one process and returns the normal
+writer. The standalone `v0.0.3` runtime warms one process and returns the normal
 query body. Warming is strictly read-only; a `WriteBatch` with
 `X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
