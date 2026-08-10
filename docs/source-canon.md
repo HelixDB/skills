@@ -13,8 +13,8 @@ When an agent is writing or reviewing Helix query code, it should use sources in
 5. the v3 SDK source on `HelixDB/helix-db` `main` for exact public names
 6. public skill-format docs for packaging and discovery behavior
 
-This ordering is intentional. The skills in this repo describe the forthcoming
-v3 SDKs and may lead the currently published packages. Public documentation is
+This ordering is intentional. The skills track published v3 SDKs where they are
+available and may lead unreleased packages elsewhere. Public documentation is
 the behavior contract; use the SDK source to confirm exact identifiers rather
 than guessing from an older release.
 
@@ -79,7 +79,7 @@ These files should be self-contained enough that public skills can point to them
 - Do not use machine-local filesystem paths as published source pointers.
 - Do not treat application-specific implementations as canonical Helix references.
 - If a useful idea is learned from an implementation, convert it into a generic documented pattern before publishing it here.
-- Treat v3 installation commands as forward-looking until the coordinated release; do not substitute an older published SDK.
+- Keep installation commands unpinned and verify registry availability before claiming that an SDK is published.
 - Do not use a feature branch in a published source link. The coordinated repositories are consumed from `main`.
 - Prefer generic labels, properties, and edge names in published examples unless a public Helix doc requires a more specific term.
 - Use the user's local repo as the authority for their actual schema, naming, and route style.
