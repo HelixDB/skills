@@ -362,6 +362,6 @@ Before finishing a Cypher translation:
 - `docs/dsl-cheatsheet.md`
 - `examples/authoring-patterns.md`
 - `examples/search-patterns.md`
-- `https://docs.helix-db.com/documentation/hql/traversals`
-- `https://docs.helix-db.com/documentation/hql/conditionals`
-- `https://docs.helix-db.com/documentation/hql/result_ops`
+- `https://docs.helix-db.com/database/helix-db/query-guides/traversals`
+- `https://docs.helix-db.com/database/helix-db/query-guides/filtering`
+- `https://docs.helix-db.com/database/helix-db/query-guides/advanced`

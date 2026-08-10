@@ -8,7 +8,7 @@ Copy-pasteable, end-to-end sessions for the `helix` CLI. Pair these with `REFERE
 # Scaffold a project (writes helix.toml, .helix/, examples/request.json, .gitignore entries)
 helix init local
 
-# Start the default 'dev' instance — pulls the image and waits until /v1/query is ready
+# Start the default 'dev' instance — pulls the image and waits until /v2/query is ready
 helix start dev
 
 # Confirm it is up and note the URL
@@ -33,21 +33,31 @@ A minimal `examples/request.json` (count `User` nodes):
   "request_type": "read",
   "query_name": "node_count",
   "query": {
-    "queries": [
-      {
-        "Query": {
-          "name": "node_count",
-          "steps": [
-            { "NWhere": { "Eq": ["$label", { "String": "User" }] } },
-            "Count"
-          ],
-          "condition": null
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "node_count",
+            "root": {
+              "count": {
+                "input": {
+                  "nodes_where": {
+                    "predicate": {
+                      "eq": {
+                        "left": { "property": "$label" },
+                        "right": { "constant": { "string": "User" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
-      }
-    ],
-    "returns": ["node_count"]
-  },
-  "parameters": {}
+      ],
+      "returns": ["node_count"]
+    }
+  }
 }
 ```
 
@@ -76,7 +86,7 @@ helix prune staging
 helix query dev --file examples/request.json
 
 # (b) Inline JSON string
-helix query dev --json '{"request_type":"read","query_name":"ping","query":{"queries":[],"returns":[]},"parameters":{}}'
+helix query dev --json '{"request_type":"read","query_name":"node_count","query":{"read":{"entries":[{"query":{"name":"node_count","root":{"count":{"input":{"nodes_where":{"predicate":{"eq":{"left":{"property":"$label"},"right":{"constant":{"string":"User"}}}}}}}}}}],"returns":["node_count"]}}}'
 
 # (c) Inline TypeScript DSL expression (like `mysql -e`; needs Node 20+)
 helix query dev -e 'readBatch().varAs("c", g().nWithLabel("User").count()).returning(["c"])'
@@ -93,11 +103,16 @@ readBatch()
   .returning(["c"]);
 ```
 
-Pre-warm caches without printing output (read-only):
+Execute the read through warm mode to populate caches (the normal result is
+still printed by the standalone local runtime):
 
 ```bash
 helix query dev --file examples/request.json --warm
 ```
+
+For Helix Cloud, the same flag fans the read out to every eligible database
+backend. The CLI prints nothing when the gateway returns `204 No Content` after
+at least one target succeeds.
 
 ## 4. Full Helix Cloud Deploy
 
@@ -161,7 +176,7 @@ HELIX_NO_UPDATE_CHECK=1 helix status # skip the update check in CI
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `helix compile` / `helix check` errors out | Removed in v3 (validation is server-side) | Drop the step; queries are validated when sent to `POST /v1/query`. |
+| `helix compile` / `helix check` errors out | Removed in v3 (validation is server-side) | Drop the step; queries are validated when sent to `POST /v2/query`. |
 | `helix deploy` errors out | Removed | Use `helix push <instance>`. |
 | `helix query` connection refused (local) | Instance not started / not ready | `helix status`, then `helix start <instance>`; the start command waits for readiness. |
 | `helix start` fails immediately | Container runtime not running | Start Docker/Podman; check `[project] container_runtime`. |

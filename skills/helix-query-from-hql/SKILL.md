@@ -1,16 +1,16 @@
 ---
 name: helix-query-from-hql
-description: Translate legacy HelixDB HQL (.hx `QUERY ... => ... RETURN`) into the Rust DSL or TypeScript DSL. Use when the input contains HQL syntax — QUERY, N<T>/E<T>/V<T>, AddN/AddE/AddV, Out/In/OutE/InE, FromN/ToN, WHERE/EQ/GT/EXISTS, SearchV/SearchBM25, GROUP_BY/AGGREGATE_BY, ORDER<Desc>/RANGE, RETURN, UpsertN, RerankRRF, ShortestPath, Embed, or .hx files — and the goal is an equivalent Rust or TypeScript DSL query. Flags HQL features with no DSL equivalent. See REFERENCE.md for the full mapping table and EXAMPLES.md for worked HQL→Rust→TS migrations.
+description: Translate legacy HelixDB HQL (.hx QUERY/RETURN syntax) into direct forthcoming v3 Rust or TypeScript SDK requests. Use when the input contains HQL concepts such as typed node, edge, or vector sources; AddN/AddE/AddV; Out/In/OutE/InE; FromN/ToN; WHERE/EQ/GT/EXISTS; SearchV/SearchBM25; GROUP_BY/AGGREGATE_BY; ORDER/RANGE; UpsertN; RerankRRF; ShortestPath; Embed; or .hx files. Flags HQL features with no v3 DSL equivalent.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.0
+  version: 3.0.0
 ---
 
 # HQL To Helix DSL Queries
 
 Translate legacy **HelixQL (HQL)** — the deprecated `.hx` text language (`QUERY Foo(...) => ... RETURN ...`) —
-into the **Rust DSL** or **TypeScript DSL** that replace it in HelixDB v2. Both DSLs serialize to the **same JSON
+into the forthcoming **v3 Rust DSL** or **v3 TypeScript DSL**. Both serialize to the **same JSON
 query AST**, so a Rust query and a TypeScript query that emit identical JSON are semantically identical — that is
 the lever you use to confirm a migration is faithful.
 
@@ -23,12 +23,12 @@ logic into application code — never invent a fake DSL shape.
 Use this skill when the task is to:
 
 - translate an HQL query or a `.hx` file into the Rust DSL or the TypeScript DSL
-- port a HelixQL route into the v2 code-native DSL
+- port a HelixQL route into a v3 code-native SDK
 - decide how an HQL construct (traversal, filter, projection, search, write) maps to a DSL builder
 - identify which parts of an HQL query cannot be expressed in the DSL and must move to app code
 
 Do not use this skill to author fresh DSL queries from scratch (use `helix-query-rust` / `helix-query-typescript`),
-to translate Cypher or Gremlin (use those skills), or to hand-build dynamic inline JSON (use
+to translate Cypher or Gremlin (use those skills), or to hand-build direct JSON (use
 `helix-query-json-dynamic`).
 
 ## First Steps
@@ -51,8 +51,9 @@ Before translating:
 1. **Header → batch + params.** `QUERY Foo(p: T) =>` becomes a `read_batch()`/`write_batch()` expression (Rust)
    or a `readBatch()`/`writeBatch()` builder with `defineParams` (TS). Reference each HQL parameter explicitly:
    Rust `Predicate::eq_param("p","p")` / `NodeRef::param("p")` / `Expr::param("p")`; TS `Predicate.eqParam`,
-   `NodeRef.param`, `Expr.param`. (To bundle a Rust query into `queries.json`, wrap the body in a `#[register] fn`
-   and run `generate()`.) HQL integer widths (`U8`/`I32`/`U64`/…) all become `i64` / `param.i64()`; `ID` becomes
+   `NodeRef.param`, `Expr.param`. Rust builders may be wrapped in `#[query]`;
+   TypeScript builders use `toQueryRequest` or `toQueryJson`. HQL integer widths
+   (`U8`/`I32`/`U64`/…) all become `i64` / `param.i64()`; `ID` becomes
    `String` / `param.string()`; `[F64]` becomes `Vec<f64>` / `param.array(param.f64())`.
 2. **Anchor.** Translate the first source to the narrowest form: `N<T>(id)` → `g().n(NodeRef::id/param(..))`;
    `N<T>({f:v})` → `n_where(SourcePredicate::eq(..))` (index-friendly) or `nWithLabel().where(eqParam(..))`;
@@ -123,7 +124,8 @@ tenant-scoped, and project `$distance`/`$score` at the search step (it is gone a
 ### 8. Query header, params, and return
 
 Each `binding <- expr` → `.var_as("binding", expr)` / `.varAs(..)`. `RETURN a, b` → `.returning(["a","b"])`.
-`RETURN NONE` → `.returning([])`. `RETURN "literal"` has no form — return a binding instead. Reference parameters
+`RETURN NONE` → Rust `.returning(Vec::<&str>::new())` or TypeScript
+`.returning([])`. `RETURN "literal"` has no form — return a binding instead. Reference parameters
 by **name string** in predicates (`Predicate::eq_param("status","status")`).
 
 ### 9. `FOR ... IN` over an array parameter
@@ -209,7 +211,7 @@ function activeFollowing(_ = activeFollowingParams) {
     .returning(["results"]);
 }
 
-const body = activeFollowing().toDynamicJson(activeFollowingParams, { userId: "u-42", status: "active", limit: 20n });
+const body = activeFollowing().toQueryJson(activeFollowingParams, { userId: "u-42", status: "active", limit: 20n });
 ```
 
 ## Anti-Patterns
@@ -220,7 +222,7 @@ Do not:
 - mix up the spellings: Rust `.in_(Some("X"))`/`.where_(..)` vs TS `.in("X")`/`.where(..)`; `::` vs `.` constructors
 - invert edge endpoints — `::FromN` is `.in_n()`, `::ToN` is `.out_n()`
 - translate `EXISTS`/count-in-`WHERE` into a `Predicate` (it has no such variant) — use set ops or app code
-- drop the tenant value on a `SearchV`/`SearchBM25` that was tenant-scoped, or read `$distance` after a hop
+- drop the tenant value on a `SearchV`/`SearchBM25` that was tenant-scoped, or read `$distance`/`$score` after a hop
 - invent a DSL shape for `Upsert`/`Rerank`/`ShortestPath`/`Embed`/advanced math — flag and defer to app code
 - return all properties by default — match the HQL projection
 - invent labels, edge labels, or properties instead of reading the target schema
@@ -246,11 +248,11 @@ The fidelity check is **compile → AST parity → run**:
 
 1. **Compile.** Rust: `cargo build` / `cargo test` — the typestate checker rejects write ops in a `ReadBatch` and
    non-`SourcePredicate` at a source. TS: `tsc` — the type system rejects a write traversal inside `readBatch`.
-2. **AST parity.** Emit raw batch JSON for both languages, or emit full dynamic envelopes only after setting the same
-   Rust `query_name` / TS `{ queryName }` (`req.to_json_string()` / `batch.toDynamicJson(params, values, { queryName })`,
-   or full bundles via `generate()` → `queries.json`) and diff them. Identical JSON means the Rust and TS migrations
+2. **AST parity.** Emit full direct requests after setting the same
+   Rust `query_name` / TS `{ queryName }` (`req.to_json_string()` / `batch.toQueryJson(params, values, { queryName })`,
+   and diff them. Identical JSON means the Rust and TS migrations
    agree and match the wire format.
-3. **Run.** Deploy both bundles (or POST the dynamic JSON to a test Helix instance at `POST /v1/query`) on the
+3. **Run.** POST both direct requests to a test Helix instance at `POST /v2/query` on the
    **same dataset** the original HQL ran on, and compare row counts, ordering, and projected fields against the
    HQL output. If the `helixdb-docs` MCP tools or a `helix` CLI are available, use them to sanity-check builder
    names and run the queries.
@@ -264,6 +266,6 @@ The fidelity check is **compile → AST parity → run**:
 
 - `helix-query-rust` — full Rust DSL builder catalog; use it to validate the Rust query you produce.
 - `helix-query-typescript` — full TypeScript DSL catalog; the TS query emits the same JSON AST.
-- `helix-query-json-dynamic` — the inline JSON form of the same query, useful for the AST-parity check.
+- `helix-query-json-dynamic` — the direct JSON form of the same request, useful for the AST-parity check.
 - `helix-query-optimize` — once migrated, use this to confirm the anchor and indexes are efficient.
 - `helix-memory-system` — for hybrid recall (vector + BM25 + app-side RRF) when migrating reranked search.

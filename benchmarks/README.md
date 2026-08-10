@@ -1,6 +1,7 @@
 # Benchmarks
 
-This directory will hold prompt sets, gold answers, and scoring notes for each public skill.
+This directory holds prompt sets, gold answers, and scoring notes for the public v3
+skills.
 
 Current benchmark groups with prompt coverage:
 
@@ -14,7 +15,8 @@ Planned next benchmark groups:
 - `optimize`
 - `sql`
 
-The goal is to evaluate whether a skill improves agent output quality, not just whether the skill reads well.
+The goal is to evaluate whether a skill improves agent output quality and produces
+direct v3 requests, not just whether the skill reads well.
 
 Every benchmark case should include:
 
@@ -23,3 +25,7 @@ Every benchmark case should include:
 - the key behaviors being tested
 - a gold translation sketch or gold expectations
 - a flat scoring checklist
+
+Gold answers must use the forthcoming v3 SDK names and the nested direct-request JSON
+AST. Stored routes, registration, step arrays, and query bundles are failures unless
+the prompt explicitly asks to identify invalid legacy guidance.

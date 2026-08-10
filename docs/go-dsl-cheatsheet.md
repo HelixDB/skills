@@ -1,6 +1,6 @@
 # Helix Go SDK Cheat Sheet
 
-Quick reference for dynamic-first HelixDB queries in Go.
+Quick reference for direct HelixDB v3 queries in Go.
 
 ## Core Shape
 
@@ -18,7 +18,7 @@ func FindUsers(tenantID string, limit int64) helix.Request {
 
 ## Execute
 
-```go
+```text
 client, err := helix.NewClient("https://helix.example.com", helix.WithAPIKey("hx_secret"))
 var out FindUsersResponse
 err = client.Exec(ctx, FindUsers("acme", 25), &out)
@@ -37,13 +37,13 @@ err = client.Exec(ctx, FindUsers("acme", 25), &out)
 
 - do not use `.With(...)`
 - do not use `WithQueryName(...)`
-- do not use stored-query or bundle workflows for Go v1
+- do not use stored-query or bundle workflows in the v3 SDK
 - do not call JSON serialization in normal application code
 - do not call `.Returning()` with no names unless the response is intentionally empty
 
 ## Common Builders
 
-```go
+```text
 helix.G().NWithLabel("User")
 helix.G().NWhere(helix.SourceEq("tenantId", tenant))
 helix.G().Out("FOLLOWS").Dedup().Limit(100)
@@ -54,7 +54,7 @@ helix.G().SetProperty("updatedAt", updatedAtParam)
 
 ## Search
 
-```go
+```text
 vector := q.ParamArray("query_vector", queryVector, helix.ParamTypeF32())
 limit := q.ParamI64("limit", int64(10))
 tenant := q.ParamString("tenant_id", tenantID)

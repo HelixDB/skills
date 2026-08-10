@@ -32,7 +32,7 @@ RETURN u
 
 ## Gold Translation Sketch
 
-```rust
+```text
 write_batch()
     .var_as(
         "existing",
@@ -49,7 +49,7 @@ write_batch()
         "created",
         BatchCondition::VarEmpty("existing".to_string()),
         // create node and set createdAt and updatedAt using the server-side timestamp helper
-        g().add_n("User", vec![]),
+        g().add_n("User", Vec::<(&str, PropertyInput)>::new()),
     )
     .returning(["updated", "created"])
 ```

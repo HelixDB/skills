@@ -37,7 +37,7 @@ DETACH DELETE u
 
 ## Gold Translation Sketch
 
-```rust
+```text
 // array-driven relationship creation
 write_batch()
     .for_each_param("memberships", /* per-item lookup and add_e(...) work */)

@@ -20,7 +20,7 @@ Preferred order:
 
 Example:
 
-```rust
+```text
 // weaker
 g().n_with_label("Entity")
     .where_(Predicate::eq_param("status", "status"))
@@ -66,7 +66,7 @@ Prefer:
 
 Example:
 
-```rust
+```text
 // weaker
 g().vector_search_nodes_with(...)
     .value_map(None::<Vec<&str>>)
@@ -105,7 +105,7 @@ For BM25 routes, check:
 
 Example:
 
-```rust
+```text
 g().text_search_nodes_with(
     "Document",
     "body",
@@ -128,7 +128,7 @@ For vector routes, check:
 
 ## 8. Steady-Traffic Reads
 
-Every query executes on the dynamic route (`POST /v1/query`), which parses and validates the inline AST per request. For stable, production-facing reads, warm the caches (see §9) rather than treating per-request parsing as the optimization target.
+Every query executes on the dynamic route (`POST /v2/query`), which parses and validates the inline AST per request. For stable, production-facing reads, warm the caches (see §9) rather than treating per-request parsing as the optimization target.
 
 ## 9. Query Warming
 
@@ -138,7 +138,12 @@ Rules:
 
 - warming only supports reads
 - it uses the same request shape as the live read
-- it returns `204 No Content`
+- standalone `v0.0.3` warms one process and returns `200 OK` with the normal response
+- Helix Cloud fans out to every eligible backend and returns `204 No Content`
+  after at least one succeeds; partial backend failure is best-effort success
+- combine `X-Helix-Warm: true` with `X-Helix-Require-Writer: true` to warm only
+  the authoritative writer
+- invalid warm-header values and warm writes return `400 Bad Request`
 
 ## 10. Common Optimization Mistakes
 

@@ -2,13 +2,17 @@
 
 Hosted `skills.sh` repository for HelixDB agent skills.
 
+The query skills target the forthcoming HelixDB v3 SDKs. The SDK packages are
+not published yet; installation commands describe the names that will be used
+when the coordinated v3 release reaches `main`.
+
 These skills are for agents that need to:
 
 - write Helix queries in the Rust, TypeScript, Python, and Go SDK DSLs
 - write dynamic-first Helix queries in Go
 - translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
-- build correct dynamic `POST /v1/query` payloads
+- build correct dynamic `POST /v2/query` payloads
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 
 ## Status
@@ -16,7 +20,6 @@ These skills are for agents that need to:
 Available now:
 
 - `helix-cli`
-- `helix-query-authoring`
 - `helix-query-from-cypher`
 - `helix-query-from-gremlin`
 - `helix-query-from-hql`
@@ -51,7 +54,14 @@ These skills cover **authoring** Helix queries; they assume you already have a H
    ```
 4. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
 
-The skills are SDK- and instance-agnostic: they produce query code and `POST /v1/query` payloads for a running instance reachable at a gateway URL (plus an API key for Helix Cloud). There is no `helix compile`/`helix check` step — queries are validated server-side when sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and the non-interactive/agent path.
+The local runtime uses `ghcr.io/helixdb/helixdb:v0.0.3`. It is in-memory by
+default; `--disk` uses a CLI-managed MinIO service for persistence. The skills
+produce direct `POST /v2/query` requests for a running instance reachable at a
+server URL. Helix Cloud uses Bearer authentication; GA requests also require
+the tenant context in `x-helix-tenant-id`. There is no
+`helix compile`/`helix check` step — queries are validated server-side when
+sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and
+the non-interactive/agent path.
 
 ## Repository Layout
 
@@ -59,7 +69,6 @@ The skills are SDK- and instance-agnostic: they produce query code and `POST /v1
 - `docs/` contains shared reference material used while authoring skills
 - `examples/` contains generic canonical examples and before-and-after patterns
 - `benchmarks/` contains evaluation scaffolding for prompt and gold-answer testing
-- `helix-skills-repo-plan.md` is the working implementation plan and checklist
 
 ## Current Skills
 
@@ -71,32 +80,21 @@ It teaches agents to:
 
 - use the v3 mental model: a runtime orchestrator, not a compiler (no `helix compile`/`helix check`, no `.hx` workflow)
 - run the local dev loop (`helix init local` → `start` → `query` → `stop`) with Docker/Podman, including in-memory vs `--disk` persistence
-- send dynamic queries to `POST /v1/query` via `helix query` (`--file`/`--json`/`-e` TypeScript DSL/`--ts-file`)
+- send dynamic queries to `POST /v2/query` via `helix query` (`--file`/`--json`/`-e` TypeScript DSL/`--ts-file`)
 - operate on Helix Cloud (`helix auth`, `push`, `sync`, `workspace`/`project`/`cluster`)
 - read and edit `helix.toml` and the `~/.helix/*` state files
 
 It points to the `helix-query-*` skills for the query bodies themselves; see its `REFERENCE.md` for the full command catalog and `EXAMPLES.md` for end-to-end sessions.
 
-### `helix-query-authoring`
-
-Use this skill when an agent needs to write or revise Helix Rust DSL queries from scratch.
-
-It teaches agents to:
-
-- inspect local query patterns before inventing new ones
-- choose `read_batch()` versus `write_batch()` correctly
-- anchor on the narrowest indexed node or edge set first
-- preserve tenant scope for text and vector search
-- shape outputs intentionally with `project`, `value_map`, `limit`, `range`, and `dedup`
-
 ### `helix-query-json-dynamic`
 
-Use this skill when an agent needs to build or debug dynamic inline-query requests for `POST /v1/query`.
+Use this skill when an agent needs to build or debug direct JSON requests for
+`POST /v2/query`.
 
 It teaches agents to:
 
 - use the correct request envelope
-- target the dynamic route (`POST /v1/query`) with an inline `query` object
+- target the dynamic route (`POST /v2/query`) with an inline `query` object
 - add `parameter_types` when typed coercion matters
 - send `DateTime` values correctly
 - avoid malformed bundle-shaped payloads
@@ -113,7 +111,7 @@ It teaches agents to:
 - avoid accidentally inlining request-specific literals in predicates and source predicates
 - execute dynamic requests with `client.Exec(ctx, request, &out)`
 - handle HTTP 409 conflicts explicitly with caller-owned retries
-- avoid `.With(...)`, `WithQueryName(...)`, and stored-query bundle workflows for Go v1
+- avoid stored-query registration and query-bundle workflows, which are not part of the v3 SDK
 
 ### `helix-query-python`
 
@@ -123,9 +121,9 @@ It teaches agents to:
 
 - write Pythonic query builders with `read_batch`, `write_batch`, `g`, and snake_case traversal methods
 - declare runtime params with `define_params` and `param.*`
-- produce dynamic requests with `to_dynamic_request` / `to_dynamic_json`
-- execute requests with `Client(...).query().dynamic(request).send()` or `.stored(name)`
-- generate `queries.json` bundles with `define_queries`, `register_read`, and `register_write`
+- produce direct requests with `to_query_request` / `to_query_json`
+- execute requests with `Client(...).query(request)`
+- use row bindings for correlated multi-hop projections
 - keep Python queries structurally identical to the Rust/TypeScript/Go JSON AST
 
 ### `helix-query-from-cypher`
@@ -152,7 +150,7 @@ It teaches agents to:
 
 ### `helix-query-from-hql`
 
-Use this skill when an agent needs to migrate legacy HelixQL (HQL) `.hx` queries into the v2 Rust or TypeScript DSL.
+Use this skill when an agent needs to migrate legacy HelixQL (HQL) `.hx` queries into the v3 Rust or TypeScript DSL.
 
 It teaches agents to:
 
@@ -184,7 +182,7 @@ It teaches agents to:
 - run the full write/maintain lifecycle (dedup-on-generate, reinforce-on-access, supersede/correct, soft-delete, decay and expiry sweeps, upsert-and-link categorisation)
 - build hybrid recall that fuses vector + BM25 app-side and expands through the graph
 
-It is TypeScript-first (`@helixdb/enterprise-ql`) with a Rust DSL variant in `EXAMPLES.rust.md`.
+It is TypeScript-first (`@helix-db/helix-db@3.0.0`) with a Rust v3 DSL variant in `EXAMPLES.rust.md`.
 
 ## Shared References
 

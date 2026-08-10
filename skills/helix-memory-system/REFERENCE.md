@@ -222,14 +222,14 @@ Create these from a **write** batch before generation/retrieval:
 - `IndexSpec.nodeEquality("Chunk", "tenant_id")`
 - `IndexSpec.nodeEquality("Chunk", "userId")`
 - `IndexSpec.nodeEquality("Chunk", "documentId")`
-- `IndexSpec.nodeVector("Chunk", "embedding", "tenant_id")`
+- `IndexSpec.nodeVector("Chunk", "embedding", 1536, VectorDistanceMetric.Cosine, "tenant_id")`
 - `IndexSpec.nodeText("Chunk", "content", "tenant_id")`
 - `IndexSpec.nodeUniqueEquality("Memory", "memoryId")`
 - `IndexSpec.nodeEquality("Memory", "tenant_id")`
 - `IndexSpec.nodeEquality("Memory", "userId")`
 - `IndexSpec.nodeEquality("Memory", "isLatest")`
 - `IndexSpec.nodeRange("Memory", "eventStartAt")` when temporal/event recall is needed
-- `IndexSpec.nodeVector("Memory", "embedding", "tenant_id")`
+- `IndexSpec.nodeVector("Memory", "embedding", 1536, VectorDistanceMetric.Cosine, "tenant_id")`
 - `IndexSpec.nodeText("Memory", "content", "tenant_id")`
 - `IndexSpec.nodeUniqueEquality("Category", "categoryKey")`
 - `IndexSpec.nodeEquality("Category", "tenant_id")`
@@ -270,7 +270,10 @@ Helix can express these as `where(Predicate.and([...]))` after a vector/text sea
 | What source passages support this? | chunk search + provenance edges | search `Chunk`, then `in("EXTRACTED_FROM")` or `out("HAS_CHUNK")` |
 | What should the model always know? | profile node | lookup `UserProfile` by `tenant_id` + `userId` |
 
-`$distance` (smaller = closer for vector and BM25) is only available immediately after the search step and survives `where` filters, but is dropped by traversal (`out`/`in`/`both`). Project it before any traversal.
+`$distance` (smaller is closer) identifies vector rank; `$score` (larger is
+better) identifies BM25 rank. Each is available immediately after its search
+step and survives `where` filters, but traversal (`out`/`in`/`both`) drops the
+rank metadata. Project it before any traversal.
 
 ## Embedding Guidance
 
@@ -434,4 +437,4 @@ Never include embedding arrays in normal responses.
 | `Expr.prop("accessCount").add(Expr.val(1))` | `Expr::prop("accessCount").add(Expr::val(1))` | increment |
 | `.drop()` / `.dropEdgeById(...)` | `.drop()` / `.drop_edge_by_id(...)` | `dropEdgeById` is surgical on multigraphs |
 | `createIndexIfNotExists(IndexSpec.nodeVector(...))` | `create_index_if_not_exists(IndexSpec::node_vector(...))` | prefer explicit `IndexSpec` in examples |
-| `param.string()/i64()/f64()/array(param.f32())/dateTime()` | `#[register] pub fn route(...) -> ReadBatch` | parameterisation + transport |
+| `param.string()/i64()/f64()/array(param.f32())/dateTime()` | `#[query] pub fn route(...) -> ReadBatch` | parameterisation + transport |

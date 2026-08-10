@@ -1,15 +1,27 @@
 # Helix Memory System — TypeScript Examples
 
-Complete `@helix-db/helix-db` snippets for a tenant-safe memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`. The model and indexes are in `REFERENCE.md`.
+Complete forthcoming `@helix-db/helix-db@3.0.0` snippets for a tenant-safe
+memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`.
 
-Each query function is plain; call it and `.toDynamicRequest(params, values, { queryName: "route_name" })` for a request, then run it with the built-in client — `await new Client(url).withApiKey(key).query<R>().dynamic(req).send()` — or `.toDynamicJson(params, values, { queryName: "route_name" })` for the raw `POST /v1/query` body. On writes, add `.shouldAwaitDurability(true)` before `.send()` — concurrent memory writes are prone to HTTP 409 conflicts, and awaiting durability reduces them (callers still own retry). Embeddings are produced by the application and passed as numeric arrays. Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless the app has explicitly standardised on another model. Every tenant-owned node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant value. The default examples also filter user-private memories and chunks by `userId`; replace that with `containerId`, `scopeId`, or app ACL filtering for project/team/workspace memory.
+Each query function is plain; call
+`.toQueryRequest(params, values, { queryName: "route_name" })`, then execute it
+with `await Client.server(url).withApiKey(key).query<R>(request).send()`. For
+advanced write headers use
+`client.requestBuilder<R>().writerOnly().shouldAwaitDurability(true).query(request).send()`.
+Embeddings are produced by the application and passed as numeric arrays.
+Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless
+the app has explicitly standardised on another model. Every tenant-owned
+node/edge carries `tenant_id`; every search passes `tenant_id` as the tenant
+value. The default examples also filter user-private memories and chunks by
+`userId`; replace that with `containerId`, `scopeId`, or app ACL filtering for
+project/team/workspace memory.
 
 ```ts
 import {
   Client,
   g, readBatch, writeBatch, defineParams, param,
   NodeRef, SourcePredicate, Predicate, Expr, CompareOp,
-  IndexSpec, Projection, BatchCondition,
+  IndexSpec, Projection, BatchCondition, VectorDistanceMetric,
 } from "@helix-db/helix-db";
 ```
 
@@ -88,13 +100,13 @@ function bootstrapMemoryIndexes() {
     .varAs("chunkTenant", g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "tenant_id")))
     .varAs("chunkUser",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "userId")))
     .varAs("chunkDoc",    g().createIndexIfNotExists(IndexSpec.nodeEquality("Chunk", "documentId")))
-    .varAs("chunkVec",    g().createIndexIfNotExists(IndexSpec.nodeVector("Chunk", "embedding", "tenant_id")))
+    .varAs("chunkVec",    g().createIndexIfNotExists(IndexSpec.nodeVector("Chunk", "embedding", DEFAULT_EMBEDDING_DIM, VectorDistanceMetric.Cosine, "tenant_id")))
     .varAs("chunkText",   g().createIndexIfNotExists(IndexSpec.nodeText("Chunk", "content", "tenant_id")))
     .varAs("memoryId",    g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Memory", "memoryId")))
     .varAs("memTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "tenant_id")))
     .varAs("memUser",     g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "userId")))
     .varAs("memLatest",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Memory", "isLatest")))
-    .varAs("memVector",   g().createIndexIfNotExists(IndexSpec.nodeVector("Memory", "embedding", "tenant_id")))
+    .varAs("memVector",   g().createIndexIfNotExists(IndexSpec.nodeVector("Memory", "embedding", DEFAULT_EMBEDDING_DIM, VectorDistanceMetric.Cosine, "tenant_id")))
     .varAs("memText",     g().createIndexIfNotExists(IndexSpec.nodeText("Memory", "content", "tenant_id")))
     .varAs("catKey",      g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Category", "categoryKey")))
     .varAs("catTenant",   g().createIndexIfNotExists(IndexSpec.nodeEquality("Category", "tenant_id")))
@@ -500,7 +512,7 @@ function hybridRecall(p = recallParams) {
           Projection.property("lastAccessedAt", "lastAccessedAt"),
           Projection.property("documentId", "documentId"),
           Projection.property("chunkId", "chunkId"),
-          Projection.property("$distance", "score"),
+          Projection.property("$score", "score"),
         ]),
     )
     .varAs(
@@ -526,7 +538,7 @@ function hybridRecall(p = recallParams) {
           Projection.property("documentId", "documentId"),
           Projection.property("content", "content"),
           Projection.property("ordinal", "ordinal"),
-          Projection.property("$distance", "score"),
+          Projection.property("$score", "score"),
         ]),
     )
     .returning(["profile", "memorySemantic", "memoryKeyword", "chunkSemantic", "chunkKeyword"]);

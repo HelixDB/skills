@@ -1,6 +1,6 @@
 # Helix Query Authoring - Go Examples
 
-All snippets assume:
+All snippets target the forthcoming v3 module and assume:
 
 ```go
 import helix "github.com/helixdb/helix-db/sdks/go"
@@ -88,8 +88,16 @@ func CreateUser(name string, tenantID string) helix.Request {
 		Returning("user")
 }
 
-var created CreateUserResponse
-err := client.Exec(ctx, CreateUser("Alice", "acme"), &created, helix.WriterOnly(), helix.AwaitDurability(true))
+func ExecuteCreateUser(ctx context.Context, client *helix.Client) error {
+	var created CreateUserResponse
+	return client.Exec(
+		ctx,
+		CreateUser("Alice", "acme"),
+		&created,
+		helix.WriterOnly(),
+		helix.AwaitDurability(true),
+	)
+}
 ```
 
 ## 5. Explicit Create Or Update
@@ -158,7 +166,7 @@ func SearchDocuments(tenantID string, query string) helix.Request {
 				Project(
 					helix.ProjectPropAs("$id", "id"),
 					helix.ProjectPropAs("title", "title"),
-					helix.ProjectPropAs("$distance", "score"),
+					helix.ProjectPropAs("$score", "score"),
 				),
 		).
 		Returning("results")
@@ -241,22 +249,8 @@ func ServiceTopology() helix.Request {
 }
 ```
 
-Wire format (each tag is a `Bind` step; the terminal is `ProjectBindings`):
-
-```json
-{"Bind": "service"}
-{"ProjectBindings": {
-  "projections": [
-    {"kind": "Property", "target": {"Binding": "service"}, "source": "$id", "alias": "service_id"},
-    {"kind": "Property", "target": {"Binding": "pod"}, "source": "name", "alias": "pod_name"},
-    {"kind": "Coalesce", "refs": [
-      {"target": {"Binding": "deployment"}, "source": "$id"},
-      {"target": {"Binding": "owner"}, "source": "$id"}
-    ], "alias": "workload_id"}
-  ],
-  "distinct": true
-}}
-```
+The binding projection serializes as the nested `project_bindings` operation in a
+normal direct request.
 
 ## 9. For Each Param Writes
 

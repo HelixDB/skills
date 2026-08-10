@@ -1,4 +1,4 @@
-# Benchmark Manifest
+# v3 Benchmark Manifest
 
 Current benchmark files:
 
@@ -9,7 +9,7 @@ Current benchmark files:
 5. `benchmarks/gremlin/case-01-basic-traversal.md`
 6. `benchmarks/gremlin/case-02-repeat-and-range.md`
 
-Benchmark groups still to add:
+Planned benchmark groups:
 
 1. authoring
 2. dynamic

@@ -1,17 +1,22 @@
 ---
 name: helix-query-go
-description: Write and revise HelixDB queries with the Go SDK. Use when building dynamic Helix queries in Go with normal functions returning helix.Request, ReadQuery/WriteQuery, inline params, traversal builders, projections, indexes, BM25 text search, vector search, and client.Exec. Dynamic-first; do not use stored-query or bundle workflows for Go v1.
+description: Write and revise queries with the forthcoming HelixDB v3 Go SDK. Use for normal functions returning `helix.Request`, `ReadQuery`/`WriteQuery`, inline params, traversal builders, projections, indexes, BM25 text search, vector search, and `Client.Exec`. The module remains `github.com/helixdb/helix-db/sdks/go` without a `/v3` suffix; stored routes and query bundles are not supported.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.2
+  version: 3.0.0
 ---
 
 # Helix Query Authoring - Go
 
-Write HelixDB Go SDK queries that are schema-aware, dynamic-first, and easy for application engineers to call. The Go module is `github.com/helixdb/helix-db/sdks/go`, imported as `helix`.
+Write HelixDB Go SDK queries that are schema-aware, direct-request-first, and
+easy for application engineers to call. The forthcoming module remains
+`github.com/helixdb/helix-db/sdks/go`, imported as `helix`; it does not gain a
+`/v3` suffix.
 
-The primary Go workflow is different from Rust and TypeScript bundles: write ordinary Go functions that return `helix.Request`, declare parameters inline on the query builder, and execute with `client.Exec(ctx, request, &out)`.
+Write ordinary Go functions that return `helix.Request`, declare parameters
+inline on the query builder, and execute with
+`client.Exec(ctx, request, &out)`.
 
 ## When To Use
 
@@ -24,7 +29,8 @@ Use this skill when the task is to:
 - execute dynamic requests with `client.Exec(ctx, req, &out)`
 - debug Go request JSON with `helix.MarshalRequest(req)`
 
-Do not use this skill for Rust `#[register]`, TypeScript `defineQueries`, bundle generation, or hand-written dynamic JSON. Use `helix-query-rust`, `helix-query-typescript`, or `helix-query-json-dynamic` for those tasks.
+Do not use this skill for Rust `#[query]`, TypeScript query builders, or
+hand-written dynamic JSON. Use the corresponding language or JSON skill.
 
 ## First Steps
 
@@ -67,13 +73,15 @@ func FindUsers(tenantID string, limit int64) helix.Request {
 - Write query: `helix.WriteQuery("create_user")`
 - Unnamed dynamic request: `helix.ReadQuery("")`, which serializes `query_name: null`
 
-Do not use `WithQueryName(...)` in Go v1.
+Set the query name with `ReadQuery(...)` or `WriteQuery(...)`. Reserve
+`WithQueryName(...)` for low-level `NewReadQueryRequest` /
+`NewWriteQueryRequest` construction.
 
 ### 3. Declare Params Inline
 
 Use the `q.Param*` methods before returning:
 
-```go
+```text
 tenant := q.ParamString("tenant_id", tenantID)
 limit := q.ParamI64("limit", limitValue)
 since := q.ParamDateTime("created_after", sinceValue)
@@ -83,7 +91,7 @@ Parameter refs can be passed to predicates, bounds, property inputs, and search 
 
 Important: direct Go values are inlined into the serialized AST. `helix.SourceEq("id", "foo")` and `helix.PredEq("id", "foo")` embed the string literal `"foo"`; they do not create runtime parameters and can miss server-cache hits across otherwise identical requests. For request-specific values, declare a builder parameter and pass the returned `ParamRef`:
 
-```go
+```text
 id := q.ParamString("id", userID)
 helix.G().NWhere(helix.SourceEq("id", id))
 ```
@@ -96,7 +104,7 @@ Do not add a `.With(...)` step. The runtime values and `parameter_types` metadat
 
 Always pass explicit response variable names to `.Returning(...)` when rows should be decoded:
 
-```go
+```text
 return q.VarAs("users", traversal).Returning("users")
 ```
 
@@ -104,7 +112,7 @@ Use zero-arg `.Returning()` only for intentional empty responses. The SDK serial
 
 ### 5. Execute With `Client.Exec`
 
-```go
+```text
 client, err := helix.NewClient("https://helix.example.com", helix.WithAPIKey("hx_secret"))
 if err != nil {
 	return err
@@ -116,7 +124,7 @@ err = client.Exec(ctx, FindUsers("acme", 25), &out)
 
 Use options only for transport behavior:
 
-```go
+```text
 err = client.Exec(ctx, CreateUser("Alice", "acme"), &created,
 	helix.WriterOnly(),
 	helix.AwaitDurability(true),
@@ -138,9 +146,10 @@ For edge endpoint properties, prefer edge-stream `.Project(...)` with
 instead of traversing to every endpoint first. Keep `.EdgeProperties()` for full
 edge maps and internal `$from` / `$to` node ids.
 
-### 8. Avoid Go v1 Non-Goals
+### 8. Avoid Unsupported Workflows
 
-Do not use stored-query registration, query bundles, `defineQueries`, `registerRead`, `registerWrite`, or Rust-style `#[register]` patterns in Go v1.
+Do not use stored-query registration or query bundles. They are not supported
+by the v3 Go SDK.
 
 ## Validation Checklist
 

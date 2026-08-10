@@ -3,13 +3,13 @@
 Each scenario shows the legacy **HQL** source, the **goal**, then the **Rust DSL** and **TypeScript DSL**
 translations.
 
-- **Rust** assumes `use helix_db::dsl::prelude::*;`. Query bodies are shown as bare `read_batch()`/`write_batch()`
-  expressions using explicit parameter references (`NodeRef::param`, `Predicate::eq_param`, `Expr::param`,
-  `PropertyInput::param`). To bundle one into `queries.json`, wrap the body in a `#[register] fn` and run
-  `helix_db::generate()`; serialize a single query with `req.to_json_string()`.
+- **Rust** assumes `use helix_db::dsl::prelude::*;`. Query bodies are shown as
+  `read_batch()`/`write_batch()` expressions using explicit parameter
+  references. Wrap a public builder in `#[query]` to return a named direct
+  `QueryRequest`.
 - **TypeScript** assumes `import { ... } from "@helix-db/helix-db";`. Builders are plain functions returning a
-  `ReadBatch`/`WriteBatch`. Produce a request with `builder().toDynamicJson(params, values, { queryName: "route_name" })`
-  (or `.toDynamicJson({ queryName: "route_name" })` with no params), or register in `defineQueries({...})` for a query bundle.
+  `ReadBatch`/`WriteBatch`. Produce a request with `builder().toQueryJson(params, values, { queryName: "route_name" })`
+  (or `.toQueryJson({ queryName: "route_name" })` with no params).
 
 Recurring spelling traps: Rust `.in_(Some("X"))` / `.where_(...)` vs TS `.in("X")` / `.where(...)`; `::`
 constructors in Rust vs `.` in TS; `Some()/None::<&str>` vs `"X"/null`; integer params are `bigint` (`1n`) in TS.
@@ -43,7 +43,7 @@ function getUser(_ = getUserParams) {
     .returning(["user"]);
 }
 
-const body = getUser().toDynamicJson(getUserParams, { userId: "u-42" });
+const body = getUser().toQueryJson(getUserParams, { userId: "u-42" });
 ```
 
 > HQL `ID` becomes `String` (Rust) / `param.string()` (TS). Anchoring on the param id is the narrowest anchor.
@@ -94,7 +94,7 @@ function getByHandle(_ = getByHandleParams) {
     .returning(["user"]);
 }
 
-const body = getByHandle().toDynamicJson(getByHandleParams, { handle: "alice" });
+const body = getByHandle().toQueryJson(getByHandleParams, { handle: "alice" });
 ```
 
 > HQL `N<User>({handle: ...})` is an indexed lookup. For a constant value, anchor with a **source predicate**
@@ -144,7 +144,7 @@ function getFollowing(_ = getFollowingParams) {
     .returning(["following"]);
 }
 
-const body = getFollowing().toDynamicJson(getFollowingParams, { userId: "u-42" });
+const body = getFollowing().toQueryJson(getFollowingParams, { userId: "u-42" });
 ```
 
 > Add `dedup()` for two-hop traversals — the same node is often reachable by multiple paths. HQL did not dedup
@@ -177,7 +177,7 @@ function getCreator(_ = getCreatorParams) {
     .returning(["creator"]);
 }
 
-const body = getCreator().toDynamicJson(getCreatorParams, { creationId: "e-9" });
+const body = getCreator().toQueryJson(getCreatorParams, { creationId: "e-9" });
 ```
 
 > `::FromN` (edge → source) is `.in_n()` / `.inN()`; `::ToN` (edge → target) is `.out_n()` / `.outN()`. Easy to
@@ -241,7 +241,7 @@ function activeAdults(_ = activeAdultsParams) {
     .returning(["users"]);
 }
 
-const body = activeAdults().toDynamicJson(activeAdultsParams, { status: "active", minAge: 18n });
+const body = activeAdults().toQueryJson(activeAdultsParams, { status: "active", minAge: 18n });
 ```
 
 > HQL widths (`U8`) collapse to `i64`/`param.i64()`. `RANGE(0,20)` maps 1:1 to `.range(0,20)`. Note the TS param
@@ -293,7 +293,7 @@ function searchUsers(_ = searchUsersParams) {
     .returning(["users"]);
 }
 
-const body = searchUsers().toDynamicJson(searchUsersParams, { statuses: ["active", "pending"], term: "graph" });
+const body = searchUsers().toQueryJson(searchUsersParams, { statuses: ["active", "pending"], term: "graph" });
 ```
 
 ---
@@ -321,7 +321,7 @@ function usersByCountry() {
     .returning(["users"]);
 }
 
-const body = usersByCountry().toDynamicJson();
+const body = usersByCountry().toQueryJson();
 ```
 
 > HQL `GROUP_BY` returns count summaries → `group_count`/`groupCount`. HQL `AGGREGATE_BY` (which returns the full
@@ -388,7 +388,7 @@ function findDocs(_ = findDocsParams) {
     .returning(["docs"]);
 }
 
-const body = findDocs().toDynamicJson(findDocsParams, { vector: [0.1, 0.2, 0.3], k: 10n, tenantId: "acme" });
+const body = findDocs().toQueryJson(findDocsParams, { vector: [0.1, 0.2, 0.3], k: 10n, tenantId: "acme" });
 ```
 
 > Use the **`_with`/`...With`** search variants for runtime params (vector, `k`, tenant). The plain
@@ -436,7 +436,7 @@ function searchDocs(_ = searchDocsParams) {
     .returning(["docs"]);
 }
 
-const body = searchDocs().toDynamicJson(searchDocsParams, { keywords: "machine learning", k: 5n });
+const body = searchDocs().toQueryJson(searchDocsParams, { keywords: "machine learning", k: 5n });
 ```
 
 > The property argument (`"content"`) must be the BM25-indexed text field. Pass `None`/`null` for tenant when the
@@ -461,7 +461,11 @@ write_batch()
     .var_as(
         "edge",
         g().n(NodeRef::var("user"))
-            .add_e("Follows", NodeRef::param("target_id"), vec![]),
+            .add_e(
+                "Follows",
+                NodeRef::param("target_id"),
+                Vec::<(&str, PropertyInput)>::new(),
+            ),
     )
     .returning(["user", "edge"])
 ```
@@ -479,7 +483,7 @@ function createFollow(_ = createFollowParams) {
     .returning(["user", "edge"]);
 }
 
-const body = createFollow().toDynamicJson(createFollowParams, { name: "Alice", targetId: "u-7" });
+const body = createFollow().toQueryJson(createFollowParams, { name: "Alice", targetId: "u-7" });
 ```
 
 > `add_e` is a step on the **From** node; the **To** node is the second argument. Note this is a `write_batch`
@@ -515,7 +519,7 @@ function renameUser(_ = renameUserParams) {
     .returning(["updated"]);
 }
 
-const body = renameUser().toDynamicJson(renameUserParams, { userId: "u-42", newName: "Alicia" });
+const body = renameUser().toQueryJson(renameUserParams, { userId: "u-42", newName: "Alicia" });
 ```
 
 > One `set_property`/`setProperty` per field; chain calls for several. Omitted fields stay unchanged, matching
@@ -548,11 +552,13 @@ function deleteUser(_ = deleteUserParams) {
     .returning(["dropped"]);
 }
 
-const body = deleteUser().toDynamicJson(deleteUserParams, { userId: "u-42" });
+const body = deleteUser().toQueryJson(deleteUserParams, { userId: "u-42" });
 ```
 
-> HQL `RETURN "Removed"` (a literal) has no DSL form — return the dropped binding (or `.returning([])` for no
-> payload) instead. Dropping a node removes its connected edges. To drop only edges, traverse to them and use
+> HQL `RETURN "Removed"` (a literal) has no DSL form — return the dropped
+> binding (or Rust `.returning(Vec::<&str>::new())` / TypeScript
+> `.returning([])` for no payload) instead. Dropping a node removes its
+> connected edges. To drop only edges, traverse to them and use
 > `drop_edge_by_id`/`dropEdgeById` (multigraph-safe).
 
 ---
@@ -575,7 +581,7 @@ let body = write_batch()
 
 write_batch()
     .for_each_param("users", body)
-    .returning([])
+    .returning(Vec::<&str>::new())
 ```
 
 ```ts
@@ -586,13 +592,14 @@ function createUsers(_ = createUsersParams) {
   return writeBatch().forEachParam("users", body).returning([]);
 }
 
-const body = createUsers().toDynamicJson(createUsersParams, { users: [{ name: "Alice" }, { name: "Bob" }] });
+const body = createUsers().toQueryJson(createUsersParams, { users: [{ name: "Alice" }, { name: "Bob" }] });
 ```
 
 > `for_each_param`/`forEachParam` iterates the objects of an **array parameter** — it is not a general loop. The
 > body is its own batch that reads each element's fields by name. Use the HQL destructuring form (`FOR {name} IN`,
-> array-of-objects) for a clean mapping; an array-of-scalars `FOR name IN` does not map directly. `RETURN NONE` →
-> `.returning([])`.
+> array-of-objects) for a clean mapping; an array-of-scalars `FOR name IN` does
+> not map directly. `RETURN NONE` maps to Rust
+> `.returning(Vec::<&str>::new())` or TypeScript `.returning([])`.
 
 ---
 
@@ -628,7 +635,7 @@ function usersWithFollowers() {
     .returning(["users"]);
 }
 
-const body = usersWithFollowers().toDynamicJson();
+const body = usersWithFollowers().toQueryJson();
 ```
 
 > Flag this in the migration: HQL `EXISTS`/`!EXISTS` and count-based `WHERE` (e.g.
@@ -699,7 +706,7 @@ function searchSimilar(_ = searchSimilarParams) {
     .returning(["hits"]);
 }
 
-const body = searchSimilar().toDynamicJson(searchSimilarParams, { vector: [0.1, 0.2, 0.3], k: 10n });
+const body = searchSimilar().toQueryJson(searchSimilarParams, { vector: [0.1, 0.2, 0.3], k: 10n });
 ```
 
 > Always tell the user which parts moved to app code and why, rather than inventing a DSL shape for an

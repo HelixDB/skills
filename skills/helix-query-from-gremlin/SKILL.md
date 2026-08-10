@@ -1,15 +1,18 @@
 ---
 name: helix-query-from-gremlin
-description: Translate Gremlin and TinkerPop-style traversals into HelixDB Rust DSL queries. Use when the input contains Gremlin, TinkerPop, g.V, g.E, hasLabel, has, out, in, both, outE, inE, repeat, emit, dedup, valueMap, count, range, or limit and the goal is to produce an equivalent Helix Rust query.
+description: Translate Gremlin and TinkerPop-style traversals into direct HelixDB v3 Rust SDK requests. Use when the input contains Gremlin, TinkerPop, g.V, g.E, hasLabel, has, out, in, both, outE, inE, repeat, emit, dedup, valueMap, count, range, or limit.
 license: MIT
 metadata:
   author: HelixDB
-  version: 0.1.0
+  version: 3.0.0
 ---
 
-# Gremlin To Helix Queries
+# Gremlin To HelixDB v3 Requests
 
-Translate Gremlin into Helix Rust DSL by turning imperative step chains into explicit anchors, traversals, predicates, and result shaping.
+Translate Gremlin into the forthcoming `helix-db = "3.0.0"` Rust SDK by turning
+imperative step chains into explicit anchors, traversals, predicates, and result
+shaping. The builder produces a direct `QueryRequest` for
+`client.query(request)`; do not introduce stored routes, registration, or bundles.
 
 ## When To Use
 
@@ -20,7 +23,7 @@ Use this skill when the task is to:
 - replace `g.V`, `hasLabel`, `has`, `out`, `in`, `both`, `outE`, `inE`, `repeat`, `emit`, `dedup`, `count`, `range`, or `limit` with Helix DSL equivalents
 - explain how a Gremlin traversal should be expressed in Helix Rust
 
-Do not use this skill as the main guide for Cypher, SQL, or dynamic inline-query JSON.
+Do not use this skill as the main guide for Cypher, SQL, or direct raw JSON.
 
 ## First Steps
 
@@ -30,6 +33,8 @@ Before translating:
 2. Parse the Gremlin traversal into its start step, filters, directional steps, repeat logic, and result shaping.
 3. Decide whether the target route is read or write.
 4. Identify any Gremlin constructs that are not a direct one-to-one translation.
+5. Serialize the finished builder and compare it with the v3 nested JSON AST when
+   exact wire behavior matters.
 
 If the local repo does not already contain an obvious Helix pattern, use:
 
@@ -181,4 +186,4 @@ For shared references in this repo, see:
 
 - `helix-query-rust` — full Rust DSL builder catalog and authoring rules; use it to validate the query you produce.
 - `helix-query-typescript` — the TypeScript DSL emits the same JSON AST, if the target is TypeScript rather than Rust.
-- `helix-query-json-dynamic` — the inline JSON form of the same query.
+- `helix-query-json-dynamic` — the direct JSON form of the same request.

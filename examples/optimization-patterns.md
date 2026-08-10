@@ -1,22 +1,24 @@
-# Optimization Patterns
+# v3 Optimization Patterns
 
-Generic before-and-after patterns for Helix query optimization.
+Generic before-and-after patterns for direct forthcoming v3 SDK requests.
 
 ## Better Anchor Choice
 
-```rust
+```text
 // weaker
 g().n_with_label("Entity")
     .where_(Predicate::eq_param("status", "status"))
 
 // stronger when the caller already knows the entity identifier
-g().n_with_label("Entity")
-    .where_(Predicate::eq_param("entityId", "entityId"))
+g().n_with_label_where(
+    "Entity",
+    SourcePredicate::eq("entityId", "known-id"),
+)
 ```
 
-## Smaller Search Projection
+## Smaller search projection
 
-```rust
+```text
 // weaker
 g().vector_search_nodes_with(...)
     .value_map(None::<Vec<&str>>)
@@ -30,32 +32,49 @@ g().vector_search_nodes_with(...)
     ])
 ```
 
-## BM25 Trim Pattern
+The ellipsis marks a review pattern, not compilable Rust. A concrete v3 form is:
+
+```rust
+g().vector_search_nodes_with(
+    "Document",
+    "embedding",
+    PropertyInput::param("queryVector"),
+    Expr::param("limit"),
+    Some(PropertyInput::param("tenantId")),
+)
+.project(vec![
+    PropertyProjection::new("$id"),
+    PropertyProjection::new("title"),
+    PropertyProjection::renamed("$distance", "distance"),
+])
+```
+
+## Tenant-scoped BM25
 
 ```rust
 g().text_search_nodes_with(
     "Document",
     "body",
     PropertyInput::param("query"),
-    Expr::param("bm25K"),
-    None,
+    Expr::param("limit"),
+    Some(PropertyInput::param("tenantId")),
 )
-.where_(Predicate::eq_param("tenantId", "tenantId"))
-.range(0, Expr::param("limit"))
+.project(vec![
+    PropertyProjection::new("$id"),
+    PropertyProjection::new("title"),
+    PropertyProjection::renamed("$score", "score"),
+])
 ```
 
-## Warm Stable Read Traffic
+## Warm reads, not writes
 
-Every query runs on the dynamic route (`POST /v1/query`). For queries that are:
+All v3 SDK requests use the direct `POST /v2/query` route. Warm stable,
+performance-sensitive reads with `X-Helix-Warm: true`.
 
-- stable
-- performance-sensitive
-- part of steady production traffic
+The standalone `v0.0.3` runtime warms its single process and returns the normal
+query body. Helix Cloud fans the read out to every eligible backend and returns
+`204 No Content` after at least one succeeds. Add
+`X-Helix-Require-Writer: true` to target only the writer.
 
-warm the caches at startup (see below) instead of optimizing away the per-request AST parse.
-
-## Warm Reads, Not Writes
-
-Only recommend warming for read queries.
-
-If a write query is slow, fix the route and storage access pattern instead of trying to warm it.
+Write warming is rejected with `400 Bad Request` before backend execution. Fix
+a slow write's query and storage-access pattern.

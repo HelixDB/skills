@@ -29,7 +29,7 @@ g.V().hasLabel('User').has('userId', userId).out('FOLLOWS').has('status', status
 
 ## Gold Translation Sketch
 
-```rust
+```text
 read_batch()
     .var_as(
         "user",
