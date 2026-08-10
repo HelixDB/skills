@@ -4,6 +4,7 @@ All snippets assume:
 
 ```python
 from helixdb import (
+    AsyncClient,
     BatchCondition,
     BindingProjection,
     Client,
@@ -92,6 +93,38 @@ With Helix Cloud auth:
 ```python
 client = Client("https://helix.example.com", api_key="hx_secret")
 response = client.query(request)
+```
+
+## 3a. Execute Concurrent Queries Asynchronously
+
+Reuse one client so its HTTPX connection pool serves every request:
+
+```python
+import asyncio
+
+
+async def fetch_users_twice():
+    async with AsyncClient("https://helix.example.com", api_key="hx_secret") as client:
+        return await asyncio.gather(
+            client.query(request),
+            client.query(request, timeout=2.0),
+        )
+
+
+responses = asyncio.run(fetch_users_twice())
+```
+
+For embedded execution, also install `helix-db-embedded` and await the native
+writer or reader constructor:
+
+```python
+from helixdb import InMemory
+
+
+async def query_embedded():
+    client = await AsyncClient.embedded(InMemory("app"))
+    async with client:
+        return await client.query(request)
 ```
 
 ## 4. Create A Node

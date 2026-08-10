@@ -1,17 +1,17 @@
 ---
 name: helix-query-python
-description: Write and revise queries with the forthcoming HelixDB v3 Python SDK (package `helix-db`, import `helixdb`). Use for `read_batch`, `write_batch`, direct `to_query_request`/`to_query_json` payloads, row bindings, traversal builders, projections, parameters, vector/BM25 search, and `Client.query`. Stored routes and query bundles are not v3 SDK APIs.
+description: Write and revise HelixDB queries with the published Python SDK (package `helix-db`, import `helixdb`). Use for `read_batch`, `write_batch`, direct `to_query_request`/`to_query_json` payloads, row bindings, traversal builders, projections, parameters, vector/BM25 search, synchronous `Client`, and asynchronous server or embedded execution with `AsyncClient`. Stored routes and query bundles are not v3 SDK APIs.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.0.1
 ---
 
 # Helix Query Authoring - Python
 
 Write HelixDB Python SDK queries that are schema-aware, explicit, and easy for
-application code to call. The forthcoming package is `helix-db`, imported as
-`helixdb`. No Python package version is invented before publication.
+application code to call. The published package is `helix-db`, imported as
+`helixdb`.
 
 The Python DSL emits the same direct-request JSON AST as the Rust, TypeScript,
 and Go SDKs. Use the built-in `Client` to post requests to `/v2/query`.
@@ -24,6 +24,7 @@ Use this skill when the task is to:
 - revise an existing Python query function
 - produce a dynamic `POST /v2/query` request with `to_query_json` / `to_query_request`
 - send a request with `Client(...).query(request)`
+- execute concurrent server or embedded requests with `AsyncClient`
 - retain correlated traversal values with row bindings
 - add traversal, projection, pagination, BM25 text search, or vector search to Python code
 - translate a Rust or TypeScript DSL query into Python
@@ -63,7 +64,7 @@ Prefer snake_case in Python code:
 - `.var_as(...)`, `.var_as_if(...)`, `.for_each_param(...)`
 - `.n_with_label(...)`, `.value_map(...)`, `.order_by(...)`
 - `.to_query_request(...)`, `.to_query_json(...)`
-- `Client(...).with_api_key(...)`; advanced request builders expose
+- `Client(...).with_api_key(...)` / `AsyncClient(...).with_api_key(...)`; advanced request builders expose
   `.warm_only()`, `.writer_only()`, and `.should_await_durability(True)`
 
 Compatibility aliases such as `readBatch`, `varAs`, and `valueMap` exist for translation, but do not use them in fresh Python.
@@ -123,12 +124,33 @@ except HelixError as error:
         raise RuntimeError(error.details) from error
 ```
 
-Transport toggles are available through `execute`:
+Reuse one asynchronous client so its HTTPX connection pool serves concurrent
+requests, and close it with `async with`:
 
 ```python
+from helixdb import AsyncClient
+
+async with AsyncClient("https://helix.example.com", api_key="hx_secret") as client:
+    response = await client.query(request)
+```
+
+Transport toggles are available through synchronous or asynchronous `execute`:
+
+```python
+# With a synchronous Client.
 client.execute(write_request, writer_only=True, await_durability=True)
 client.execute(read_request, warm_only=True)
+
+# Inside `async with AsyncClient(...) as async_client`.
+await async_client.execute(write_request, writer_only=True, await_durability=True)
+await async_client.execute(read_request, warm_only=True, timeout=2.0)
 ```
+
+`AsyncClient` has no default HTTP timeout. Cancellation closes the response
+stream and leaves the client reusable. For embedded mode, open clients with
+`await AsyncClient.embedded(...)` or `await AsyncClient.embedded_reader(...)`;
+use `asyncio.timeout(...)` instead of a request timeout. Native graph loading
+remains synchronous through `Client.graph(...)`.
 
 Helix Cloud fans a warm read out to every eligible backend and returns
 `204 No Content` with no query payload after at least one succeeds. Pass
@@ -185,6 +207,7 @@ Before finishing:
 - verify vector/text search preserves tenant scope when the index is scoped
 - verify `$distance` or `$score` is projected before traversing away from search hits
 - verify write callers use explicit conflict retry only when safe to replay
+- verify asynchronous clients are reused and closed with `async with` or `await close()`
 - run the Python tests or at minimum serialize the request and inspect the JSON
 
 ## Companion Files

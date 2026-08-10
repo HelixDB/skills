@@ -1,20 +1,24 @@
 # Helix Query Authoring - Python Reference
 
-Use this reference to confirm forthcoming v3 Python SDK method names and
-request patterns. The package is `helix-db` and the import is `helixdb`; no
-package version is claimed before publication.
+Use this reference to confirm published Python SDK method names and request
+patterns. The package is `helix-db` and the import is `helixdb`.
 
 ```text
 from helixdb import (
     AggregateFunction,
+    AsyncClient,
+    AsyncQueryBuilder,
+    AsyncQueryExecutionRequest,
     BatchCondition,
     BindingProjection,
     Client,
     CompareOp,
     DateTime,
+    Disk,
     EdgeRef,
     Expr,
     IndexSpec,
+    InMemory,
     NodeRef,
     Order,
     Predicate,
@@ -347,6 +351,8 @@ Python operators are also available for expressions: `+`, `-`, `*`, `/`, `%`, an
 
 ## Client
 
+Synchronous server execution:
+
 ```text
 client = Client("http://localhost:6969", api_key="hx_secret")
 client.with_api_key(None)  # clear
@@ -367,6 +373,55 @@ serialization, URL, or request failures. A Helix Cloud warm read returns
 `204 No Content` with no query payload after fanout; standalone `v0.0.3`
 warming returns the normal response. Combine `warm_only=True` with
 `writer_only=True` to warm only the authoritative writer.
+
+Asynchronous server execution:
+
+```text
+import httpx
+
+async_client = AsyncClient(
+    "http://localhost:6969",
+    api_key="hx_secret",
+    timeout=None,
+    limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+)
+
+async with async_client:
+    response = await async_client.query(request)
+    response = await async_client.query(request, timeout=2.0)
+    response = await async_client.execute(request, writer_only=True, await_durability=True)
+```
+
+`AsyncClient` owns a reusable HTTPX connection pool. The default timeout is
+disabled. Close the client with `async with` or `await close()`; closure is
+idempotent. Request cancellation closes the response stream and leaves the
+client reusable.
+
+Use the asynchronous request builder when header control or raw bytes are
+required:
+
+```text
+response = await async_client.request_builder() \
+    .writer_only() \
+    .should_await_durability(True) \
+    .query(request) \
+    .send()
+raw = await async_client.request_builder().query(request).send_bytes()
+```
+
+Asynchronous embedded execution requires `helix-db-embedded`:
+
+```text
+writer = await AsyncClient.embedded(InMemory("app"))
+reader = await AsyncClient.embedded_reader(Disk("./data", "app"))
+
+async with writer:
+    response = await writer.query(request)
+```
+
+Embedded async requests reject server routing options and per-request client
+timeouts; use `asyncio.timeout(...)` for a cancellation boundary. Native graph
+loading remains synchronous through `Client.graph(...)`.
 
 ## Row Bindings
 

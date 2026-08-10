@@ -2,9 +2,9 @@
 
 Hosted `skills.sh` repository for HelixDB agent skills.
 
-The query skills target the forthcoming HelixDB v3 SDKs. The SDK packages are
-not published yet; installation commands describe the names that will be used
-when the coordinated v3 release reaches `main`.
+The query skills target HelixDB v3 SDK APIs. Installation commands stay
+unpinned; verify registry availability before claiming that a package is
+published.
 
 These skills are for agents that need to:
 
@@ -122,7 +122,7 @@ It teaches agents to:
 - write Pythonic query builders with `read_batch`, `write_batch`, `g`, and snake_case traversal methods
 - declare runtime params with `define_params` and `param.*`
 - produce direct requests with `to_query_request` / `to_query_json`
-- execute requests with `Client(...).query(request)`
+- execute requests with synchronous `Client` or reusable server/embedded `AsyncClient`
 - use row bindings for correlated multi-hop projections
 - keep Python queries structurally identical to the Rust/TypeScript/Go JSON AST
 
