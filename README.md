@@ -21,7 +21,7 @@ These skills are for agents that need to:
 Available now:
 
 - `helix-cli`
-- `helix-insights`
+- `helix-mcp`
 - `helix-query-from-cypher`
 - `helix-query-from-gremlin`
 - `helix-query-from-hql`
@@ -42,6 +42,14 @@ Planned next:
 ```bash
 npx skills add HelixDB/skills
 ```
+
+## Helix Cloud queries
+
+When the target is Helix Cloud, every `helix-query-*` skill requires
+`helix-mcp` first. The agent resolves the live database and reads relevant
+insights, latency, and recommendations before authoring, translating,
+debugging, or optimizing a query. MCP remains read-only; SDKs and `/v2/query`
+remain the query execution surfaces.
 
 ## Running queries (prerequisites)
 
@@ -75,7 +83,7 @@ the non-interactive/agent path.
 
 ## Current Skills
 
-### `helix-insights`
+### `helix-mcp`
 
 Use this skill when an agent needs to inspect authorized Helix Cloud resources
 and observability data through the hosted read-only MCP server.
