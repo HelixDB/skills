@@ -174,6 +174,23 @@ G().VectorSearchEdges(...)
 G().TextSearchEdges(...)
 ```
 
+These source methods search the whole selected tenant partition. For an exact
+BM25 prefilter, build a node or edge traversal first:
+
+```text
+candidateNodes.TextSearchNodesWithin(label, property, queryText, k, tenantValue)
+candidateNodes.TextSearchNodesWithinWith(label, property, queryTextInput, kBound, tenantInputPtr)
+candidateEdges.TextSearchEdgesWithin(...)
+candidateEdges.TextSearchEdgesWithinWith(...)
+```
+
+Restricted search deduplicates input IDs and returns at most `k`, ordered by
+score descending then entity ID ascending. BM25 statistics remain global to
+the tenant partition. The selected row keeps bindings, path, and sack, and
+receives `$score`. Empty input skips the index. Wrong-kind input or more than
+1,000,000 unique candidates is a query error. Pass the same tenant partition
+used to construct candidates.
+
 Use `*With` variants for params:
 
 ```text

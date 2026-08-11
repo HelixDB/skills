@@ -1,6 +1,6 @@
 ---
 name: helix-query-go
-description: Write and revise queries with the forthcoming HelixDB v3 Go SDK. Use for normal functions returning `helix.Request`, `ReadQuery`/`WriteQuery`, inline params, traversal builders, projections, indexes, BM25 text search, vector search, and `Client.Exec`. The module remains `github.com/helixdb/helix-db/sdks/go` without a `/v3` suffix; stored routes and query bundles are not supported.
+description: Write and revise queries with the forthcoming HelixDB v3 Go SDK. Use for normal functions returning `helix.Request`, `ReadQuery`/`WriteQuery`, inline params, traversal builders, projections, indexes, BM25 text search and traversal-scoped prefiltering, vector search, and `Client.Exec`. The module remains `github.com/helixdb/helix-db/sdks/go` without a `/v3` suffix; stored routes and query bundles are not supported.
 license: MIT
 metadata:
   author: HelixDB
@@ -146,7 +146,18 @@ For edge endpoint properties, prefer edge-stream `.Project(...)` with
 instead of traversing to every endpoint first. Keep `.EdgeProperties()` for full
 edge maps and internal `$from` / `$to` node ids.
 
-### 8. Avoid Unsupported Workflows
+### 8. Prefilter BM25 On The Current Stream
+
+Build the candidate node or edge traversal first, then call
+`TextSearchNodesWithin[With]` or `TextSearchEdgesWithin[With]`. Source-level
+`G().TextSearchNodes[With]` and `G().TextSearchEdges[With]` search the whole
+tenant partition; a later `Where` is a post-filter and can return fewer than
+`k` eligible hits.
+
+Pass the same tenant partition used to construct candidates, and project
+`$score` before navigating away from the ranked stream.
+
+### 9. Avoid Unsupported Workflows
 
 Do not use stored-query registration or query bundles. They are not supported
 by the v3 Go SDK.
@@ -160,6 +171,7 @@ Before finishing:
 - verify request-specific values use `q.Param*` refs instead of direct literals in predicates, source predicates, limits, inputs, or search arguments
 - verify response structs match `.Returning(...)` names and projected fields
 - verify vector/text search preserves tenant scope where the index is scoped
+- verify exact BM25 prefilters build candidates before calling `TextSearch*Within[With]`
 - verify conflict retries, if any, are explicit in application code and gated by `helix.IsConflict(err)`
 - run `go test ./...` in the Go module when editing SDK or query code
 

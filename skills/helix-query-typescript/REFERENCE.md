@@ -37,7 +37,7 @@ empty  -- vectorSearchEdges[With], textSearchEdges[With]                     └
 nodes  -- out, in, both, has, hasLabel, hasKey, where, dedup, within, without,
           limit, skip, range, as, store, select, inject, bind, orderBy[Multiple],
           repeat, union, choose, coalesce, optional, path, simplePath,
-          fold, unfold, withSack, sack*                                      ↻ nodes
+          fold, unfold, withSack, sack*, textSearch[With]                    ↻ nodes
 nodes  -- outE, inE, bothE                                                   └─> edges
 nodes  -- count, exists, id, label, values, valueMap, project, projectBindings,
           projectDistinctBindings, group, groupCount, aggregateBy            └─> terminal
@@ -45,7 +45,8 @@ nodes("write") -- addE, setProperty, removeProperty, drop, dropEdge,
           dropEdgeLabeled, dropEdgeById                                      ↻ nodes
 edges  -- outN, inN, otherN                                                  └─> nodes
 edges  -- has, hasLabel, hasKey, where, edgeHas, edgeHasLabel, dedup, within,
-          without, limit, skip, range, as, store, select, orderBy[Multiple]  ↻ edges
+          without, limit, skip, range, as, store, select, orderBy[Multiple],
+          textSearch[With]                                                   ↻ edges
 edges  -- count, exists, id, label, edgeProperties                          └─> terminal
 ```
 
@@ -172,7 +173,7 @@ g().nWithLabelWhere(label, pred)              -> Traversal<"nodes">     // = nWh
 g().e(edges)                                  -> Traversal<"edges">
 g().eWhere(pred)  g().eWithLabel(label)  g().eWithLabelWhere(label, pred)
 
-// Vector & text search (high-level: concrete vector + numeric k)
+// Whole-partition vector & text search sources (high-level: concrete vector + numeric k)
 g().vectorSearchNodes(label, property, queryVector: number[], k: number, tenantValue?: PropertyValueInput | null)
 g().textSearchNodes(label, property, queryText: string, k: number, tenantValue?: PropertyValueInput | null)
 g().vectorSearchEdges(...)   g().textSearchEdges(...)
@@ -185,6 +186,9 @@ g().vectorSearchEdgesWith(...)   g().textSearchEdgesWith(...)
 ```
 
 Prefer the `*With` variants for parameterized routes. The high-level `vectorSearchNodes` wraps `queryVector` as `PropertyValue.f32Array` and `k` as `StreamBound.literal`.
+
+These source methods search the whole selected tenant partition. To rank only
+IDs already present in a traversal, use traversal-scoped text search below.
 
 ---
 
@@ -204,6 +208,25 @@ Edge-stream navigation:
 .inN()     -> Traversal<"nodes", M>   // edge → source
 .otherN()  -> Traversal<"nodes", M>   // edge → "other" endpoint
 ```
+
+Traversal-scoped BM25 search on node or edge streams:
+
+```text
+.textSearch(label, property, queryText: string, k: number,
+    tenantValue?: PropertyValueInput | null)
+.textSearchWith(label, property,
+    queryText: PropertyInput | Expr | ParamRef | PropertyValueInput,
+    k: StreamBound | Expr | ParamRef | number | bigint,
+    tenantValue?: PropertyInput | Expr | ParamRef | PropertyValueInput | null)
+```
+
+This is an exact prefilter over the unique IDs in the current stream. Results
+equal exhaustive BM25 search of the tenant partition, intersected with those
+IDs, then top-`k` ordered by score descending and entity ID ascending. BM25
+statistics remain partition-wide. The selected input row keeps its bindings,
+path, and sack; `$score` is attached. Empty input skips the index. More than
+1,000,000 unique candidates is a query error. Use the same tenant partition
+for candidate construction and search.
 
 The label argument is optional; omit it (`out()`) or pass a string
 (`out("FOLLOWS")`). On the wire the nested `out` node has an `input` and omits

@@ -130,7 +130,7 @@ Project `$distance` before any `.out`/`.in_`/`.both` — traversal off the hit s
 
 ---
 
-## 5. BM25 text search with post-filter
+## 5. BM25 text search over traversal candidates
 
 ```rust
 #[query]
@@ -142,24 +142,29 @@ pub fn document_search(
     read_batch()
         .var_as(
             "results",
-            g().text_search_nodes_with(
-                "Document",
-                "body",
-                PropertyInput::param("q"),
-                50usize,
-                Some(PropertyInput::param("tenantId")),
-            )
-            .where_(Predicate::eq("published", true))
-            .limit(10usize)
-            .project(vec![
-                PropertyProjection::renamed("$id", "id"),
-                PropertyProjection::new("title"),
-                PropertyProjection::renamed("$score", "score"),
-            ]),
+            g().n_with_label("Document")
+                .where_(Predicate::eq_param("tenantId", "tenantId"))
+                .where_(Predicate::eq("published", true))
+                .text_search_with(
+                    "Document",
+                    "body",
+                    PropertyInput::param("q"),
+                    10usize,
+                    Some(PropertyInput::param("tenantId")),
+                )
+                .project(vec![
+                    PropertyProjection::renamed("$id", "id"),
+                    PropertyProjection::new("title"),
+                    PropertyProjection::renamed("$score", "score"),
+                ]),
         )
         .returning(["results"])
 }
 ```
+
+The label, tenant, and publication predicates build the candidate stream
+before BM25 ranking. This refills exactly to `k` when enough matching
+candidates exist; source text search followed by `where_` does not.
 
 ---
 

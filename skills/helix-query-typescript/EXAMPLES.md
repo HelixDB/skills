@@ -130,7 +130,7 @@ Project `$distance` before any `.out`/`.in`/`.both` — traversal off the hit st
 
 ---
 
-## 5. BM25 text search with post-filter
+## 5. BM25 text search over traversal candidates
 
 ```ts
 const docSearchParams = defineParams({ tenantId: param.string(), q: param.string() });
@@ -140,9 +140,10 @@ function documentSearch(p = docSearchParams) {
     .varAs(
       "results",
       g()
-        .textSearchNodesWith("Document", "body", PropertyInput.param("q"), 50, PropertyInput.param("tenantId"))
+        .nWithLabel("Document")
+        .where(Predicate.eqParam("tenantId", "tenantId"))
         .where(Predicate.eq("published", true))
-        .limit(10)
+        .textSearchWith("Document", "body", PropertyInput.param("q"), 10, PropertyInput.param("tenantId"))
         .project([
           PropertyProjection.renamed("$id", "id"),
           PropertyProjection.new("title"),
@@ -152,6 +153,10 @@ function documentSearch(p = docSearchParams) {
     .returning(["results"]);
 }
 ```
+
+The label, tenant, and publication predicates build the candidate stream
+before BM25 ranking. This refills exactly to `k` when enough matching
+candidates exist; source text search followed by `where` does not.
 
 ---
 

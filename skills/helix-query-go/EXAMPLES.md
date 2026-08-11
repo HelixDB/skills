@@ -147,7 +147,7 @@ func NearestDocuments(tenantID string, queryVector []float32, limit int64) helix
 
 Project `$distance` before navigating off the search hit stream.
 
-## 7. Text Search
+## 7. Text Search Over Traversal Candidates
 
 ```go
 func SearchDocuments(tenantID string, query string) helix.Request {
@@ -155,14 +155,14 @@ func SearchDocuments(tenantID string, query string) helix.Request {
 
 	tenant := q.ParamString("tenant_id", tenantID)
 	text := q.ParamString("query", query)
-	tenantInput := tenant.Input()
 
 	return q.
 		VarAs("results",
 			helix.G().
-				TextSearchNodesWith("Document", "body", text.Input(), helix.BoundLiteral(50), &tenantInput).
+				NWithLabel("Document").
+				Where(helix.PredEq("tenantId", tenant)).
 				Where(helix.PredEq("published", true)).
-				Limit(10).
+				TextSearchNodesWithin("Document", "body", text, helix.BoundLiteral(10), tenant).
 				Project(
 					helix.ProjectPropAs("$id", "id"),
 					helix.ProjectPropAs("title", "title"),
@@ -172,6 +172,10 @@ func SearchDocuments(tenantID string, query string) helix.Request {
 		Returning("results")
 }
 ```
+
+The label, tenant, and publication predicates build the candidate stream
+before BM25 ranking. This refills exactly to `k` when enough matching
+candidates exist; source text search followed by `Where` does not.
 
 ## 8. Repeat And Branching
 

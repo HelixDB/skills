@@ -214,7 +214,7 @@ def nearest_documents(p=nearest_documents_params):
 
 Project `$distance` before navigating off the search hit stream.
 
-## 7. Text Search
+## 7. Text Search Over Traversal Candidates
 
 ```python
 search_documents_params = define_params({"tenant_id": param.string(), "query": param.string()})
@@ -226,9 +226,10 @@ def search_documents(p=search_documents_params):
         .var_as(
             "results",
             g()
-            .text_search_nodes_with("Document", "body", p.query.input(), 50, p.tenant_id.input())
+            .n_with_label("Document")
+            .where(Predicate.eq("tenantId", p.tenant_id))
             .where(Predicate.eq("published", True))
-            .limit(10)
+            .text_search_with("Document", "body", p.query, 10, p.tenant_id)
             .project([
                 Projection.property("$id", "id"),
                 Projection.property("title"),
@@ -238,6 +239,10 @@ def search_documents(p=search_documents_params):
         .returning(["results"])
     )
 ```
+
+The label, tenant, and publication predicates build the candidate stream
+before BM25 ranking. This refills exactly to `k` when enough matching
+candidates exist; source text search followed by `where` does not.
 
 ## 8. Repeat And Branching
 
