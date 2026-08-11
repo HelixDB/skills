@@ -264,6 +264,26 @@ read_batch()
     .returning(["results"])
 ```
 
+For exact FTS prefiltering, build candidates first and call `text_search` or
+`text_search_with` on the node or edge stream:
+
+```text
+g().n_with_label("Document")
+    .where_(Predicate::eq_param("tenantId", "tenantId"))
+    .where_(Predicate::eq("published", true))
+    .text_search_with(
+        "Document",
+        "body",
+        PropertyInput::param("query"),
+        Expr::param("limit"),
+        Some(PropertyInput::param("tenantId")),
+    )
+```
+
+Source-level `text_search_nodes[_with]` and `text_search_edges[_with]` search
+the whole tenant partition. A later filter is not an exact prefilter and can
+return fewer than `k` eligible hits.
+
 ## Vector Search
 
 ```text

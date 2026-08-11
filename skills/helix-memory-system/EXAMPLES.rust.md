@@ -595,24 +595,25 @@ pub fn hybrid_recall(
         )
         .var_as(
             "memoryKeyword",
-            g().text_search_nodes_with(
-                "Memory",
-                "content",
-                PropertyInput::param("query"),
-                Expr::param("k"),
-                Some(PropertyInput::param("tenant_id")),
-            )
-            .where_(current_user_memory_predicate("now", "userId"))
-            .project(vec![
-                PropertyProjection::renamed("memoryId", "id"),
-                PropertyProjection::new("content"),
-                PropertyProjection::new("kind"),
-                PropertyProjection::new("salience"),
-                PropertyProjection::new("lastAccessedAt"),
-                PropertyProjection::new("documentId"),
-                PropertyProjection::new("chunkId"),
-                PropertyProjection::renamed("$score", "score"),
-            ]),
+            g().n_with_label("Memory")
+                .where_(current_user_memory_predicate("now", "userId"))
+                .text_search_with(
+                    "Memory",
+                    "content",
+                    PropertyInput::param("query"),
+                    Expr::param("k"),
+                    Some(PropertyInput::param("tenant_id")),
+                )
+                .project(vec![
+                    PropertyProjection::renamed("memoryId", "id"),
+                    PropertyProjection::new("content"),
+                    PropertyProjection::new("kind"),
+                    PropertyProjection::new("salience"),
+                    PropertyProjection::new("lastAccessedAt"),
+                    PropertyProjection::new("documentId"),
+                    PropertyProjection::new("chunkId"),
+                    PropertyProjection::renamed("$score", "score"),
+                ]),
         )
         .var_as(
             "chunkSemantic",
@@ -634,21 +635,22 @@ pub fn hybrid_recall(
         )
         .var_as(
             "chunkKeyword",
-            g().text_search_nodes_with(
-                "Chunk",
-                "content",
-                PropertyInput::param("query"),
-                Expr::param("k"),
-                Some(PropertyInput::param("tenant_id")),
-            )
-            .where_(live_user_chunk_predicate("userId"))
-            .project(vec![
-                PropertyProjection::renamed("chunkId", "id"),
-                PropertyProjection::new("documentId"),
-                PropertyProjection::new("content"),
-                PropertyProjection::new("ordinal"),
-                PropertyProjection::renamed("$score", "score"),
-            ]),
+            g().n_with_label("Chunk")
+                .where_(live_user_chunk_predicate("userId"))
+                .text_search_with(
+                    "Chunk",
+                    "content",
+                    PropertyInput::param("query"),
+                    Expr::param("k"),
+                    Some(PropertyInput::param("tenant_id")),
+                )
+                .project(vec![
+                    PropertyProjection::renamed("chunkId", "id"),
+                    PropertyProjection::new("documentId"),
+                    PropertyProjection::new("content"),
+                    PropertyProjection::new("ordinal"),
+                    PropertyProjection::renamed("$score", "score"),
+                ]),
         )
         .returning(["profile", "memorySemantic", "memoryKeyword", "chunkSemantic", "chunkKeyword"])
 }
