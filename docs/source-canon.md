@@ -28,6 +28,7 @@ Use these for product semantics and supported behavior:
 - `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/typescript-project-setup`
 - `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/go-project-setup`
 - `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/python-project-setup`
+- `https://docs.helix-db.com/database/helix-cloud/connect/mcp`
 - `https://docs.helix-db.com/database/helix-db/core-concepts/overview`
 - `https://docs.helix-db.com/database/helix-db/query-guides/writing-data`
 - `https://docs.helix-db.com/database/helix-db/query-guides/reading-data`
