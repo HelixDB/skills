@@ -120,7 +120,7 @@ func UpsertUser(userID string, name string) helix.Request {
 }
 ```
 
-## 6. Vector Search With Tenant Scope
+## 6. Vector Prefiltering Over Traversal Candidates
 
 ```go
 func NearestDocuments(tenantID string, queryVector []float32, limit int64) helix.Request {
@@ -129,12 +129,14 @@ func NearestDocuments(tenantID string, queryVector []float32, limit int64) helix
 	tenant := q.ParamString("tenant_id", tenantID)
 	vector := q.ParamArray("query_vector", queryVector, helix.ParamTypeF32())
 	k := q.ParamI64("limit", limit)
-	tenantInput := tenant.Input()
 
 	return q.
 		VarAs("hits",
 			helix.G().
-				VectorSearchNodesWith("Document", "embedding", vector.Input(), k.Bound(), &tenantInput).
+				NWithLabel("Document").
+				Where(helix.PredEq("tenantId", tenant)).
+				Where(helix.PredEq("published", true)).
+				VectorSearchNodesWithin("Document", "embedding", vector, k, tenant).
 				Project(
 					helix.ProjectPropAs("$id", "id"),
 					helix.ProjectPropAs("title", "title"),
@@ -145,9 +147,11 @@ func NearestDocuments(tenantID string, queryVector []float32, limit int64) helix
 }
 ```
 
-Project `$distance` before navigating off the search hit stream.
+The label, tenant, and publication predicates build the exact candidate stream
+before vector ranking. Source vector search followed by `Where` can underfill
+top-k. Project `$distance` before navigating off the search hit stream.
 
-## 7. Text Search Over Traversal Candidates
+## 7. Full Text Search Prefiltering Over Traversal Candidates
 
 ```go
 func SearchDocuments(tenantID string, query string) helix.Request {

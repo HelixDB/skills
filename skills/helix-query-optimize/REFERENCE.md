@@ -118,6 +118,11 @@ Vector search requires:
 - top-k bound
 - tenant value when the index is tenant-partitioned
 
+Source-level vector search ranks the whole selected tenant partition. If a
+traversal defines eligible node or edge IDs, call traversal-scoped vector search
+on that stream. Membership is exact even when approximate index structures
+accelerate ranking.
+
 Text search requires the analogous text index and query text. Source-level text
 search ranks the whole selected tenant partition. If a traversal defines eligible
 node or edge IDs, call traversal-scoped text search on that stream instead of

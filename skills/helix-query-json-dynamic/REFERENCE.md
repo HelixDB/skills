@@ -188,7 +188,12 @@ Common read nodes:
 | order | `order_by`, `order_by_multiple` | `input` plus order fields |
 | vector search | `vector_search_nodes`, `vector_search_edges` | label, property, query vector, `k`, optional tenant |
 | text search | `text_search_nodes`, `text_search_edges` | label, property, query text, `k`, optional tenant |
+| restricted vector search | `vector_search_nodes_within`, `vector_search_edges_within` | `input`, label, property, query vector, `k`, optional tenant |
 | restricted text search | `text_search_nodes_within`, `text_search_edges_within` | `input`, label, property, query text, `k`, optional tenant |
+
+Restricted vector search enforces exact membership over input IDs, although
+approximate index structures may accelerate ranking. The ranked stream receives
+`$distance`.
 
 Restricted text search is an exact BM25 prefilter over unique input IDs. It
 returns at most `k`, orders by score descending then entity ID ascending, and

@@ -202,8 +202,9 @@ function nearestCurrentMemory(p = nearestParams) {
     .varAs(
       "nearest",
       g()
-        .vectorSearchNodesWith("Memory", "embedding", p.embedding, 1, p.tenant_id)
+        .nWithLabel("Memory")
         .where(currentUserMemoryPredicate("now", "userId"))
+        .vectorSearchWith("Memory", "embedding", p.embedding, 1, p.tenant_id)
         .project([
           Projection.property("memoryId", "memoryId"),
           Projection.property("content", "content"),
@@ -486,8 +487,9 @@ function hybridRecall(p = recallParams) {
     .varAs(
       "memorySemantic",
       g()
-        .vectorSearchNodesWith("Memory", "embedding", p.embedding, p.k, p.tenant_id)
+        .nWithLabel("Memory")
         .where(currentUserMemoryPredicate("now", "userId"))
+        .vectorSearchWith("Memory", "embedding", p.embedding, p.k, p.tenant_id)
         .project([
           Projection.property("memoryId", "id"),
           Projection.property("content", "content"),
@@ -519,8 +521,9 @@ function hybridRecall(p = recallParams) {
     .varAs(
       "chunkSemantic",
       g()
-        .vectorSearchNodesWith("Chunk", "embedding", p.embedding, p.k, p.tenant_id)
+        .nWithLabel("Chunk")
         .where(liveUserChunkPredicate("userId"))
+        .vectorSearchWith("Chunk", "embedding", p.embedding, p.k, p.tenant_id)
         .project([
           Projection.property("chunkId", "id"),
           Projection.property("documentId", "documentId"),

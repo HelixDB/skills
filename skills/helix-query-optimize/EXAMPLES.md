@@ -216,7 +216,30 @@ readBatch()
   .returning(["active_count"]);
 ```
 
-## Rank BM25 within exact traversal candidates
+## Rank vectors with traversal prefiltering
+
+Post-filtering source top-k hits can underfill:
+
+```ts
+g()
+  .vectorSearchNodesWith("Document", "embedding", queryVector, 50, tenant)
+  .where(Predicate.eq("published", true))
+  .limit(10)
+```
+
+Build candidates first, then rank only their IDs:
+
+```ts
+g()
+  .nWithLabel("Document")
+  .where(Predicate.eq("tenantId", tenant))
+  .where(Predicate.eq("published", true))
+  .vectorSearchWith("Document", "embedding", queryVector, 10, tenant)
+```
+
+The second shape cannot return an ID outside the candidate stream.
+
+## Rank Full Text Search within exact traversal candidates
 
 Post-filtering source top-k hits can underfill:
 

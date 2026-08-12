@@ -131,6 +131,26 @@ For vector routes, check:
 - is tenant scope preserved?
 - is the embedding omitted from the returned projection?
 - is `$distance` included only when useful?
+- does a traversal define the eligible node or edge IDs?
+- if so, are candidates built before traversal-scoped vector search?
+
+Example:
+
+```text
+g().n_with_label("Document")
+    .where_(Predicate::eq_param("tenantId", "tenantId"))
+    .where_(Predicate::eq("published", true))
+    .vector_search_with(
+        "Document",
+        "embedding",
+        PropertyInput::param("queryVector"),
+        Expr::param("limit"),
+        Some(PropertyInput::param("tenantId")),
+    )
+```
+
+Source vector search followed by `where_` is a post-filter and can underfill
+top-k. Traversal-scoped vector search enforces exact candidate membership.
 
 ## 8. Steady-Traffic Reads
 

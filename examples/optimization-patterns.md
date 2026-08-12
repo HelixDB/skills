@@ -66,7 +66,29 @@ g().text_search_nodes_with(
 ])
 ```
 
-## Traversal-scoped BM25 prefilter
+## Traversal-scoped vector prefilter
+
+```rust
+g().n_with_label("Document")
+    .where_(Predicate::eq_param("tenantId", "tenantId"))
+    .where_(Predicate::eq("published", true))
+    .vector_search_with(
+        "Document",
+        "embedding",
+        PropertyInput::param("queryVector"),
+        Expr::param("limit"),
+        Some(PropertyInput::param("tenantId")),
+    )
+    .project(vec![
+        PropertyProjection::new("$id"),
+        PropertyProjection::renamed("$distance", "distance"),
+    ])
+```
+
+This enforces exact candidate membership. Source vector search followed by
+`where_` can underfill top-k.
+
+## Traversal-scoped Full Text Search prefilter
 
 ```rust
 g().n_with_label("Document")

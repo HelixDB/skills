@@ -1,6 +1,6 @@
 ---
 name: helix-memory-system
-description: Design and operate an advanced AI agent memory system with the forthcoming HelixDB v3 SDKs using hybrid graph, vector, and exact traversal-prefiltered BM25 search. Use for long-term memory, profiles, RAG, recall, extraction, deduplication, consolidation, versioning, forgetting, categorisation, or ingestion. TypeScript-first (`@helix-db/helix-db@3.0.0`); a Rust v3 variant is in EXAMPLES.rust.md.
+description: Design and operate an advanced AI agent memory system with the forthcoming HelixDB v3 SDKs using hybrid graph plus exact traversal-prefiltered vector and BM25 search. Use for long-term memory, profiles, RAG, recall, extraction, deduplication, consolidation, versioning, forgetting, categorisation, or ingestion. TypeScript-first (`@helix-db/helix-db@3.0.0`); a Rust v3 variant is in EXAMPLES.rust.md.
 license: MIT
 metadata:
   author: HelixDB
@@ -67,7 +67,7 @@ Pick the mechanism by the question you are answering, and combine them deliberat
 
 Rule of thumb: **never collapse a memory system to vector-only.** Vectors miss exact names and have no notion of ownership, recency, contradiction, provenance, profile state, or category.
 
-Always scope vector/BM25 searches with `tenantValue = tenant_id`. Tenant scope is necessary but not always sufficient: default user-memory recall must also filter by `userId` or the app's equivalent container/ACL unless the record is explicitly shared tenant-wide. Every recall path must filter out forgotten/stale records: `deletedAt IsNull`, `isLatest = true`, `validTo IsNull`, and `expiresAt` absent or in the future. Build those candidates before traversal-scoped BM25 search so keyword recall is exact. Vector search still requires post-filtering or application-side policy enforcement when its API cannot express the full visibility rule.
+Always scope vector/BM25 searches with `tenantValue = tenant_id`. Tenant scope is necessary but not always sufficient: default user-memory recall must also filter by `userId` or the app's equivalent container/ACL unless the record is explicitly shared tenant-wide. Every recall path must filter out forgotten/stale records: `deletedAt IsNull`, `isLatest = true`, `validTo IsNull`, and `expiresAt` absent or in the future. Build those candidates before traversal-scoped vector or BM25 search so semantic and keyword recall both enforce exact visibility membership. If a route cannot express the full visibility rule, enforce the remainder in application code.
 
 ## Product Layers
 
@@ -213,7 +213,7 @@ Before finishing:
 - `readBatch()` vs `writeBatch()` is correct
 - every tenant-owned node and edge has `tenant_id`
 - vector/text indexes use `tenant_property = "tenant_id"`, and searches pass `tenantValue = tenant_id`
-- BM25 recall builds user/ACL and lifecycle candidates before traversal-scoped text search
+- vector and BM25 recall build user/ACL and lifecycle candidates before traversal-scoped search
 - every memory read filters `tenant_id`, user/container visibility, `deletedAt IsNull`, current/latest state, and expiry validity
 - every write route accepts and filters by `tenant_id`
 - IDs used for upsert are either globally unique or tenant-qualified (`categoryKey`, `entityKey`, etc.)

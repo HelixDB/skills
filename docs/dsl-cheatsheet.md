@@ -306,6 +306,25 @@ read_batch()
     .returning(["results"])
 ```
 
+For exact vector prefiltering, build candidates first and call `vector_search`
+or `vector_search_with` on the node or edge stream:
+
+```text
+g().n_with_label("Document")
+    .where_(Predicate::eq_param("tenantId", "tenantId"))
+    .where_(Predicate::eq("published", true))
+    .vector_search_with(
+        "Document",
+        "embedding",
+        PropertyInput::param("queryVector"),
+        Expr::param("limit"),
+        Some(PropertyInput::param("tenantId")),
+    )
+```
+
+Source-level `vector_search_nodes[_with]` and `vector_search_edges[_with]`
+search the whole tenant partition. A later filter can underfill top-k.
+
 Guidance:
 
 - keep the vector property out of the projection unless the caller truly needs it

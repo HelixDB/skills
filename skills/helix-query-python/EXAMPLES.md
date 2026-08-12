@@ -179,7 +179,7 @@ def upsert_user(p=upsert_user_params):
     )
 ```
 
-## 6. Vector Search With Tenant Scope
+## 6. Vector Prefiltering Over Traversal Candidates
 
 ```python
 nearest_documents_params = define_params({
@@ -195,12 +195,15 @@ def nearest_documents(p=nearest_documents_params):
         .var_as(
             "hits",
             g()
-            .vector_search_nodes_with(
+            .n_with_label("Document")
+            .where(Predicate.eq("tenantId", p.tenant_id))
+            .where(Predicate.eq("published", True))
+            .vector_search_with(
                 "Document",
                 "embedding",
-                p.query_vector.input(),
+                p.query_vector,
                 p.limit,
-                p.tenant_id.input(),
+                p.tenant_id,
             )
             .project([
                 Projection.property("$id", "id"),
@@ -212,9 +215,11 @@ def nearest_documents(p=nearest_documents_params):
     )
 ```
 
-Project `$distance` before navigating off the search hit stream.
+The label, tenant, and publication predicates build the exact candidate stream
+before vector ranking. Source vector search followed by `where` can underfill
+top-k. Project `$distance` before navigating off the search hit stream.
 
-## 7. Text Search Over Traversal Candidates
+## 7. Full Text Search Prefiltering Over Traversal Candidates
 
 ```python
 search_documents_params = define_params({"tenant_id": param.string(), "query": param.string()})
