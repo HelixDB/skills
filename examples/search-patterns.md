@@ -25,32 +25,34 @@ read_batch()
     .returning(["results"])
 ```
 
-## BM25 Over-Fetch Then Trim
+## Exact BM25 Over Traversal Candidates
 
 ```rust
 read_batch()
     .var_as(
         "results",
-        g().text_search_nodes_with(
-            "Document",
-            "body",
-            PropertyInput::param("query"),
-            Expr::param("bm25K"),
-            None,
-        )
-        .where_(Predicate::eq_param("tenantId", "tenantId"))
-        .range(0, Expr::param("limit"))
-        .project(vec![
-            PropertyProjection::new("$id"),
-            PropertyProjection::new("title"),
-        ]),
+        g().n_with_label("Document")
+            .where_(Predicate::eq_param("tenantId", "tenantId"))
+            .where_(Predicate::eq("published", true))
+            .text_search_with(
+                "Document",
+                "body",
+                PropertyInput::param("query"),
+                Expr::param("limit"),
+                Some(PropertyInput::param("tenantId")),
+            )
+            .project(vec![
+                PropertyProjection::new("$id"),
+                PropertyProjection::new("title"),
+                PropertyProjection::renamed("$score", "score"),
+            ]),
     )
     .returning(["results"])
 ```
 
-Use this only when the index is not tenant-partitioned and the search API cannot
-express the filter at lookup time. For a tenant-partitioned index, pass the tenant
-input to the search itself.
+The filters construct the exact candidate stream before BM25 ranking. Restricted
+search deduplicates those IDs and refills to `limit` when enough candidates match.
+Pass the same tenant partition used to construct candidates.
 
 ## Tenant-Scoped Vector Search
 

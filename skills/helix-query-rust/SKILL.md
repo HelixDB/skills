@@ -1,6 +1,6 @@
 ---
 name: helix-query-rust
-description: Write and revise queries with the forthcoming HelixDB v3 Rust SDK (`helix-db = "3.0.0"`). Use for `read_batch`, `write_batch`, `#[query]`, direct `QueryRequest` values, traversal builders, projections, indexes, BM25 text search, vector search, and `Client::query`. Inspect local labels, edges, properties, and existing query patterns before inventing code. Stored routes, registration, and query bundles are not v3 SDK APIs.
+description: Write and revise queries with the forthcoming HelixDB v3 Rust SDK (`helix-db = "3.0.0"`). Use for `read_batch`, `write_batch`, `#[query]`, direct `QueryRequest` values, traversal builders, projections, indexes, BM25 text search and traversal-scoped prefiltering, vector search, and `Client::query`. Inspect local labels, edges, properties, and existing query patterns before inventing code. Stored routes, registration, and query bundles are not v3 SDK APIs.
 license: MIT
 metadata:
   author: HelixDB
@@ -105,7 +105,13 @@ For BM25 and vector search:
 
 - keep the chosen text or vector property explicit
 - preserve tenant scope when the index is scoped
-- post-filter only when the search API cannot express the scope directly
+- project `$score` or `$distance` before navigating away from search hits
+
+For exact BM25 prefiltering, build the candidate node or edge stream first,
+then call `.text_search(...)` or `.text_search_with(...)` on that stream.
+Source-level `g().text_search_nodes[_with]` and
+`g().text_search_edges[_with]` search the whole tenant partition; filtering
+after them can return fewer than `k` eligible hits.
 
 ### 7. Use Traversal Controls Deliberately
 
@@ -129,7 +135,7 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 | Category | Primary builders | Notes |
 |---|---|---|
 | Sources | `g().n(...)`, `n_where`, `n_with_label`, `n_with_label_where`, `e`, `e_where`, `e_with_label`, `e_with_label_where`, `vector_search_nodes_with`, `text_search_nodes_with`, `vector_search_edges_with`, `text_search_edges_with` | Anchor narrowly — indexed ID first, then label scope. |
-| Traversal | `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`, `out_n`, `in_n`, `other_n` | Edge-valued forms (`*_e`) switch the stream type. |
+| Traversal | `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`, `out_n`, `in_n`, `other_n`, `text_search[_with]` | Edge-valued forms (`*_e`) switch the stream type. `text_search[_with]` ranks only the current node/edge IDs. |
 | Filters | `has`, `has_label`, `has_key`, `where_`, `dedup`, `within`, `without`, `edge_has`, `edge_has_label` | `Predicate::*` + `Predicate::*_param` for parameterized comparisons. |
 | Limits | `limit`, `skip`, `range` | All accept `usize` or `Expr`. |
 | Variables | `as_` / `store`, `select`, `inject` | Cross-query refs via `NodeRef::var`, `EdgeRef::var`, `NodeRef::param`, `EdgeRef::param`. |
@@ -231,6 +237,7 @@ Do not:
 - start from broad scans when an indexed ID or scoped predicate exists
 - return embeddings by default in search results
 - ignore tenant scope on text or vector search
+- implement an exact BM25 prefilter as source text search followed by `where_`
 - add `dedup` or `limit` without a reason
 - assume dynamic inline-query rules apply to Rust DSL queries authored with the builder
 - treat BM25 as if it searches every property automatically
@@ -245,6 +252,7 @@ Before finishing:
 - verify scope filters happen before or as early as possible
 - verify the returned variable names and shape match service expectations
 - verify text and vector routes preserve tenant scope when required
+- verify exact BM25 prefilters build candidates before calling `text_search[_with]`
 - verify large properties are omitted unless needed
 - verify the query matches surrounding local style more than any generic example
 

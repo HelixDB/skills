@@ -1,6 +1,6 @@
 ---
 name: helix-query-json-dynamic
-description: Author and debug direct HelixDB v3 JSON query requests for POST /v2/query. Use for request envelopes, nested read/write batches, operation-tree AST nodes, parameters and parameter_types, and normalized response objects. Do not use the removed step-array or queries.json bundle formats.
+description: Author and debug direct HelixDB v3 JSON query requests for POST /v2/query. Use for request envelopes, nested read/write batches, operation-tree AST nodes, parameters and parameter_types, BM25 traversal prefiltering, and normalized response objects. Do not use the removed step-array or queries.json bundle formats.
 license: MIT
 metadata:
   author: HelixDB
@@ -99,6 +99,30 @@ serializes from the outside inward:
 ```
 
 Do not flatten this into a list. The nested tree is the v3 wire contract.
+
+### Traversal-scoped BM25 prefilter
+
+Wrap the candidate operation under `text_search_nodes_within` or
+`text_search_edges_within`:
+
+```json
+{
+  "text_search_nodes_within": {
+    "input": {
+      "nodes": { "reference": { "param": "candidate_ids" } }
+    },
+    "label": "Document",
+    "property": "body",
+    "tenant_value": { "expr": { "param": "tenant_id" } },
+    "query_text": { "expr": { "param": "query" } },
+    "k": { "expr": { "param": "limit" } }
+  }
+}
+```
+
+This ranks only the unique IDs produced by `input`. Source variants
+`text_search_nodes` and `text_search_edges` search the whole tenant partition.
+Use the same tenant partition for candidates and search.
 
 ## Literals, parameters, and references
 

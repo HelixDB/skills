@@ -118,9 +118,16 @@ Vector search requires:
 - top-k bound
 - tenant value when the index is tenant-partitioned
 
-Text search requires the analogous text index and query text. Post-filtering top-k
-hits can return fewer than `k`; where possible, encode scope in the index/search and
-use later filtering only for predicates that cannot be part of the search.
+Text search requires the analogous text index and query text. Source-level text
+search ranks the whole selected tenant partition. If a traversal defines eligible
+node or edge IDs, call traversal-scoped text search on that stream instead of
+post-filtering source top-k hits.
+
+Restricted BM25 search is exact: it deduplicates candidate IDs, preserves full
+tenant-partition BM25 statistics, and returns at most `k` ordered by score
+descending then entity ID ascending. It is a materializing barrier with a
+1,000,000-unique-candidate limit. Common query terms can still enumerate many BM25
+matches, so candidate selectivity does not guarantee proportional latency.
 
 ## Batch cost
 

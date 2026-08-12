@@ -66,6 +66,28 @@ g().text_search_nodes_with(
 ])
 ```
 
+## Traversal-scoped BM25 prefilter
+
+```rust
+g().n_with_label("Document")
+    .where_(Predicate::eq_param("tenantId", "tenantId"))
+    .where_(Predicate::eq("published", true))
+    .text_search_with(
+        "Document",
+        "body",
+        PropertyInput::param("query"),
+        Expr::param("limit"),
+        Some(PropertyInput::param("tenantId")),
+    )
+    .project(vec![
+        PropertyProjection::new("$id"),
+        PropertyProjection::renamed("$score", "score"),
+    ])
+```
+
+This ranks the exact candidate IDs and refills to `limit` when enough candidates
+match. Source BM25 followed by `where_` can underfill.
+
 ## Warm reads, not writes
 
 All v3 SDK requests use the direct `POST /v2/query` route. Warm stable,

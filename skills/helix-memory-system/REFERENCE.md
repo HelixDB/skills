@@ -254,7 +254,12 @@ validTo IS NULL
 expiresAt IS NULL OR expiresAt > now
 ```
 
-Helix can express these as `where(Predicate.and([...]))` after a vector/text search. If a route cannot express a future-time or ACL condition because of local builder limitations, over-fetch and filter in application code before context packing. Never return records that fail scope or lifecycle policy just because they appeared in a tenant-scoped ANN/BM25 result set.
+For BM25, build this candidate stream first and call traversal-scoped
+`textSearchWith`/`text_search_with`; Helix then ranks exactly within visible,
+live IDs. Vector search still applies the predicate after ANN search. If a route
+cannot express a future-time or ACL condition, enforce it in application code
+before context packing. Never return records that fail scope or lifecycle
+policy because they appeared in a tenant-scoped search result.
 
 ## Modality Cheat-Sheet
 
@@ -266,7 +271,7 @@ Helix can express these as `where(Predicate.and([...]))` after a vector/text sea
 | What category/entity/source/session relates these? | edges | `out("IN_CATEGORY")`, `out("MENTIONS")`, `out("EXTRACTED_FROM")`, `out("DERIVED_FROM")` |
 | Did information change? | version edges | `out("UPDATES")`, `in("UPDATES")`, plus `isLatest`/`validTo` |
 | What is semantically similar/already known? | vector | `vectorSearchNodesWith("Memory", "embedding", p.embedding, p.k, p.tenant_id)` |
-| What contains exact words/names/ids? | BM25 text | `textSearchNodesWith("Memory", "content", p.query, p.k, p.tenant_id)` |
+| What contains exact words/names/ids? | BM25 text | `nWithLabel("Memory").where(visibility).textSearchWith("Memory", "content", p.query, p.k, p.tenant_id)` |
 | What source passages support this? | chunk search + provenance edges | search `Chunk`, then `in("EXTRACTED_FROM")` or `out("HAS_CHUNK")` |
 | What should the model always know? | profile node | lookup `UserProfile` by `tenant_id` + `userId` |
 
@@ -430,7 +435,7 @@ Never include embedding arrays in normal responses.
 | `.nWithLabelWhere("Memory", SourcePredicate.eq("tenant_id", p.tenant_id))` | `.n_with_label_where(...)` / `g().n_with_label("Memory").where_(Predicate::eq_param(...))` | indexed anchor |
 | `.where(Predicate.isNull("deletedAt"))` | `.where_(Predicate::is_null(...))` | post-source filter |
 | `.vectorSearchNodesWith(label, prop, p.vec, p.k, p.tenant_id)` | `.vector_search_nodes_with(label, prop, PropertyInput::param("vec"), Expr::param("k"), Some(PropertyInput::param("tenant_id")))` | tenant arg last |
-| `.textSearchNodesWith(label, prop, p.q, p.k, p.tenant_id)` | `.text_search_nodes_with(...)` | BM25 |
+| `.textSearchWith(label, prop, p.q, p.k, p.tenant_id)` | `.text_search_with(...)` | exact BM25 over the current node/edge stream |
 | `.addN("Memory", { ... })` | `.add_n("Memory", vec![("k", ...)])` | TS takes an object map |
 | `.addE("OWNS", NodeRef.var("mem"), { tenant_id: p.tenant_id })` | `.add_e("OWNS", NodeRef::var("mem"), vec![("tenant_id", ...)])` | put tenant scope on edges |
 | `.setProperty("lastAccessedAt", Expr.datetime())` | `.set_property("lastAccessedAt", Expr::datetime())` | typed DateTime |

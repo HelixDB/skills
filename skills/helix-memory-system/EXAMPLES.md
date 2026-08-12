@@ -502,8 +502,9 @@ function hybridRecall(p = recallParams) {
     .varAs(
       "memoryKeyword",
       g()
-        .textSearchNodesWith("Memory", "content", p.query, p.k, p.tenant_id)
+        .nWithLabel("Memory")
         .where(currentUserMemoryPredicate("now", "userId"))
+        .textSearchWith("Memory", "content", p.query, p.k, p.tenant_id)
         .project([
           Projection.property("memoryId", "id"),
           Projection.property("content", "content"),
@@ -531,8 +532,9 @@ function hybridRecall(p = recallParams) {
     .varAs(
       "chunkKeyword",
       g()
-        .textSearchNodesWith("Chunk", "content", p.query, p.k, p.tenant_id)
+        .nWithLabel("Chunk")
         .where(liveUserChunkPredicate("userId"))
+        .textSearchWith("Chunk", "content", p.query, p.k, p.tenant_id)
         .project([
           Projection.property("chunkId", "id"),
           Projection.property("documentId", "documentId"),

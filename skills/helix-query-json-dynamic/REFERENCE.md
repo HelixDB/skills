@@ -188,6 +188,13 @@ Common read nodes:
 | order | `order_by`, `order_by_multiple` | `input` plus order fields |
 | vector search | `vector_search_nodes`, `vector_search_edges` | label, property, query vector, `k`, optional tenant |
 | text search | `text_search_nodes`, `text_search_edges` | label, property, query text, `k`, optional tenant |
+| restricted text search | `text_search_nodes_within`, `text_search_edges_within` | `input`, label, property, query text, `k`, optional tenant |
+
+Restricted text search is an exact BM25 prefilter over unique input IDs. It
+returns at most `k`, orders by score descending then entity ID ascending, and
+keeps tenant-partition BM25 statistics. The selected input row keeps bindings,
+path, and sack and receives `$score`. Empty input skips the index; wrong-kind
+input or more than 1,000,000 unique candidates is a query error.
 
 Common write nodes:
 

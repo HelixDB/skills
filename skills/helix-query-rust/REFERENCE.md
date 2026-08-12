@@ -21,7 +21,8 @@ Empty  -- vector_search_edges[_with], text_search_edges[_with]          └─> 
 OnNodes -- out, in_, both, has, has_label, has_key, where_, dedup,
            within, without, limit, skip, range, as_, store, select,
            inject, bind, order_by[_multiple], repeat, union, choose,
-           coalesce, optional, path, simple_path, fold, unfold, sack_*  ↻ OnNodes
+           coalesce, optional, path, simple_path, fold, unfold, sack_*,
+           text_search[_with]                                          ↻ OnNodes
 OnNodes -- out_e, in_e, both_e                                          └─> OnEdges
 OnNodes -- count, exists, id, label, values, value_map, project,
            project_bindings, project_distinct_bindings,
@@ -31,7 +32,7 @@ OnNodes(WriteEnabled) -- add_e, set_property, remove_property,
 OnEdges -- out_n, in_n, other_n                                         └─> OnNodes
 OnEdges -- has, has_label, has_key, where_, edge_has, edge_has_label,
            dedup, within, without, limit, skip, range, as_, store,
-           select, order_by[_multiple]                                  ↻ OnEdges
+           select, order_by[_multiple], text_search[_with]              ↻ OnEdges
 OnEdges -- count, exists, id, label, edge_properties                    └─> Terminal
 OnEdges(WriteEnabled) -- drop_edge_by_id                                ↻ OnEdges
 ```
@@ -82,7 +83,7 @@ g().e_where(pred: SourcePredicate)                    -> Traversal<OnEdges>
 g().e_with_label(label)                               -> Traversal<OnEdges>
 g().e_with_label_where(label, pred: SourcePredicate)  -> Traversal<OnEdges>
 
-// Vector & text search
+// Whole-partition vector & text search sources
 g().vector_search_nodes(label, property, query_vector: Vec<f32>, k: usize,
     tenant_value: Option<PropertyValue>)              -> Traversal<OnNodes>
 g().vector_search_nodes_with(label, property,
@@ -99,6 +100,9 @@ g().text_search_nodes_with(label, property,
 ```
 
 Prefer the `_with` variants for parameterized routes — they accept `PropertyInput::param("x")` and `Expr::param("k")`.
+
+These source methods search the whole selected tenant partition. To rank only
+IDs already present in a traversal, use traversal-scoped text search below.
 
 ---
 
@@ -122,6 +126,25 @@ traversal.out_n()   -> Traversal<OnNodes, M>   // edge → target
 traversal.in_n()    -> Traversal<OnNodes, M>   // edge → source
 traversal.other_n() -> Traversal<OnNodes, M>   // edge → "other" endpoint
 ```
+
+Traversal-scoped BM25 search (node and edge states):
+
+```text
+traversal.text_search(label, property, query_text: impl Into<String>, k: usize,
+    tenant_value: Option<PropertyValue>) -> Self
+traversal.text_search_with(label, property,
+    query_text: impl Into<PropertyInput>,
+    k: impl Into<StreamBound>,
+    tenant_value: Option<PropertyInput>) -> Self
+```
+
+This is an exact prefilter over the unique IDs in the current stream. Results
+equal exhaustive BM25 search of the tenant partition, intersected with those
+IDs, then top-`k` ordered by score descending and entity ID ascending. BM25
+statistics remain partition-wide. The selected input row keeps its bindings,
+path, and sack; `$score` is attached. Empty input skips the index. More than
+1,000,000 unique candidates or a wrong-kind input is a query error. Use the
+same tenant partition for candidate construction and search.
 
 Pass `None::<&str>` to skip label filtering: `.out(None::<&str>)`.
 

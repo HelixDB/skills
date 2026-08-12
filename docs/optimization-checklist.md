@@ -100,22 +100,28 @@ These controls should be driven by route semantics, not habit.
 For BM25 routes, check:
 
 - is the indexed property the right one?
-- is tenant scope preserved directly or by post-filtering?
-- does the route need over-fetch, filter, then trim?
+- is tenant scope passed directly to the search operation?
+- does a traversal define the eligible node or edge IDs?
+- if so, are candidates built before traversal-scoped text search?
 
 Example:
 
 ```text
-g().text_search_nodes_with(
-    "Document",
-    "body",
-    PropertyInput::param("query"),
-    Expr::param("bm25K"),
-    None,
-)
-.where_(Predicate::eq_param("tenantId", "tenantId"))
-.range(0, Expr::param("limit"))
+g().n_with_label("Document")
+    .where_(Predicate::eq_param("tenantId", "tenantId"))
+    .where_(Predicate::eq("published", true))
+    .text_search_with(
+        "Document",
+        "body",
+        PropertyInput::param("query"),
+        Expr::param("limit"),
+        Some(PropertyInput::param("tenantId")),
+    )
 ```
+
+Source text search followed by `where_` is a post-filter and can underfill top-k.
+Traversal-scoped text search ranks the exact candidate IDs while retaining
+partition-wide BM25 statistics.
 
 ## 7. Review Vector Routes Separately
 
