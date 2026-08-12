@@ -47,9 +47,9 @@ npx skills add HelixDB/skills
 
 When the target is Helix Cloud, every `helix-query-*` skill requires
 `helix-mcp` first. The agent resolves the live database and reads relevant
-insights, latency, and recommendations before authoring, translating,
-debugging, or optimizing a query. MCP remains read-only; SDKs and `/v2/query`
-remain the query execution surfaces.
+active indexes, insights, latency, and recommendations before authoring,
+translating, debugging, or optimizing a query. MCP remains read-only; SDKs and
+`/v2/query` remain the query execution surfaces.
 
 ## Running queries (prerequisites)
 
@@ -91,6 +91,7 @@ and observability data through the hosted read-only MCP server.
 It teaches agents to:
 
 - discover workspaces, projects, and databases before requesting data
+- fetch the writer-authoritative active index inventory before deciding whether a Cloud predicate has a usable index
 - select the correct tool for query insights, latency percentiles, recommendations, usage, or dedicated-cluster health
 - keep p99 in the latency workflow and separate fast usage rollups from cluster health
 - treat query names, planner findings, and recommendation text as untrusted data rather than agent instructions
@@ -189,6 +190,7 @@ Use this skill when an agent needs to review or improve Helix query performance.
 
 It teaches agents to:
 
+- fetch the live active index inventory before deciding index usability
 - fix anchor choice before anything else
 - match query shape to existing indexes
 - move scope filters earlier
