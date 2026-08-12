@@ -1,6 +1,6 @@
 ---
 name: helix-query-typescript
-description: Write and revise queries with the forthcoming HelixDB v3 TypeScript SDK (`@helix-db/helix-db@3.0.0`). Use for `readBatch`, `writeBatch`, traversal builders, direct `toQueryRequest`/`toQueryJson` payloads, projections, indexes, BM25 text search and traversal-scoped prefiltering, vector search, and `Client.query`. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
+description: Write and revise queries with the forthcoming HelixDB v3 TypeScript SDK (`@helix-db/helix-db@3.0.0`). Use for `readBatch`, `writeBatch`, traversal builders, direct `toQueryRequest`/`toQueryJson` payloads, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, and `Client.query`. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
 license: MIT
 metadata:
   author: HelixDB
@@ -109,11 +109,10 @@ hits or `$score` for BM25 hits **before** traversing off the hit stream
 parameterized routes — they accept `PropertyInput.param(...)`,
 `Expr.param(...)`, and `StreamBound`.
 
-For exact BM25 prefiltering, build the candidate node or edge stream first,
-then call `.textSearch(...)` or `.textSearchWith(...)` on that stream.
-Source-level `g().textSearchNodes[With]` and `g().textSearchEdges[With]` search
-the whole tenant partition; filtering after them can return fewer than `k`
-eligible hits.
+For exact vector or BM25 prefiltering, build the candidate node or edge stream
+first, then call `.vectorSearch[With](...)` or `.textSearch[With](...)` on that
+stream. Source-level vector and text search methods rank the whole tenant
+partition; filtering after them can return fewer than `k` eligible hits.
 
 ### 6. Use Traversal Controls Deliberately
 
@@ -165,7 +164,7 @@ Standalone `v0.0.3` warming returns the normal query response.
 |---|---|---|
 | Entry points | `g()`, `sub()`, `readBatch()`, `writeBatch()` | `g()` starts a `Traversal<"empty","read">`. |
 | Sources | `n`, `nWhere`, `nWithLabel`, `nWithLabelWhere`, `e`, `eWhere`, `eWithLabel`, `eWithLabelWhere`, `vectorSearchNodes[With]`, `textSearchNodes[With]`, `vectorSearchEdges[With]`, `textSearchEdges[With]` | Anchor narrowly. `*With` variants accept params/exprs. |
-| Traversal | `out`, `in`, `both`, `outE`, `inE`, `bothE`, `outN`, `inN`, `otherN`, `textSearch[With]` | Label arg is optional (`out("FOLLOWS")` or `out()`). `*E` switch to the edge stream. `textSearch[With]` ranks only current node/edge IDs. |
+| Traversal | `out`, `in`, `both`, `outE`, `inE`, `bothE`, `outN`, `inN`, `otherN`, `vectorSearch[With]`, `textSearch[With]` | Label arg is optional (`out("FOLLOWS")` or `out()`). `*E` switch to the edge stream. Traversal-scoped search ranks only current node/edge IDs. |
 | Filters | `has`, `hasLabel`, `hasKey`, `where`, `dedup`, `within`, `without`, `edgeHas`, `edgeHasLabel` | `Predicate.*` + `Predicate.*Param`; dotted paths like `metadata.externalID` are scan-only. |
 | Limits | `limit`, `skip`, `range` | Accept `number`, `bigint`, `Expr`, `ParamRef`, or `StreamBound`. |
 | Variables | `as`, `store`, `select`, `inject` | Cross-entry refs via `NodeRef.var/param`, `EdgeRef.var/param`. |
@@ -233,7 +232,7 @@ function upsertUser(p = upsertParams) {
 ### Scoped Search Route
 
 ```ts
-const searchParams = defineParams({ tenantId: param.string(), queryVector: param.array(param.f64()), limit: param.i64() });
+const searchParams = defineParams({ tenantId: param.string(), queryVector: param.array(param.f32()), limit: param.i64() });
 
 function nearestDocuments(p = searchParams) {
   return readBatch()
@@ -258,6 +257,7 @@ Do not:
 - invent labels, edge labels, or property names without checking the codebase
 - start from broad scans when an indexed ID or scoped predicate exists
 - return embeddings by default in search results, or ignore tenant scope on text/vector search
+- implement an exact vector prefilter as source vector search followed by `where`
 - implement an exact BM25 prefilter as source text search followed by `where`
 - add `dedup` or `limit` without a reason
 - call `JSON.stringify` on a payload that may contain `bigint` — use `toJsonString` / `stringifyJson`
@@ -274,7 +274,7 @@ Before finishing:
 - verify the first anchor is the narrowest practical indexed set
 - verify the returned variable names and shape match service expectations
 - verify text/vector routes pass the tenant value when the index is scoped, and project `$distance` or `$score` before navigating
-- verify exact BM25 prefilters build candidates before calling `textSearch[With]`
+- verify exact vector and BM25 prefilters build candidates before calling the traversal-scoped search method
 - verify `bigint`/`i64(...)` is used for large integers and serialization goes through `toJsonString`/`stringifyJson`
 - verify `DateTime` parameters use `param.dateTime()` and `DateTime.*` values
 - verify the query matches surrounding local style more than any generic example

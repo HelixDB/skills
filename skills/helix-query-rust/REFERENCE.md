@@ -102,7 +102,8 @@ g().text_search_nodes_with(label, property,
 Prefer the `_with` variants for parameterized routes — they accept `PropertyInput::param("x")` and `Expr::param("k")`.
 
 These source methods search the whole selected tenant partition. To rank only
-IDs already present in a traversal, use traversal-scoped text search below.
+IDs already present in a traversal, use traversal-scoped vector or text search
+below.
 
 ---
 
@@ -127,9 +128,15 @@ traversal.in_n()    -> Traversal<OnNodes, M>   // edge → source
 traversal.other_n() -> Traversal<OnNodes, M>   // edge → "other" endpoint
 ```
 
-Traversal-scoped BM25 search (node and edge states):
+Traversal-scoped vector and BM25 search (node and edge states):
 
 ```text
+traversal.vector_search(label, property, query_vector: Vec<f32>, k: usize,
+    tenant_value: Option<PropertyValue>) -> Self
+traversal.vector_search_with(label, property,
+    query_vector: impl Into<PropertyInput>,
+    k: impl Into<StreamBound>,
+    tenant_value: Option<PropertyInput>) -> Self
 traversal.text_search(label, property, query_text: impl Into<String>, k: usize,
     tenant_value: Option<PropertyValue>) -> Self
 traversal.text_search_with(label, property,
@@ -138,13 +145,13 @@ traversal.text_search_with(label, property,
     tenant_value: Option<PropertyInput>) -> Self
 ```
 
-This is an exact prefilter over the unique IDs in the current stream. Results
-equal exhaustive BM25 search of the tenant partition, intersected with those
-IDs, then top-`k` ordered by score descending and entity ID ascending. BM25
-statistics remain partition-wide. The selected input row keeps its bindings,
-path, and sack; `$score` is attached. Empty input skips the index. More than
-1,000,000 unique candidates or a wrong-kind input is a query error. Use the
-same tenant partition for candidate construction and search.
+Both forms enforce exact membership over the IDs in the current stream. Vector
+ranking may still use approximate index structures, but cannot return an ID
+outside that stream; project `$distance`. BM25 results equal exhaustive search
+of the tenant partition intersected with those IDs, then top-`k` ordered by
+score descending and entity ID ascending; project `$score`. BM25 statistics
+remain partition-wide. Use the same tenant partition for candidate construction
+and search.
 
 Pass `None::<&str>` to skip label filtering: `.out(None::<&str>)`.
 

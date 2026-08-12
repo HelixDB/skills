@@ -188,7 +188,8 @@ g().vectorSearchEdgesWith(...)   g().textSearchEdgesWith(...)
 Prefer the `*With` variants for parameterized routes. The high-level `vectorSearchNodes` wraps `queryVector` as `PropertyValue.f32Array` and `k` as `StreamBound.literal`.
 
 These source methods search the whole selected tenant partition. To rank only
-IDs already present in a traversal, use traversal-scoped text search below.
+IDs already present in a traversal, use traversal-scoped vector or text search
+below.
 
 ---
 
@@ -209,9 +210,15 @@ Edge-stream navigation:
 .otherN()  -> Traversal<"nodes", M>   // edge → "other" endpoint
 ```
 
-Traversal-scoped BM25 search on node or edge streams:
+Traversal-scoped vector and BM25 search on node or edge streams:
 
 ```text
+.vectorSearch(label, property, queryVector: number[], k: number,
+    tenantValue?: PropertyValueInput | null)
+.vectorSearchWith(label, property,
+    queryVector: PropertyInput | Expr | ParamRef | PropertyValueInput,
+    k: StreamBound | Expr | ParamRef | number | bigint,
+    tenantValue?: PropertyInput | Expr | ParamRef | PropertyValueInput | null)
 .textSearch(label, property, queryText: string, k: number,
     tenantValue?: PropertyValueInput | null)
 .textSearchWith(label, property,
@@ -220,13 +227,13 @@ Traversal-scoped BM25 search on node or edge streams:
     tenantValue?: PropertyInput | Expr | ParamRef | PropertyValueInput | null)
 ```
 
-This is an exact prefilter over the unique IDs in the current stream. Results
-equal exhaustive BM25 search of the tenant partition, intersected with those
-IDs, then top-`k` ordered by score descending and entity ID ascending. BM25
-statistics remain partition-wide. The selected input row keeps its bindings,
-path, and sack; `$score` is attached. Empty input skips the index. More than
-1,000,000 unique candidates is a query error. Use the same tenant partition
-for candidate construction and search.
+Both forms enforce exact membership over the IDs in the current stream. Vector
+ranking may still use approximate index structures, but cannot return an ID
+outside that stream; project `$distance`. BM25 results equal exhaustive search
+of the tenant partition intersected with those IDs, then top-`k` ordered by
+score descending and entity ID ascending; project `$score`. BM25 statistics
+remain partition-wide. Use the same tenant partition for candidate construction
+and search.
 
 The label argument is optional; omit it (`out()`) or pass a string
 (`out("FOLLOWS")`). On the wire the nested `out` node has an `input` and omits

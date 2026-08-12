@@ -96,41 +96,46 @@ pub fn friends_of_friends(userId: Vec<i64>) -> ReadBatch {
 
 ---
 
-## 4. Vector search with tenant + distance in projection
+## 4. Vector prefiltering over traversal candidates
 
 ```rust
 #[query]
 pub fn nearest_documents(
     tenantId: String,
-    queryVector: Vec<f64>,
+    queryVector: Vec<f32>,
     k: i64,
 ) -> ReadBatch {
     let _ = (&tenantId, &queryVector, &k);
     read_batch()
         .var_as(
             "hits",
-            g().vector_search_nodes_with(
-                "Document",
-                "embedding",
-                PropertyInput::param("queryVector"),
-                Expr::param("k"),
-                Some(PropertyInput::param("tenantId")),
-            )
-            .project(vec![
-                PropertyProjection::renamed("$id", "id"),
-                PropertyProjection::new("title"),
-                PropertyProjection::renamed("$distance", "distance"),
-            ]),
+            g().n_with_label("Document")
+                .where_(Predicate::eq_param("tenantId", "tenantId"))
+                .where_(Predicate::eq("published", true))
+                .vector_search_with(
+                    "Document",
+                    "embedding",
+                    PropertyInput::param("queryVector"),
+                    Expr::param("k"),
+                    Some(PropertyInput::param("tenantId")),
+                )
+                .project(vec![
+                    PropertyProjection::renamed("$id", "id"),
+                    PropertyProjection::new("title"),
+                    PropertyProjection::renamed("$distance", "distance"),
+                ]),
         )
         .returning(["hits"])
 }
 ```
 
-Project `$distance` before any `.out`/`.in_`/`.both` — traversal off the hit stream drops the distance metadata.
+The label, tenant, and publication predicates build the exact candidate stream
+before vector ranking. Source vector search followed by `where_` can underfill
+top-k. Project `$distance` before any `.out`/`.in_`/`.both`.
 
 ---
 
-## 5. BM25 text search over traversal candidates
+## 5. Full Text Search prefiltering over traversal candidates
 
 ```rust
 #[query]

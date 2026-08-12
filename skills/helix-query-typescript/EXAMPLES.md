@@ -95,12 +95,12 @@ const body = friendsOfFriends().toQueryJson(fofParams, { userId: [1n, 2n] });
 
 ---
 
-## 4. Vector search with tenant + distance in projection
+## 4. Vector prefiltering over traversal candidates
 
 ```ts
 const nearestParams = defineParams({
   tenantId: param.string(),
-  queryVector: param.array(param.f64()),
+  queryVector: param.array(param.f32()),
   k: param.i64(),
 });
 
@@ -109,7 +109,10 @@ function nearestDocuments(p = nearestParams) {
     .varAs(
       "hits",
       g()
-        .vectorSearchNodesWith(
+        .nWithLabel("Document")
+        .where(Predicate.eqParam("tenantId", "tenantId"))
+        .where(Predicate.eq("published", true))
+        .vectorSearchWith(
           "Document",
           "embedding",
           PropertyInput.param("queryVector"),
@@ -126,11 +129,13 @@ function nearestDocuments(p = nearestParams) {
 }
 ```
 
-Project `$distance` before any `.out`/`.in`/`.both` — traversal off the hit stream drops the distance metadata.
+The label, tenant, and publication predicates build the exact candidate stream
+before vector ranking. Source vector search followed by `where` can underfill
+top-k. Project `$distance` before any `.out`/`.in`/`.both`.
 
 ---
 
-## 5. BM25 text search over traversal candidates
+## 5. Full Text Search prefiltering over traversal candidates
 
 ```ts
 const docSearchParams = defineParams({ tenantId: param.string(), q: param.string() });

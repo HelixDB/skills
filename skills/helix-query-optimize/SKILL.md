@@ -1,6 +1,6 @@
 ---
 name: helix-query-optimize
-description: Review and improve HelixDB v3 query performance. Use for index-aware sources, label scope, equality and range indexes, bounded traversals, projection size, vector search, BM25 search and traversal-scoped prefiltering, tenant-scoped indexes, and safe write batches. Examples use direct v3 SDK requests and the nested JSON AST. When the target is Helix Cloud, always use helix-mcp first and base the review on live observability evidence.
+description: Review and improve HelixDB v3 query performance. Use for index-aware sources, label scope, equality and range indexes, bounded traversals, projection size, vector and BM25 traversal-scoped prefiltering, tenant-scoped indexes, and safe write batches. Examples use direct v3 SDK requests and the nested JSON AST. When the target is Helix Cloud, always use helix-mcp first and base the review on live observability evidence.
 license: MIT
 metadata:
   author: HelixDB
@@ -126,11 +126,10 @@ Vector and text index definitions may include a tenant property. Pass the matchi
 tenant value to the search operation itself. A later `where` cannot repair a search
 that selected top-k hits from the wrong partition.
 
-When a graph traversal defines eligible BM25 candidates, build that node or edge
-stream first and call traversal-scoped `text_search[_with]`,
-`textSearch[With]`, or `TextSearch*Within[With]`. This ranks exactly within the
-candidate IDs and refills to `k` when enough candidates match. Source text
-search followed by a filter is only an approximate over-fetch strategy.
+When a graph traversal defines eligible vector or BM25 candidates, build that
+node or edge stream first and call the traversal-scoped search method. This
+enforces exact candidate membership. Source search followed by a filter can
+underfill top-k; BM25 prefiltering refills to `k` when enough candidates match.
 
 Project `$distance` for vector results or `$score` for text results before traversing
 away from the ranked hit stream.
@@ -185,7 +184,7 @@ of the v3 SDK contract. Authoring with Rust `#[query]` still produces a direct r
 - [ ] expansion is bounded near its source
 - [ ] projection includes only required fields
 - [ ] tenant-scoped search passes the tenant value at search time
-- [ ] BM25 candidate filters run before traversal-scoped text search
+- [ ] vector and BM25 candidate filters run before traversal-scoped search
 - [ ] `$distance` or `$score` is projected before leaving the hit stream
 - [ ] large ordering has a range index or an accepted sort cost
 - [ ] recursive depth and bulk batch sizes are bounded

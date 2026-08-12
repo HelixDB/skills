@@ -189,20 +189,23 @@ g().text_search_edges(...)
 ```
 
 These source methods search the whole selected tenant partition. For an exact
-BM25 prefilter, start with a node or edge traversal and use:
+vector or BM25 prefilter, start with a node or edge traversal and use:
 
 ```text
+candidate_nodes.vector_search("Document", "embedding", [1.0, 0.0, 0.0], 10, "acme")
+candidate_nodes.vector_search_with("Document", "embedding", params.query_vector, params.limit, params.tenant_id)
+candidate_edges.vector_search(...)
+candidate_edges.vector_search_with(...)
 candidate_nodes.text_search("Document", "body", "graph", 10, "acme")
 candidate_nodes.text_search_with("Document", "body", params.query, params.limit, params.tenant_id)
 candidate_edges.text_search(...)
 candidate_edges.text_search_with(...)
 ```
 
-Restricted search deduplicates input IDs and returns at most `k`, ordered by
-score descending then entity ID ascending. BM25 statistics remain global to
-the tenant partition. The selected row keeps bindings, path, and sack, and
-receives `$score`. Empty input skips the index. Wrong-kind input or more than
-1,000,000 unique candidates is a query error. Pass the same tenant partition
+Restricted vector search enforces exact candidate membership while ranking may
+still use approximate index structures; project `$distance`. Restricted BM25
+search returns at most `k`, ordered by score descending then entity ID ascending,
+with partition-wide statistics; project `$score`. Pass the same tenant partition
 used to construct candidates.
 
 Project `$distance` for vector hits or `$score` for BM25 hits before navigating

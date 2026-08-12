@@ -200,19 +200,20 @@ pub fn nearest_current_memory(tenant_id: String, userId: String, embedding: Vec<
     read_batch()
         .var_as(
             "nearest",
-            g().vector_search_nodes_with(
-                "Memory",
-                "embedding",
-                PropertyInput::param("embedding"),
-                1usize,
-                Some(PropertyInput::param("tenant_id")),
-            )
-            .where_(current_user_memory_predicate("now", "userId"))
-            .project(vec![
-                PropertyProjection::new("memoryId"),
-                PropertyProjection::new("content"),
-                PropertyProjection::renamed("$distance", "distance"),
-            ]),
+            g().n_with_label("Memory")
+                .where_(current_user_memory_predicate("now", "userId"))
+                .vector_search_with(
+                    "Memory",
+                    "embedding",
+                    PropertyInput::param("embedding"),
+                    1usize,
+                    Some(PropertyInput::param("tenant_id")),
+                )
+                .project(vec![
+                    PropertyProjection::new("memoryId"),
+                    PropertyProjection::new("content"),
+                    PropertyProjection::renamed("$distance", "distance"),
+                ]),
         )
         .returning(["nearest"])
 }
@@ -574,24 +575,25 @@ pub fn hybrid_recall(
         )
         .var_as(
             "memorySemantic",
-            g().vector_search_nodes_with(
-                "Memory",
-                "embedding",
-                PropertyInput::param("embedding"),
-                Expr::param("k"),
-                Some(PropertyInput::param("tenant_id")),
-            )
-            .where_(current_user_memory_predicate("now", "userId"))
-            .project(vec![
-                PropertyProjection::renamed("memoryId", "id"),
-                PropertyProjection::new("content"),
-                PropertyProjection::new("kind"),
-                PropertyProjection::new("salience"),
-                PropertyProjection::new("lastAccessedAt"),
-                PropertyProjection::new("documentId"),
-                PropertyProjection::new("chunkId"),
-                PropertyProjection::renamed("$distance", "distance"),
-            ]),
+            g().n_with_label("Memory")
+                .where_(current_user_memory_predicate("now", "userId"))
+                .vector_search_with(
+                    "Memory",
+                    "embedding",
+                    PropertyInput::param("embedding"),
+                    Expr::param("k"),
+                    Some(PropertyInput::param("tenant_id")),
+                )
+                .project(vec![
+                    PropertyProjection::renamed("memoryId", "id"),
+                    PropertyProjection::new("content"),
+                    PropertyProjection::new("kind"),
+                    PropertyProjection::new("salience"),
+                    PropertyProjection::new("lastAccessedAt"),
+                    PropertyProjection::new("documentId"),
+                    PropertyProjection::new("chunkId"),
+                    PropertyProjection::renamed("$distance", "distance"),
+                ]),
         )
         .var_as(
             "memoryKeyword",
@@ -617,21 +619,22 @@ pub fn hybrid_recall(
         )
         .var_as(
             "chunkSemantic",
-            g().vector_search_nodes_with(
-                "Chunk",
-                "embedding",
-                PropertyInput::param("embedding"),
-                Expr::param("k"),
-                Some(PropertyInput::param("tenant_id")),
-            )
-            .where_(live_user_chunk_predicate("userId"))
-            .project(vec![
-                PropertyProjection::renamed("chunkId", "id"),
-                PropertyProjection::new("documentId"),
-                PropertyProjection::new("content"),
-                PropertyProjection::new("ordinal"),
-                PropertyProjection::renamed("$distance", "distance"),
-            ]),
+            g().n_with_label("Chunk")
+                .where_(live_user_chunk_predicate("userId"))
+                .vector_search_with(
+                    "Chunk",
+                    "embedding",
+                    PropertyInput::param("embedding"),
+                    Expr::param("k"),
+                    Some(PropertyInput::param("tenant_id")),
+                )
+                .project(vec![
+                    PropertyProjection::renamed("chunkId", "id"),
+                    PropertyProjection::new("documentId"),
+                    PropertyProjection::new("content"),
+                    PropertyProjection::new("ordinal"),
+                    PropertyProjection::renamed("$distance", "distance"),
+                ]),
         )
         .var_as(
             "chunkKeyword",

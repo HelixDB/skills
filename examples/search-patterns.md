@@ -25,7 +25,7 @@ read_batch()
     .returning(["results"])
 ```
 
-## Exact BM25 Over Traversal Candidates
+## Full Text Search Prefiltering Over Traversal Candidates
 
 ```rust
 read_batch()
@@ -75,6 +75,35 @@ read_batch()
     )
     .returning(["results"])
 ```
+
+## Vector Prefiltering Over Traversal Candidates
+
+```rust
+read_batch()
+    .var_as(
+        "results",
+        g().n_with_label("Document")
+            .where_(Predicate::eq_param("tenantId", "tenantId"))
+            .where_(Predicate::eq("published", true))
+            .vector_search_with(
+                "Document",
+                "embedding",
+                PropertyInput::param("queryVector"),
+                Expr::param("limit"),
+                Some(PropertyInput::param("tenantId")),
+            )
+            .project(vec![
+                PropertyProjection::new("$id"),
+                PropertyProjection::new("title"),
+                PropertyProjection::renamed("$distance", "distance"),
+            ]),
+    )
+    .returning(["results"])
+```
+
+The filters construct the exact candidate stream before vector ranking. The
+engine cannot return an ID outside that stream, although approximate index
+structures may accelerate ranking.
 
 ## Fixed-Depth Expansion
 

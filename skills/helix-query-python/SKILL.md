@@ -1,6 +1,6 @@
 ---
 name: helix-query-python
-description: Write and revise HelixDB queries with the published Python SDK (package `helix-db`, import `helixdb`). Use for `read_batch`, `write_batch`, direct `to_query_request`/`to_query_json` payloads, row bindings, traversal builders, projections, parameters, vector search, BM25 search and traversal-scoped prefiltering, synchronous `Client`, and asynchronous server or embedded execution with `AsyncClient`. Stored routes and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
+description: Write and revise HelixDB queries with the published Python SDK (package `helix-db`, import `helixdb`). Use for `read_batch`, `write_batch`, direct `to_query_request`/`to_query_json` payloads, row bindings, traversal builders, projections, parameters, vector and BM25 search with traversal-scoped prefiltering, synchronous `Client`, and asynchronous server or embedded execution with `AsyncClient`. Stored routes and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
 license: MIT
 metadata:
   author: HelixDB
@@ -205,16 +205,16 @@ query = (
 )
 ```
 
-### 7. Prefilter BM25 On The Current Stream
+### 7. Prefilter Vector And Full Text Search On The Current Stream
 
 Build the candidate node or edge traversal first, then call
-`.text_search(...)` or `.text_search_with(...)` to rank only those IDs.
-Source-level `g().text_search_nodes[_with]` and
-`g().text_search_edges[_with]` search the whole tenant partition; a later
-`.where(...)` is a post-filter and can return fewer than `k` eligible hits.
+`.vector_search[_with](...)` or `.text_search[_with](...)` to rank only those
+IDs. Source-level vector and text search methods rank the whole tenant
+partition; a later `.where(...)` is a post-filter and can return fewer than
+`k` eligible hits.
 
-Pass the same tenant partition used to construct candidates, and project
-`$score` before navigating away from the ranked stream.
+Pass the same tenant partition used to construct candidates. Project
+`$distance` for vector hits or `$score` for text hits before navigating away.
 
 ## Validation Checklist
 
@@ -225,7 +225,7 @@ Before finishing:
 - verify request-specific values use `define_params` refs instead of direct literals
 - verify `.returning([...])` names match the expected response shape
 - verify vector/text search preserves tenant scope when the index is scoped
-- verify exact BM25 prefilters build candidates before calling `text_search[_with]`
+- verify exact vector and BM25 prefilters build candidates before calling the traversal-scoped search method
 - verify `$distance` or `$score` is projected before traversing away from search hits
 - verify write callers use explicit conflict retry only when safe to replay
 - verify asynchronous clients are reused and closed with `async with` or `await close()`
