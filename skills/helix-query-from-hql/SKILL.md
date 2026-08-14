@@ -110,7 +110,8 @@ field `$id` (e.g. `PropertyProjection::renamed("$id","userID")`). Computed field
 `::COUNT` → `.count()`; `GROUP_BY(p)` (count summaries) → `.group_count("p")`; `AGGREGATE_BY(p)` (full objects) →
 `.group("p")`; `MIN/MAX/SUM/AVG/COUNT(coll)` → `.aggregate_by(AggregateFunction::Min/Max/Sum/Mean/Count, "p")`
 (`AVG`=`Mean`). `ORDER<Asc|Desc>(_::{f})` → `.order_by("f", Order::Asc|Desc)`. `RANGE(a,b)` → `.range(a,b)`.
-`FIRST` → `.limit(1)` (note: yields a one-element array, not a single object — unwrap client-side).
+`FIRST` → `.limit(1)` (note: yields a one-element array when populated and
+`null` when empty, not a single object — unwrap client-side).
 
 ### 6. Writes
 
@@ -166,62 +167,10 @@ explicitly and move the logic to **application code** — do not improvise a DSL
   fields, or return related sets as separate bindings.
 - **`#[model(...)]`** and **`#[mcp]`** macros — no DSL equivalent.
 
-## Canonical Example
+## Canonical Examples
 
-HQL:
-
-```helixql
-QUERY ActiveFollowing(user_id: ID, status: String, limit: I64) =>
-    results <- N<User>(user_id)::Out<Follows>::WHERE(_::{status}::EQ(status))::ORDER<Desc>(_::{createdAt})::RANGE(0, limit)
-    RETURN results::{userID: ::ID, name, status}
-```
-
-Rust DSL:
-
-```rust
-read_batch()
-    .var_as(
-        "results",
-        g().n(NodeRef::param("user_id"))
-            .out(Some("Follows"))
-            .where_(Predicate::eq_param("status", "status"))
-            .order_by("createdAt", Order::Desc)
-            .range(0, Expr::param("limit"))
-            .project(vec![
-                PropertyProjection::renamed("$id", "userID"),
-                PropertyProjection::new("name"),
-                PropertyProjection::new("status"),
-            ]),
-    )
-    .returning(["results"])
-```
-
-TypeScript DSL:
-
-```ts
-const activeFollowingParams = defineParams({ userId: param.string(), status: param.string(), limit: param.i64() });
-
-function activeFollowing(_ = activeFollowingParams) {
-  return readBatch()
-    .varAs(
-      "results",
-      g()
-        .n(NodeRef.param("userId"))
-        .out("Follows")
-        .where(Predicate.eqParam("status", "status"))
-        .orderBy("createdAt", Order.Desc)
-        .range(0, Expr.param("limit"))
-        .project([
-          PropertyProjection.renamed("$id", "userID"),
-          PropertyProjection.new("name"),
-          PropertyProjection.new("status"),
-        ]),
-    )
-    .returning(["results"]);
-}
-
-const body = activeFollowing().toQueryJson(activeFollowingParams, { userId: "u-42", status: "active", limit: 20n });
-```
+Use `EXAMPLES.md` for worked HQL-to-Rust-to-TypeScript migrations. It covers
+reads, writes, search, aggregation, unsupported features, and parity checks.
 
 ## Anti-Patterns
 

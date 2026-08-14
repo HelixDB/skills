@@ -120,7 +120,7 @@ test a sub-traversal. See §Unsupported for HQL `EXISTS`/count-in-`WHERE`.
 | `::ORDER<Desc>(_::{f})` | `.order_by("f", Order::Desc)` | `.orderBy("f", Order.Desc)` | |
 | `::RANGE(a, b)` | `.range(a, b)` | `.range(a, b)` | Inclusive start, exclusive end — same as HQL. |
 | (limit / page size) | `.limit(n)` / `.skip(n)` | `.limit(n)` / `.skip(n)` | `n` accepts `Expr::param(..)` / a `ParamRef`. |
-| `::FIRST` | `.limit(1)` | `.limit(1)` | **Semantic difference:** HQL `FIRST` yields a single object; `.limit(1)` yields a one-element array. Unwrap client-side. |
+| `::FIRST` | `.limit(1)` | `.limit(1)` | **Semantic difference:** HQL `FIRST` yields a single object. `.limit(1)` yields a one-element array when populated and `null` when empty; unwrap client-side. |
 
 ---
 
