@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helix CLI"
+  short_description: "Run and deploy Helix instances"
+  default_prompt: "Use $helix-cli to start a local Helix instance and run a direct query."

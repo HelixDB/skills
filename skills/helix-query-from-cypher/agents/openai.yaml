@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cypher to Helix"
+  short_description: "Translate Cypher to Helix queries"
+  default_prompt: "Use $helix-query-from-cypher to translate this Cypher query into a direct Helix v3 query."

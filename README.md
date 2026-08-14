@@ -10,7 +10,7 @@ These skills are for agents that need to:
 
 - write Helix queries in the Rust, TypeScript, Python, and Go SDK DSLs
 - write dynamic-first Helix queries in Go
-- translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
+- translate from Cypher, Gremlin, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
 - build correct dynamic `POST /v2/query` payloads
 - inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the hosted read-only MCP server
@@ -123,6 +123,32 @@ It teaches agents to:
 - add `parameter_types` when typed coercion matters
 - send `DateTime` values correctly
 - avoid malformed bundle-shaped payloads
+
+### `helix-query-rust`
+
+Use this skill when an agent needs to write or revise HelixDB queries with the
+Rust SDK.
+
+It teaches agents to:
+
+- build typed read and write batches
+- declare parameters with `#[query]`
+- produce direct `QueryRequest` values
+- execute requests with the Rust client
+- shape responses with projections and explicit return names
+
+### `helix-query-typescript`
+
+Use this skill when an agent needs to write or revise HelixDB queries with the
+TypeScript SDK.
+
+It teaches agents to:
+
+- build typed read and write batches
+- declare runtime parameters with `defineParams` and `param.*`
+- produce direct requests with `toQueryRequest` and `toQueryJson`
+- execute requests with the TypeScript client
+- shape responses with projections and explicit return names
 
 ### `helix-query-go`
 

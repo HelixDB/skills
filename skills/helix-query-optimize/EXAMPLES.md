@@ -2,6 +2,12 @@
 
 Each example contrasts a broad shape with a more selective direct-request shape.
 
+## Quick Navigation
+
+- Start with anchoring, matching indexes, and bounded graph expansion.
+- Use the vector and Full Text Search sections for exact traversal-prefiltered ranking.
+- Finish with projection, pagination, rank-field, tenant-scope, and write-batch checks.
+
 ## Anchor a property filter with its label
 
 Broader:

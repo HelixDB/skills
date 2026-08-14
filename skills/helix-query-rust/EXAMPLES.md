@@ -8,6 +8,13 @@ All snippets assume `use helix_db::dsl::prelude::*;`.
 
 Calling a public `#[query]` function returns a `QueryRequest` whose top-level `query_name` is the Rust function name. Direct `QueryRequest::read/write` builders serialize `query_name: null` until `.with_query_name(...)` or `.set_query_name(...)` is used.
 
+## Quick Navigation
+
+- Use examples 1-5 for common reads, projections, traversal, vector search, and BM25.
+- Use examples 6-11 for repeat, branching, computed projections, and aggregation.
+- Use examples 12-17 for writes, upserts, bulk loops, typed parameters, and indexes.
+- Use example 18 for direct client warming.
+
 ---
 
 ## 1. Count nodes matching label + predicate

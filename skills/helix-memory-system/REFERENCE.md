@@ -2,6 +2,12 @@
 
 Data model, tenant rules, indexes, modality cheat-sheet, embedding rules, fusion formula, and TypeScript ↔ Rust API mapping. Authoring rules are in `SKILL.md`; runnable queries are in `EXAMPLES.md` (TS) / `EXAMPLES.rust.md`.
 
+## Quick Navigation
+
+- Start with **Tenant Rules**, **Scope & Visibility Rules**, and **Data Model** before writing queries.
+- Use **Current Scoped Memory Filter**, **Modality Cheat-Sheet**, and **Embedding Guidance** for recall design.
+- Use **Contextual Memory Extraction**, **Deduplication & Relationship Adjudication**, and **Evaluation Checklist** for product behavior outside Helix.
+
 ## Design Target
 
 This model supports an intelligent memory product, not just vector recall:

@@ -11,6 +11,13 @@ direct request with
 execute it with `await Client.server(url).query<R>(request).send()`. Use
 `toQueryJson` to inspect the exact `POST /v2/query` body.
 
+## Quick Navigation
+
+- Use examples 1-5 for common reads, projections, traversal, vector search, and BM25.
+- Use examples 6-11 for repeat, branching, computed projections, and aggregation.
+- Use examples 12-17 for writes, upserts, bulk loops, typed parameters, and indexes.
+- Use example 18 for direct client warming.
+
 ---
 
 ## 1. Count nodes matching label + predicate

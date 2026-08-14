@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helix Query Go"
+  short_description: "Author Helix queries in Go"
+  default_prompt: "Use $helix-query-go to write a direct Helix v3 query with the Go SDK."

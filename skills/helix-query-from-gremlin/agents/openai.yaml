@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gremlin to Helix"
+  short_description: "Translate Gremlin to Helix queries"
+  default_prompt: "Use $helix-query-from-gremlin to translate this Gremlin traversal into a direct Helix v3 query."
