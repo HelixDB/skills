@@ -100,6 +100,11 @@ Prefer this anchor order: node/edge ID → unique property lookup → equality-i
 
 Do not return oversized properties like embeddings unless the caller explicitly needs them.
 
+For an at-most-one binding such as `.limit(1)`, model the response as
+`T[] | null`: populated values keep the existing one-element array, while an
+empty or skipped value is `null`. Empty collections, folds, and mutations
+remain `[]`. An empty `.returning([])` declaration produces `{}`.
+
 ### 5. Preserve Search Scope
 
 For BM25 and vector search: keep the chosen text/vector property explicit, pass
@@ -183,72 +188,8 @@ See `REFERENCE.md` for full signatures and typestate constraints.
 
 ## Canonical Examples
 
-### Read By Indexed Identifier
-
-```ts
-const params = defineParams({ userId: param.string() });
-
-function userById(p = params) {
-  return readBatch()
-    .varAs(
-      "user",
-      g()
-        .nWithLabel("User")
-        .where(Predicate.eqParam("userId", "userId"))
-        .project([
-          PropertyProjection.renamed("$id", "id"),
-          PropertyProjection.new("userId"),
-          PropertyProjection.new("name"),
-        ]),
-    )
-    .returning(["user"]);
-}
-
-const body = userById().toQueryJson(params, { userId: "u-42" });
-```
-
-### Explicit Create Or Update
-
-```ts
-const upsertParams = defineParams({ userId: param.string(), name: param.string() });
-
-function upsertUser(p = upsertParams) {
-  return writeBatch()
-    .varAs("existing", g().nWithLabel("User").where(Predicate.eqParam("userId", "userId")))
-    .varAsIf(
-      "updated",
-      BatchCondition.varNotEmpty("existing"),
-      g().n(NodeRef.var("existing")).setProperty("name", PropertyInput.param("name")),
-    )
-    .varAsIf(
-      "created",
-      BatchCondition.varEmpty("existing"),
-      g().addN("User", { userId: PropertyInput.param("userId"), name: PropertyInput.param("name") }),
-    )
-    .returning(["updated", "created"]);
-}
-```
-
-### Scoped Search Route
-
-```ts
-const searchParams = defineParams({ tenantId: param.string(), queryVector: param.array(param.f32()), limit: param.i64() });
-
-function nearestDocuments(p = searchParams) {
-  return readBatch()
-    .varAs(
-      "results",
-      g()
-        .vectorSearchNodesWith("Document", "embedding", PropertyInput.param("queryVector"), Expr.param("limit"), PropertyInput.param("tenantId"))
-        .project([
-          PropertyProjection.renamed("$id", "id"),
-          PropertyProjection.new("title"),
-          PropertyProjection.renamed("$distance", "distance"),
-        ]),
-    )
-    .returning(["results"]);
-}
-```
+Use `EXAMPLES.md` for copyable reads, writes, search, branching, aggregation,
+bulk operations, index management, and direct execution.
 
 ## Anti-Patterns
 

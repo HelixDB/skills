@@ -262,6 +262,11 @@ not part of the response.
 }
 ```
 
+Populated return values do not change shape. When a declared return has no
+value, an at-most-one binding is `null`, while a collection, `fold`, or mutation
+binding is `[]`. Scalar terminals are unchanged and do not get a synthetic
+empty value. With `returns: []`, the response is `{}`.
+
 ## Never emit
 
 - a `queries.json` bundle

@@ -108,6 +108,11 @@ Use:
 
 Do not return oversized properties like embeddings unless the caller explicitly needs them.
 
+For an at-most-one binding such as `.limit(1)`, model the response as
+`Option<Vec<T>>`: populated values keep the existing one-element array, while
+an empty or skipped value is `null`. Empty collections, folds, and mutations
+remain `[]`. A request with no declared returns produces `{}`.
+
 ### 6. Preserve Search Scope
 
 For BM25 and vector search:
@@ -169,73 +174,8 @@ Nested object/array property values are supported with `PropertyValue::object(..
 
 ## Canonical Examples
 
-### Read By Indexed Identifier
-
-```rust
-read_batch()
-    .var_as(
-        "user",
-        g().n_with_label("User")
-            .where_(Predicate::eq_param("userId", "userId"))
-            .project(vec![
-                PropertyProjection::new("$id"),
-                PropertyProjection::new("userId"),
-                PropertyProjection::new("name"),
-            ]),
-    )
-    .returning(["user"])
-```
-
-### Explicit Create Or Update
-
-```rust
-write_batch()
-    .var_as(
-        "existing",
-        g().n_with_label("User")
-            .where_(Predicate::eq_param("userId", "userId")),
-    )
-    .var_as_if(
-        "updated",
-        BatchCondition::VarNotEmpty("existing".to_string()),
-        g().n(NodeRef::var("existing"))
-            .set_property("name", PropertyInput::param("name")),
-    )
-    .var_as_if(
-        "created",
-        BatchCondition::VarEmpty("existing".to_string()),
-        g().add_n(
-            "User",
-            vec![
-                ("userId", PropertyInput::param("userId")),
-                ("name", PropertyInput::param("name")),
-            ],
-        ),
-    )
-    .returning(["updated", "created"])
-```
-
-### Scoped Search Route
-
-```rust
-read_batch()
-    .var_as(
-        "results",
-        g().vector_search_nodes_with(
-            "Document",
-            "embedding",
-            PropertyInput::param("queryVector"),
-            Expr::param("limit"),
-            Some(PropertyInput::param("tenantId")),
-        )
-        .project(vec![
-            PropertyProjection::new("$id"),
-            PropertyProjection::new("title"),
-            PropertyProjection::renamed("$distance", "distance"),
-        ]),
-    )
-    .returning(["results"])
-```
+Use `EXAMPLES.md` for copyable reads, writes, search, branching, aggregation,
+bulk operations, index management, and direct execution.
 
 ## Anti-Patterns
 

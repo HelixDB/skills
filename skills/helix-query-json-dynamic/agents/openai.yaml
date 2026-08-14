@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helix Dynamic JSON"
+  short_description: "Build Helix dynamic JSON requests"
+  default_prompt: "Use $helix-query-json-dynamic to build and validate a POST /v2/query request body."

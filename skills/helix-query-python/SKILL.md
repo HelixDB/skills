@@ -180,6 +180,10 @@ conflicts; application code owns retry policy and idempotency.
   alias)` instead of traversing to every endpoint first.
 - Avoid returning large properties such as embeddings unless the caller needs them.
 - Match `.returning([...])` names to the response keys your application expects.
+- Model an at-most-one binding such as `.limit(1)` as `list[T] | None`:
+  populated values remain one-element lists, while empty or skipped values are
+  `None`. Empty collections, folds, and mutations remain `[]`. An empty
+  `.returning([])` declaration produces `{}`.
 
 Python v3 supports row-local correlation with `bind`,
 `project_bindings`, and `project_distinct_bindings`:

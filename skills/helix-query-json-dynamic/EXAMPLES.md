@@ -3,6 +3,12 @@
 These are direct request bodies for `POST /v2/query`. They use the same nested AST as
 the forthcoming v3 SDKs.
 
+## Quick Navigation
+
+- Use **Count nodes by label**, **Filter, limit, and project**, and **Parameterized query** for common reads.
+- Use **Write two nodes**, **Traverse from a previous entry**, and **Structured projection** for multi-entry requests.
+- Use **Invalid legacy shapes** when diagnosing rejected payloads.
+
 ## Count nodes by label
 
 ```json

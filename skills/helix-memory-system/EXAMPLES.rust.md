@@ -59,6 +59,13 @@ fn live_user_chunk_predicate(user_param: &str) -> Predicate {
 
 ---
 
+## Quick Navigation
+
+- Use examples 1-2 for index bootstrap and source/chunk ingestion.
+- Use examples 3-5 for generation, memory creation, categorisation, and entity linking.
+- Use examples 6-8 for reinforcement, correction/versioning, and forgetting.
+- Use examples 9-10 for hybrid retrieval and bounded graph expansion.
+
 ## 1. Bootstrap indexes (run once)
 
 ```rust

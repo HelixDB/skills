@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helix Query Python"
+  short_description: "Author Helix queries in Python"
+  default_prompt: "Use $helix-query-python to write a direct Helix v3 query with the Python SDK."

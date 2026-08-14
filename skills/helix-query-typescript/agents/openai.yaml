@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helix Query TypeScript"
+  short_description: "Author Helix queries in TypeScript"
+  default_prompt: "Use $helix-query-typescript to write or revise this direct Helix v3 TypeScript query."

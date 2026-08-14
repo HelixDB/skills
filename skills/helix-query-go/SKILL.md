@@ -117,7 +117,12 @@ Always pass explicit response variable names to `.Returning(...)` when rows shou
 return q.VarAs("users", traversal).Returning("users")
 ```
 
-Use zero-arg `.Returning()` only for intentional empty responses. The SDK serializes it as `"returns":[]`, but explicit names are clearer and avoid mismatched response structs.
+Use zero-arg `.Returning()` only for intentional empty responses. The SDK
+serializes it as `"returns":[]`, and the server returns `{}`.
+
+For an at-most-one binding such as `.Limit(1)`, decode into `[]T`: a populated
+value remains a one-element slice, while `null` decodes to a nil slice. Empty
+collections, folds, and mutations decode from `[]` as empty slices.
 
 ### 5. Execute With `Client.Exec`
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helix Query Rust"
+  short_description: "Author Helix queries in Rust"
+  default_prompt: "Use $helix-query-rust to write or revise this direct Helix v3 Rust query."

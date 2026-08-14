@@ -10,6 +10,12 @@ builders from
 client and macro surfaces live under
 [`sdks/rust`](https://github.com/HelixDB/helix-db/tree/main/sdks/rust).
 
+## Quick Navigation
+
+- Start with **Typestate Cheat Sheet** and **Batch Entry Points** for new queries.
+- Use **Sources**, **Traversal**, **Filters**, **Projections**, and **Expressions** for reads.
+- Use **Mutations**, **Indexes**, **`#[query]` Macro And Direct Requests**, and **Common Pitfalls** for writes and execution.
+
 ## Typestate Cheat Sheet
 
 ```text

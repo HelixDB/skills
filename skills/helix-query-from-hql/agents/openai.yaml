@@ -1,0 +1,4 @@
+interface:
+  display_name: "HQL to Helix"
+  short_description: "Translate legacy HQL to Helix v3"
+  default_prompt: "Use $helix-query-from-hql to migrate this legacy HQL query to a direct Helix v3 query."

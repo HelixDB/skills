@@ -9,6 +9,12 @@ The public surface is defined under
 The compatibility target is structural JSON equality with the Rust SDK; encoding
 rules live in `../helix-query-json-dynamic/REFERENCE.md`.
 
+## Quick Navigation
+
+- Start with **Import**, **Typestate Cheat Sheet**, and **Entry Points** for new queries.
+- Use **Sources**, **Traversal**, **Filters**, **Projections**, and **Expressions** for reads.
+- Use **Mutations**, **Indexes**, **Parameters**, **Direct Requests**, and **Client** for writes and execution.
+
 ## Import
 
 ```text

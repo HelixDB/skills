@@ -4,6 +4,12 @@ This reference describes the direct request produced by the forthcoming v3 SDKs.
 The source of truth is the `helix-ast` crate under
 [`HelixDB/helix-db`](https://github.com/HelixDB/helix-db/tree/main/crates/ast).
 
+## Quick Navigation
+
+- Start with **Envelope**, **Batches and entries**, and **Recursive operation encoding**.
+- Use **References**, **Values and inputs**, **Predicates**, and **Parameter schemas** for nested request fields.
+- Check **Responses** and the **Validation checklist** before finalizing a request.
+
 ## Envelope
 
 ```json
@@ -352,6 +358,20 @@ normalized user-facing objects.
   ]
 }
 ```
+
+Populated values keep their existing encoding. Only a declared return with no
+value uses its planner-inferred empty shape:
+
+| Semantic return | Populated | Empty or skipped |
+|---|---|---|
+| At most one row, such as `limit(1)` | Existing one-element array | `null` |
+| Collection, many, or unknown cardinality | Existing array | `[]` |
+| `fold` or mutation | Existing array | `[]` |
+| Scalar terminal, such as `count` or `exists` | Existing scalar | No synthetic empty value |
+
+The shape comes from the semantic output and guaranteed multiplicity, not the
+observed row count or optimizer estimates. An empty `returns` declaration emits
+`{}` because no response keys were declared.
 
 Do not document internal `current`/`bindings` rows as the public response.
 

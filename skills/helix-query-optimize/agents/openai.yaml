@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helix Query Optimize"
+  short_description: "Review Helix query performance"
+  default_prompt: "Use $helix-query-optimize to review this Helix query for index and traversal performance."

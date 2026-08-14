@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helix Memory System"
+  short_description: "Design Helix-backed agent memory"
+  default_prompt: "Use $helix-memory-system to design a tenant-safe long-term memory system on Helix."
