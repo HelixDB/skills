@@ -355,6 +355,16 @@ normalized user-facing objects.
 
 Do not document internal `current`/`bindings` rows as the public response.
 
+## HTTP Failure Envelope
+
+Current non-success responses use a separate code/diagnostic pair:
+
+```json
+{"error":"index_not_found","msg":"planner error: missing text index for `Document.body`"}
+```
+
+The current body has no separate `code` field. For mixed-version clients, decode the legacy `{"error":"<diagnostic>","code":"<stable_code>"}` body as well. Treat codes as open strings, use the HTTP status plus code for decisions, and retry only safely replayable work. See `../../docs/error-handling.md` for the canonical decoder and gRPC/embedded parity.
+
 ## Validation checklist
 
 - Parse every complete `json` fence.
@@ -363,4 +373,5 @@ Do not document internal `current`/`bindings` rows as the public response.
 - Confirm every non-source operation has the correct nested `input`.
 - Confirm all enum tags are `snake_case`.
 - Compare hand-written JSON with an SDK serializer for the same query.
-- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.3`.
+- Decode current `error`/`msg` failures without reversing their meanings; retain legacy `error`/`code`, plain-text details, and unknown future codes.
+- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.5`.

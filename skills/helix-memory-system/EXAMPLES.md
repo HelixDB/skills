@@ -8,6 +8,10 @@ Each query function is plain; call
 with `await Client.server(url).withApiKey(key).query<R>(request).send()`. For
 advanced write headers use
 `client.requestBuilder<R>().writerOnly().shouldAwaitDurability(true).query(request).send()`.
+On failure, classify a concurrent-write retry with
+`error.code === "transaction_conflict"`, not by parsing `error.details`, and
+retry only safe-to-replay mutations with bounded backoff. See
+`../../docs/error-handling.md`.
 Embeddings are produced by the application and passed as numeric arrays.
 Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless
 the app has explicitly standardised on another model. Every tenant-owned

@@ -6,13 +6,13 @@ skills.
 Current benchmark groups with prompt coverage:
 
 - `cypher`
+- `dynamic`
 - `gremlin`
+- `optimize`
 
 Planned next benchmark groups:
 
 - `authoring`
-- `dynamic`
-- `optimize`
 - `sql`
 
 The goal is to evaluate whether a skill improves agent output quality and produces

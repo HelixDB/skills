@@ -708,9 +708,13 @@ registration, and query bundles are not supported.
 
 ## Errors
 
-- `HelixError` — raised by `Client`/`send()`. `kind` identifies network,
-  remote, serialization, and URL errors; remote errors carry the server
-  response body in `details`.
+- `HelixError` — raised by `Client`/`send()`. `kind` distinguishes network,
+  remote, serialization, URL, invalid-request, embedded-unavailable, and
+  embedded failures. `details` contains the diagnostic and optional `code`
+  contains the stable open-string code. Current HTTP `error`/`msg`, legacy
+  `error`/`code`, and embedded `error`/`msg` pairs preserve that separation and
+  do not discard unknown future codes. Never parse `details` for control flow;
+  see `../../docs/error-handling.md`.
 - `QueryError` — invalid parameter values, unknown parameters, serialization,
   or unsupported bytes parameters.
 

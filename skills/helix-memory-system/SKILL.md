@@ -4,7 +4,7 @@ description: Design and operate an advanced AI agent memory system with the fort
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.0.1
 ---
 
 # Helix Memory System
@@ -145,7 +145,7 @@ Relationship: UPDATES the previous next-April timing memory and invalidates the 
 - **Derive:** link inferred facts with `DERIVES` edges to supporting memories and mark them as inferred with confidence metadata.
 - If `content` changes, re-embed and update `embedding` in the same write. Content and vector must never drift.
 - Keep lifecycle validity (`validFrom`, `validTo`, `deletedAt`) separate from real-world event time (`eventStartAt`, `eventEndAt`, `temporalText`). Updating a memory because a fact changed should invalidate the old record even if both facts refer to future or past dates.
-- **Await durability on writes.** Updating/versioning is read-then-write and often runs concurrently across sessions, which raises the chance of HTTP 409 write conflicts. Await durability on the write to reduce conflicts (`.shouldAwaitDurability(true)` in TypeScript, `.should_await_durability(true)` in Rust, `helix.AwaitDurability(true)` in Go) and still handle any 409 with a caller-owned retry. See the `helix-query-{typescript,rust,go}` skills for the SDK flag.
+- **Await durability on writes.** Updating/versioning is read-then-write and often runs concurrently across sessions, which raises the chance of HTTP 409 write conflicts. Await durability on the write to reduce conflicts (`.shouldAwaitDurability(true)` in TypeScript, `.should_await_durability(true)` in Rust, `helix.AwaitDurability(true)` in Go). Recognize a real conflict from the stable `transaction_conflict` code (with HTTP 409 for remote calls), never by parsing the diagnostic message, and retry with bounded backoff only when the memory mutation is idempotent or otherwise safe to replay. See the language skill and `../../docs/error-handling.md`.
 
 ### 3. Deletion / Forgetting
 

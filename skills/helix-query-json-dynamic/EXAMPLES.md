@@ -233,7 +233,7 @@ Expected shape:
 }
 ```
 
-Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.3` instance:
+Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.5` instance:
 
 ```json
 {
@@ -372,3 +372,32 @@ not mistake them for supported requests:
 Use an SDK serializer when constructing a shape not covered here. Equivalent builders
 in the Rust, TypeScript, Python, and Go skills must serialize to the same JSON
 structure.
+
+## Interpret A Query Failure
+
+Current servers return the stable code in `error` and the diagnostic in `msg`:
+
+```http
+HTTP/1.1 409 Conflict
+Content-Type: application/json
+```
+
+```json
+{
+  "error": "transaction_conflict",
+  "msg": "transaction commit conflicted with another writer"
+}
+```
+
+Use the HTTP 409 plus `transaction_conflict` for classification. Retry with bounded backoff only if the operation is idempotent or protected by an idempotency key. Do not parse `msg`.
+
+During a rolling upgrade, also accept the legacy shape:
+
+```json
+{
+  "error": "transaction commit conflicted with another writer",
+  "code": "transaction_conflict"
+}
+```
+
+If `error` contains an unknown future code alongside `msg`, preserve it as an open string and fall back to conservative status-aware handling.

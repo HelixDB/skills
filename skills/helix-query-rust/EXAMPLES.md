@@ -641,6 +641,24 @@ assert!(response.is_empty());
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writer_only().warm_only()` to warm only the authoritative
-writer. The standalone `v0.0.3` runtime warms one process and returns the normal
+writer. The standalone `v0.0.5` runtime warms one process and returns the normal
 query body. Warming is strictly read-only; a `WriteBatch` with
 `X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
+
+---
+
+## 19. Handle Stable Error Codes
+
+```rust
+use helix_db::QueryErrorCode;
+
+match client.query::<serde_json::Value>(request).send().await {
+    Err(error) if error.error_code() == Some(QueryErrorCode::TransactionConflict.as_str()) => {
+        // Retry with bounded backoff only when the request is safe to replay.
+    }
+    Err(error) => return Err(error),
+    Ok(response) => return Ok(response),
+}
+```
+
+`error_code()` also returns unknown future strings from remote and embedded errors. Preserve them for telemetry and generic handling; never parse diagnostic details to classify the failure.

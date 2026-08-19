@@ -563,9 +563,29 @@ await client.requestBuilder<void>().warmOnly().query(request).send();
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writerOnly().warmOnly()` to warm only the authoritative writer.
-The standalone `v0.0.3` runtime warms one process and returns the normal query
+The standalone `v0.0.5` runtime warms one process and returns the normal query
 body. Warming is strictly read-only; a `WriteBatch` with
 `X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
+
+---
+
+## 19. Handle Stable Error Codes
+
+```ts
+import { HelixError } from "@helix-db/helix-db";
+
+try {
+  await client.query(request).send();
+} catch (cause) {
+  if (cause instanceof HelixError && cause.code === "transaction_conflict") {
+    // Retry with bounded backoff only when this request is safe to replay.
+  } else {
+    throw cause;
+  }
+}
+```
+
+Use `kind` to distinguish transport from remote/embedded failures and `details` for diagnostics. Preserve unfamiliar `code` strings and never classify errors by parsing `details`.
 
 ---
 

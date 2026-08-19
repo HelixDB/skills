@@ -4,7 +4,7 @@ description: Drive the HelixDB `helix` CLI to run, query, and deploy Helix insta
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.1.0
 ---
 
 # Helix CLI
@@ -15,7 +15,7 @@ The mental model that matters most:
 
 - **There is no `helix compile`, no `helix check`, and no `.hx` query workflow.** Those are stale v2 concepts — the v3 CLI hides them and errors with a hint if you try them.
 - **Queries are JSON "dynamic queries"** sent to a *running* instance via `POST /v2/query` (`helix query`). Validation happens server-side, in the instance.
-- **Local instances are Docker/Podman containers** (image `ghcr.io/helixdb/helixdb:v0.0.3`). `helix start` runs one; in-memory by default, MinIO-backed with `--disk`.
+- **Local instances are Docker/Podman containers** (image `ghcr.io/helixdb/helixdb:v0.0.5`). `helix start` runs one; in-memory by default, MinIO-backed with `--disk`.
 - **Helix Cloud instances deploy via `helix push`**, with auth and metadata managed by `helix auth`, `helix sync`, and the `workspace`/`project`/`cluster` commands.
 
 This skill is about *driving the CLI*. For authoring the query bodies themselves, use the query skills (`helix-query-rust`, `helix-query-typescript`, `helix-query-json-dynamic`, etc.).
@@ -51,7 +51,7 @@ If you need a builder/flag beyond the common surface, open `REFERENCE.md` — do
 
 ```bash
 helix init local                          # scaffold helix.toml + .helix/ + examples/request.json
-helix start dev                           # start the 'dev' container (waits until /v2/query is ready)
+helix start dev                           # start the 'dev' container (waits for GET /healthz)
 helix status dev                          # confirm it is running and note the URL
 helix query dev --file examples/request.json   # send a dynamic query
 # ...edit the request and re-run helix query to iterate...
@@ -119,6 +119,10 @@ HTTP/SDK layer, add `X-Helix-Require-Writer: true` to warm only the writer.
 
 To remove Helix-owned containers/volumes/networks, use `helix prune [instance]` (or `--all`). It scopes to Helix resources only — never run a broad `docker system prune`.
 
+### 8. Interpret Query Failures By Code
+
+For a current server, a failed query body is `{"error":"<stable_code>","msg":"<diagnostic>"}`. The `error` value is the machine-readable code; `msg` is for diagnostics. Older servers may instead return `{"error":"<diagnostic>","code":"<stable_code>"}`. Preserve unknown codes, combine the code with the HTTP status, and retry only safely replayable work. See `../../docs/error-handling.md` for the migration and retry rules.
+
 ## Anti-Patterns
 
 Do not:
@@ -140,6 +144,7 @@ Before running (or after, to debug):
 - local: the instance is started (`helix status`) and the container runtime is up
 - cloud: `helix auth login` done, instance `push`ed + `sync`ed, `HELIX_API_KEY` set, and the GA tenant context available
 - `helix query` has exactly one input flag and (for JSON) lowercase `request_type`
+- query failures are classified by HTTP status plus stable code, not by parsing the diagnostic message
 - not using any removed command (`compile`/`check`/`deploy`) or `.hx` workflow
 - secrets (`credentials`, API key) are not being committed
 

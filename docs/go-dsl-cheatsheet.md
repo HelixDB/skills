@@ -68,4 +68,9 @@ normalized by the SDK, but dynamic vector params should declare `ParamTypeF32()`
 
 ## Conflicts
 
-`Client.Exec` returns HTTP 409 as a `*helix.HelixError` with `StatusCode` set and `helix.ErrConflict` wrapped. It does not retry automatically; retry in application code only when safe and gate on `helix.IsConflict(err)`.
+`Client.Exec` returns query failures as `*helix.HelixError` with open-string
+`Code`, diagnostic `Details`, and remote `StatusCode`. HTTP 409 also wraps
+`helix.ErrConflict`, so `helix.IsConflict(err)` remains available; use
+`Code == helix.QueryErrorCode("transaction_conflict")` for the stable
+classification. Do not parse `Details`, and retry only safe-to-replay work. See
+`docs/error-handling.md`.

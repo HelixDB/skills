@@ -294,13 +294,20 @@ func TestFindUsersRequest(t *testing.T) {
 
 ## 11. Caller-Owned Conflict Retry
 
-`Client.Exec` returns HTTP 409 as a `*helix.HelixError` with `StatusCode` set and `helix.ErrConflict` wrapped. It does not retry automatically; retry only when the operation is safe to replay.
+`Client.Exec` returns HTTP 409 as a `*helix.HelixError` with `Code`, `Details`, and `StatusCode` set and `helix.ErrConflict` wrapped. It does not retry automatically; retry only when the operation is safe to replay. Use the stable code rather than parsing `Details`.
 
 ```go
+import (
+	"errors"
+	"time"
+)
+
 func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func() helix.Request, out any) error {
 	for attempt := 0; attempt < 3; attempt++ {
 		err := client.Exec(ctx, build(), out)
-		if err == nil || !helix.IsConflict(err) || attempt == 2 {
+		var helixErr *helix.HelixError
+		isTransactionConflict := errors.As(err, &helixErr) && helixErr.Code == helix.QueryErrorCode("transaction_conflict")
+		if err == nil || !helix.IsConflict(err) || !isTransactionConflict || attempt == 2 {
 			return err
 		}
 		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)

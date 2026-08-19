@@ -389,8 +389,13 @@ client.execute(request, await_durability=True)
 ```
 
 The client returns parsed JSON and raises `HelixError` for network, remote,
-serialization, URL, or request failures. A Helix Cloud warm read returns
-`204 No Content` with no query payload after fanout; standalone `v0.0.3`
+serialization, URL, request, or embedded failures. `code` contains the optional
+stable open-string code, `details` the diagnostic, `status_code` the HTTP status
+for remote failures, and `kind` the failure family. Current HTTP `error`/`msg`,
+legacy `error`/`code`, and embedded `error`/`msg` pairs are preserved without
+rejecting unknown future codes. Never parse `details`; see
+`../../docs/error-handling.md`. A Helix Cloud warm read returns
+`204 No Content` with no query payload after fanout; standalone `v0.0.5`
 warming returns the normal response. Combine `warm_only=True` with
 `writer_only=True` to warm only the authoritative writer.
 

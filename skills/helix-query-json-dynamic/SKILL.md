@@ -4,13 +4,15 @@ description: Author and debug direct HelixDB v3 JSON query requests for POST /v2
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.1.0
 ---
 
 # HelixDB v3 JSON Requests
 
 Use this skill when a caller needs raw JSON rather than a v3 SDK builder. A request is
 one direct operation-tree query sent to `POST /v2/query`.
+
+For query failures, also read `../../docs/error-handling.md`; it defines the current HTTP envelope, legacy migration, open-string codes, and retry boundaries shared by every SDK.
 
 ## Helix Cloud MCP requirement
 
@@ -68,6 +70,10 @@ The envelope rules are strict:
 - Chained operations nest the previous operation under `input`; there is no `steps`
   array.
 - `parameters` and `parameter_types` are optional top-level maps.
+
+## Failure Envelope
+
+On failure, the current HTTP response is `{"error":"<stable_code>","msg":"<diagnostic>"}`. There is no separate `code` field: branch on `error`, log `msg`, and combine the code with the HTTP status. For compatibility with an older server, accept `{"error":"<diagnostic>","code":"<stable_code>"}` as a legacy shape. Preserve unknown future code strings and retry only safely replayable operations; never classify a failure by parsing its message.
 
 ## Build nested operation trees
 
@@ -237,7 +243,7 @@ the authoritative writer. Partial backend failure is best-effort success; if
 every target fails, the normal deterministic error is returned. A managed
 cluster with no eligible target returns `503 Service Unavailable`.
 
-The standalone `v0.0.3` runtime instead warms its single process and returns
+The standalone `v0.0.5` runtime instead warms its single process and returns
 `200 OK` with the normal query body. Header values `false` and `0` use the
 ordinary query path; warm writes and any other header value return
 `400 Bad Request`.
@@ -268,6 +274,7 @@ not part of the response.
 - stored-route names or registration metadata
 - `{ "queries": [...], "returns": [...] }`
 - `{ "Query": { "steps": [...] } }`
+- error handling that treats current `error` as diagnostic text or requires a current `code` field
 - PascalCase variants such as `"Count"` or `"NodesWhere"`
 - `request_type` values other than lowercase `read` or `write`
 - a `read` batch containing write operations

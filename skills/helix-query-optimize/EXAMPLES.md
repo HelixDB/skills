@@ -216,6 +216,36 @@ readBatch()
   .returning(["active_count"]);
 ```
 
+Keep this as `count()` rather than projecting IDs and taking the client-side
+array length. With a compatible `User.status` equality index, the planner can
+select a bitmap count without materializing user rows. Compatible
+`skip`/`limit`/`range` windows are normalized with saturating arithmetic; an
+identity-sensitive or unsupported pipeline retains a streaming count.
+
+## Keep Equality Union And Intersection As One Set Expression
+
+With non-unique equality indexes on `Order.status` and `Order.region`:
+
+```ts
+g()
+  .nWithLabelWhere(
+    "Order",
+    SourcePredicate.and([
+      SourcePredicate.or([
+        SourcePredicate.eq("status", "open"),
+        SourcePredicate.eq("status", "queued"),
+      ]),
+      SourcePredicate.eq("region", "eu"),
+    ]),
+  )
+  .valueMap(["$id", "status", "region"])
+```
+
+The two same-index status points can become one batched bitmap union. The
+result can intersect the region bitmap before rows are loaded. Do not split
+this into separate client requests merely to force index use; every arm still
+needs compatible label/property/index identity.
+
 ## Rank vectors with traversal prefiltering
 
 Post-filtering source top-k hits can underfill:
@@ -270,7 +300,7 @@ writeBatch()
   .varAs(
     "index",
     g().createIndexIfNotExists(
-      IndexSpec.nodeRange("Order", "createdAt"),
+      IndexSpec.nodeRangeDesc("Order", "createdAt"),
     ),
   )
   .returning(["index"]);
@@ -281,7 +311,16 @@ readBatch()
   .varAs(
     "orders",
     g()
-      .nWithLabel("Order")
+      .nWithLabelWhere(
+        "Order",
+        SourcePredicate.and([
+          SourcePredicate.or([
+            SourcePredicate.eq("status", "open"),
+            SourcePredicate.eq("status", "queued"),
+          ]),
+          SourcePredicate.eq("region", "eu"),
+        ]),
+      )
       .orderBy("createdAt", Order.Desc)
       .limit(25)
       .valueMap(["$id", "createdAt", "total"]),
@@ -289,7 +328,15 @@ readBatch()
   .returning(["orders"]);
 ```
 
-Wait for the range index before measuring the ordered query.
+Wait for the descending range index before measuring the ordered query. The
+planner can union status IDs, intersect the region IDs, drive the route from the
+descending range index, filter before satisfying the 25-row limit, and avoid a
+redundant in-memory sort. Range candidates remain authoritatively verified.
+
+If the caller needs only the cardinality of this ordered window, replace
+`.valueMap(...)` with `.count()`. Null equality still needs a scan, NaN is
+non-indexable, a unique equality hit verifies its owner, and a genuinely
+late-bound equality parameter may select a dynamic equality program.
 
 ## Scope vector search to its tenant
 

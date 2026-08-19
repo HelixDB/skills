@@ -4,7 +4,7 @@ description: Write and revise queries with the forthcoming HelixDB v3 TypeScript
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.0.1
 ---
 
 # Helix Query Authoring — TypeScript
@@ -144,12 +144,14 @@ function findUsers(p = params) {
 
 - **Request:** `findUsers().toQueryJson(params, { tenantId: "acme", limit: 25n }, { queryName: "find_users" })` produces JSON for `POST /v2/query`. Use `toQueryRequest(...)` for the object or `toQueryBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toQueryJson({ queryName: "count_users" })`. Unnamed requests serialize `query_name: null`.
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
-- **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v2/query`. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
+- **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v2/query`. A thrown `HelixError` exposes `code` as an optional open string, `details` as the diagnostic, and `kind` as the failure family. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
 
 `warmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writerOnly()` to target only the authoritative writer.
-Standalone `v0.0.3` warming returns the normal query response.
+Standalone `v0.0.5` warming returns the normal query response.
+
+Recognize `transaction_conflict` through `error.code`, never by parsing `details`, and retry only when the operation is safe to replay. See `../../docs/error-handling.md`.
 
 ## Number & DateTime Handling
 
@@ -177,7 +179,7 @@ Standalone `v0.0.3` warming returns the normal query response.
 | Mutations | `addN`, `addE`, `setProperty`, `removeProperty`, `drop`, `dropEdge`, `dropEdgeLabeled`, `dropEdgeById` | `dropEdgeById` is multigraph-safe. |
 | Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/nodeRangeDesc/nodeRangeWithDirection/edgeEquality/edgeRange/edgeRangeDesc/edgeRangeWithDirection/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. `RangeIndexDirection.Desc` sets descending physical order. |
 | Output | `toJsonString`, `toQueryJson`, `toQueryRequest`, `toQueryBytes` | Dynamic forms take `(params, values, options)` unless the query has no parameters; pass `{ queryName }` to set top-level `query_name`. |
-| Client / transport | `new Client(url)`, `Client.server(url)`, `.withApiKey`, `.query<R>(request)`, `.requestBuilder<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.send()` | Direct requests use `POST /v2/query`; stored routes are not supported. |
+| Client / transport | `new Client(url)`, `Client.server(url)`, `.withApiKey`, `.query<R>(request)`, `.requestBuilder<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.send()` | Direct requests use `POST /v2/query`; failures throw `HelixError` with `kind`, optional open-string `code`, and diagnostic `details`; stored routes are not supported. |
 
 See `REFERENCE.md` for full signatures and typestate constraints.
 

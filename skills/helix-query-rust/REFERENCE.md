@@ -603,7 +603,7 @@ For the JSON wire encoding this produces, see `../helix-query-json-dynamic/REFER
 Async HTTP client for running a direct request against a Helix instance.
 
 ```text
-use helix_db::{Client, HelixError};
+use helix_db::{Client, HelixError, QueryErrorCode};
 
 Client::new(url: Option<&str>) -> Result<Self, HelixError>   // default "http://localhost:6969"; InvalidURL on bad url
     .with_api_key(api_key: Option<&str>) -> Self              // Authorization: Bearer <key>
@@ -624,8 +624,19 @@ failure still succeeds when at least one backend warms successfully.
 
 Prefer `.should_await_durability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 
-`HelixError` distinguishes transport, remote, serialization, and invalid URL
-failures. Build the request from a `#[query]` function call or
+`HelixError::error_code() -> Option<&str>` returns the stable code when present. `RemoteError { code: Option<String>, details }` preserves the current HTTP `error`/`msg` pair and the legacy `error`/`code` envelope; `EmbeddedError { code: String, details }` provides the same separation in embedded mode. Known strings map to `QueryErrorCode`, while unknown future strings remain available.
+
+```rust
+match request.send().await {
+    Err(error) if error.error_code() == Some(QueryErrorCode::TransactionConflict.as_str()) => {
+        // Bounded retry only if this operation is safe to replay.
+    }
+    Err(error) => return Err(error),
+    Ok(response) => return Ok(response),
+}
+```
+
+Use the code rather than parsing `details`; see `../../docs/error-handling.md` for raw-envelope migration, safe retry rules, and gRPC metadata. Other `HelixError` variants distinguish transport, serialization, invalid URL, and invalid request failures. Build the request from a `#[query]` function call or
 `QueryRequest::read/write(batch)`. Stored routes, registration, and bundles
 are not supported.
 

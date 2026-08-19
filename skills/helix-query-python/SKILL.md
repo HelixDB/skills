@@ -4,7 +4,7 @@ description: Write and revise HelixDB queries with the published Python SDK (pac
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.1
+  version: 3.0.2
 ---
 
 # Helix Query Authoring - Python
@@ -129,8 +129,11 @@ client = Client("https://helix.example.com", api_key="hx_secret")
 try:
     response = client.query(request)
 except HelixError as error:
-    if error.kind == "Remote":
-        raise RuntimeError(error.details) from error
+    if error.code == "transaction_conflict" and error.status_code == 409:
+        # Retry with bounded backoff only when the request is safe to replay.
+        pass
+    else:
+        raise
 ```
 
 Reuse one asynchronous client so its HTTPX connection pool serves concurrent
@@ -164,12 +167,14 @@ remains synchronous through `Client.graph(...)`.
 Helix Cloud fans a warm read out to every eligible backend and returns
 `204 No Content` with no query payload after at least one succeeds. Pass
 `writer_only=True` with `warm_only=True` to target only the authoritative
-writer. Standalone `v0.0.3` warming returns the normal query response.
+writer. Standalone `v0.0.5` warming returns the normal query response.
 
 Prefer `await_durability=True` with `execute` or
 `client.request_builder().should_await_durability(True)` on writes. This
 reduces HTTP 409 conflicts under concurrent writers, but the SDK does not retry
 conflicts; application code owns retry policy and idempotency.
+
+`HelixError.code` is the optional stable open-string code, `details` is the diagnostic, and `status_code` is set for remote failures; use `kind` to distinguish transport, remote, serialization, invalid-request, and embedded failures. Preserve unknown codes and never parse `details`. See `../../docs/error-handling.md`.
 
 ### 6. Shape Responses Deliberately
 

@@ -8,7 +8,7 @@ Copy-pasteable, end-to-end sessions for the `helix` CLI. Pair these with `REFERE
 # Scaffold a project (writes helix.toml, .helix/, examples/request.json, .gitignore entries)
 helix init local
 
-# Start the default 'dev' instance — pulls the image and waits until /v2/query is ready
+# Start the default 'dev' instance — pulls the image and waits for GET /healthz
 helix start dev
 
 # Confirm it is up and note the URL
@@ -179,6 +179,8 @@ HELIX_NO_UPDATE_CHECK=1 helix status # skip the update check in CI
 | `helix compile` / `helix check` errors out | Removed in v3 (validation is server-side) | Drop the step; queries are validated when sent to `POST /v2/query`. |
 | `helix deploy` errors out | Removed | Use `helix push <instance>`. |
 | `helix query` connection refused (local) | Instance not started / not ready | `helix status`, then `helix start <instance>`; the start command waits for readiness. |
+| `helix query` returns `{"error":"transaction_conflict","msg":"..."}` | Concurrent write conflict | Use the `error` code with HTTP 409; retry with bounded backoff only if the write is safe to replay. Do not parse `msg`. |
+| `helix query` returns an unfamiliar error code | Newer server or uncommon failure | Preserve the open-string code, use the HTTP status for conservative handling, and retain `msg` for diagnostics. |
 | `helix start` fails immediately | Container runtime not running | Start Docker/Podman; check `[project] container_runtime`. |
 | Data gone after `stop`/`restart` | In-memory storage (the default) | Use `--disk` (and `--persist` to save it) for persistence. |
 | Cloud query: 401 / missing auth | `HELIX_API_KEY` not set or not synced | `export HELIX_API_KEY=...` (or `.env`), and `helix sync <instance>`; ensure `helix auth login`. |

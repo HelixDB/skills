@@ -4,7 +4,7 @@ description: Write and revise queries with the forthcoming HelixDB v3 Go SDK. Us
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.0.1
 ---
 
 # Helix Query Authoring - Go
@@ -140,7 +140,7 @@ err = client.Exec(ctx, CreateUser("Alice", "acme"), &created,
 )
 ```
 
-Prefer `helix.AwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them. Leaving it off is fine for low-concurrency or read paths. Either way, `Client.Exec` does not retry HTTP 409 conflicts. Application code owns retry policy and idempotency. Remote errors carry `StatusCode`, and `helix.IsConflict(err)` or `errors.Is(err, helix.ErrConflict)` detects 409 conflicts without parsing error text.
+Prefer `helix.AwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them. Leaving it off is fine for low-concurrency or read paths. Either way, `Client.Exec` does not retry HTTP 409 conflicts. Application code owns retry policy and idempotency. Remote and embedded failures use `*helix.HelixError`: `Code` is an open-string `helix.QueryErrorCode`, `Details` is diagnostic text, and remote errors also carry `StatusCode`. `helix.IsConflict(err)` or `errors.Is(err, helix.ErrConflict)` retains the HTTP 409 helper; use `Code == helix.QueryErrorCode("transaction_conflict")` when the stable classification matters. Never parse `Details`; see `../../docs/error-handling.md`.
 
 ### 6. Keep JSON Conversion Secondary
 
@@ -181,7 +181,7 @@ Before finishing:
 - verify response structs match `.Returning(...)` names and projected fields
 - verify vector/text search preserves tenant scope where the index is scoped
 - verify exact vector and BM25 prefilters build candidates before calling the matching `*Within[With]` method
-- verify conflict retries, if any, are explicit in application code and gated by `helix.IsConflict(err)`
+- verify conflict retries, if any, are explicit, safe to replay, and gated by `helix.IsConflict(err)` and/or `HelixError.Code == helix.QueryErrorCode("transaction_conflict")`
 - run `go test ./...` in the Go module when editing SDK or query code
 
 ## Companion Files

@@ -65,7 +65,7 @@ Add an instance to an existing `helix.toml` without clobbering others.
 
 ### `helix start [INSTANCE] [OPTIONS]` (alias `run`)
 
-Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/helixdb:v0.0.3`, publishes the host port to container port 8080, and waits (~30s) until `POST /v2/query` is ready before returning.
+Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/helixdb:v0.0.5`, publishes the host port to container port 8080, and waits (~30s) for a successful `GET /healthz` before returning.
 
 | Flag | Purpose |
 |---|---|
@@ -193,6 +193,8 @@ See `helix-query-json-dynamic` for the full inline-AST grammar.
 
 **Connection errors:** if the instance is unreachable, the CLI reports `cannot reach Helix instance '<instance>' at <endpoint>` with a kind-specific hint — local: `helix start <instance>` then `helix status <instance>` (or pass `--host`/`--port`); enterprise: check `gateway_url` in `helix.toml` and run `helix sync <instance>`.
 
+**Query errors:** the CLI includes the HTTP status and response body. A current server returns `{"error":"<stable_code>","msg":"<diagnostic>"}`; branch or troubleshoot from the stable code in `error`, not from `msg`. During mixed-version migrations, also accept the legacy `{"error":"<diagnostic>","code":"<stable_code>"}` shape and preserve unknown codes. See `../../docs/error-handling.md`.
+
 ## Cloud
 
 ### `helix auth <SUBCOMMAND>`
@@ -288,7 +290,7 @@ container_runtime = "docker"    # "docker" (default) or "podman"
 [local.dev]                     # one block per local instance
 port = 6969                     # default 6969 (host → container port 8080)
 image = "ghcr.io/helixdb/helixdb"   # default
-tag = "v0.0.3"                       # default
+tag = "v0.0.5"                       # default
 storage = "memory"              # "memory" (default) or "disk"
 
 [local.staging]
@@ -329,7 +331,7 @@ max_instances = 1               # default 1
 | Constant | Value |
 |---|---|
 | Default local port | `6969` |
-| Dev image / tag | `ghcr.io/helixdb/helixdb` / `v0.0.3` |
+| Dev image / tag | `ghcr.io/helixdb/helixdb` / `v0.0.5` |
 | Container name | `helix-<project>-<instance>` |
 | Container internal port | `8080` |
 | Default auth header | `Authorization` |

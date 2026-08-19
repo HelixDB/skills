@@ -420,17 +420,19 @@ helix.AwaitDurability(true)
 `helix.WarmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; combine it with `helix.WriterOnly()` to target only the
-authoritative writer. Standalone `v0.0.3` warming returns the normal response.
+authoritative writer. Standalone `v0.0.5` warming returns the normal response.
 
 Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more likely to hit HTTP 409 write conflicts, and awaiting durability reduces them. It does not eliminate conflicts, so callers still own retry policy.
 
-Remote errors are returned as `*helix.HelixError` with `Kind: helix.ErrorRemote`, `Details`, and `StatusCode` set. `helix.IsConflict(err)` and `errors.Is(err, helix.ErrConflict)` detect HTTP 409 conflicts. The SDK does not retry conflicts automatically; callers should retry only when the operation is safe to replay.
+`helix.QueryErrorCode` is an open string type. Remote errors are returned as `*helix.HelixError` with `Kind: helix.ErrorRemote`, `Code`, `Details`, and `StatusCode`; embedded failures preserve `Code` and `Details` too. Current HTTP `error`/`msg` and legacy `error`/`code` bodies are both decoded without rejecting unknown future codes. `helix.IsConflict(err)` and `errors.Is(err, helix.ErrConflict)` retain HTTP 409 detection; compare `Code` with `helix.QueryErrorCode("transaction_conflict")` when you need the stable classification. Never parse `Details`. See `../../docs/error-handling.md`.
 
 ```text
 func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func() helix.Request, out any) error {
 	for attempt := 0; attempt < 3; attempt++ {
 		err := client.Exec(ctx, build(), out)
-		if err == nil || !helix.IsConflict(err) || attempt == 2 {
+		var helixErr *helix.HelixError
+		isTransactionConflict := errors.As(err, &helixErr) && helixErr.Code == helix.QueryErrorCode("transaction_conflict")
+		if err == nil || !helix.IsConflict(err) || !isTransactionConflict || attempt == 2 {
 			return err
 		}
 		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
