@@ -58,6 +58,11 @@ When translating a Cypher query:
 | `MERGE (...) ON CREATE SET ... ON MATCH SET ...` | explicit read then `var_as_if` update/create flow | semantic upsert mapping |
 | `timestamp()` | server-side timestamp helper | use database-generated time values |
 
+Generated response types must preserve Helix's empty-return contract. Empty
+at-most-one returns are `null`, empty collections/folds/mutations are `[]`,
+scalar `0` and `false` remain scalars, and populated values keep their existing
+shape.
+
 ## Canonical Examples
 
 ### Match And Traverse
@@ -353,6 +358,7 @@ Before finishing a Cypher translation:
 - verify optional traversals use `optional(sub(...))` when required
 - verify multi-hop traversal uses bounded `repeat(...)` with explicit emission behavior
 - verify `RETURN` became an intentional projection or aggregation
+- verify at-most-one response fields allow `null` without changing populated arrays
 - verify `ORDER BY`, `SKIP`, and `LIMIT` map to explicit result operators
 - verify `CASE WHEN`, `UNWIND`, `FOREACH`, delete, and timestamp logic were mapped to Helix-native constructs when present
 - verify `MERGE` was handled semantically, not as a string replacement

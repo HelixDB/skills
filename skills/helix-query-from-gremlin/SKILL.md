@@ -96,6 +96,11 @@ Use:
 - `limit`, `skip`, and `range` for result-window control
 - `project(...)` or `value_map(...)` for output shape
 
+Preserve Helix's empty-return contract in generated response types:
+empty at-most-one returns are `null`, empty collections/folds/mutations are
+`[]`, scalar `0` and `false` remain scalars, and populated values keep their
+existing shape.
+
 ### 5. Treat Complex Gremlin Features As Semantic Translations
 
 Do not force literal translations for:
@@ -178,6 +183,7 @@ Before finishing:
 - verify `hasLabel` and `has` became explicit label and predicate logic
 - verify `dedup`, `count`, `limit`, `range`, and ordering were mapped deliberately
 - verify `valueMap` or `values` became an intentional Helix output shape
+- verify at-most-one output fields allow `null` without changing populated arrays
 - verify `repeat` was translated with an explicit bound
 - verify complex Gremlin features were translated semantically, not literally
 - verify labels, edge labels, and properties match the local repo exactly

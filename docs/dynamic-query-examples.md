@@ -107,6 +107,11 @@ On a clean `ghcr.io/helixdb/helixdb:v0.0.3` instance, the response is normalized
 }
 ```
 
+Populated shapes stay unchanged. When a declared return is empty, an
+at-most-one return is `null`, a collection/fold/mutation return is `[]`, and a
+scalar terminal still returns values such as `0` or `false`. An empty
+`returns` list produces `{}`.
+
 ## Query warming
 
 For a direct read request, warming uses the same body plus:

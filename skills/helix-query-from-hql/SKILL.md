@@ -136,6 +136,12 @@ Each `binding <- expr` → `.var_as("binding", expr)` / `.varAs(..)`. `RETURN a,
 `RETURN NONE` → Rust `.returning(Vec::<&str>::new())` or TypeScript
 `.returning([])`. `RETURN "literal"` has no form — return a binding instead. Reference parameters
 by **name string** in predicates (`Predicate::eq_param("status","status")`).
+The response for `RETURN NONE` is `{}`.
+
+Preserve Helix's empty-return contract in generated response types:
+empty at-most-one returns are `null`, empty collections/folds/mutations are
+`[]`, scalar `0` and `false` remain scalars, and populated values keep their
+existing shape.
 
 ### 9. `FOR ... IN` over an array parameter
 
@@ -246,6 +252,7 @@ Before finishing:
 - edge directions and `FromN`/`ToN` endpoints are correct
 - filters are explicit `Predicate` logic; `EXISTS`/count filters handled via set ops or flagged for app code
 - projection matches the HQL return shape; `::ID` mapped to `$id`
+- at-most-one response fields allow `null` without changing populated arrays
 - tenant scope preserved on search; `$distance`/`$score` projected at the search step
 - every unsupported feature is flagged and its logic assigned to application code
 - the migration was **compiled**, the Rust/TS **JSON AST diffed for parity**, and **run** against the same data

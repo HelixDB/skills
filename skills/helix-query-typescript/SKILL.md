@@ -100,6 +100,12 @@ Prefer this anchor order: node/edge ID → unique property lookup → equality-i
 
 Do not return oversized properties like embeddings unless the caller explicitly needs them.
 
+Empty declared returns follow semantic cardinality: at-most-one is `null`,
+collections/folds/mutations are `[]`, and scalars keep values such as `0` and
+`false`. Populated values keep the existing shape. Type at-most-one response
+fields as `T[] | null`; keep collection fields as `T[]`. See `REFERENCE.md` for
+the client contract.
+
 ### 5. Preserve Search Scope
 
 For BM25 and vector search: keep the chosen text/vector property explicit, pass
@@ -273,6 +279,7 @@ Before finishing:
 - verify labels, edge labels, and properties match the repo exactly
 - verify the first anchor is the narrowest practical indexed set
 - verify the returned variable names and shape match service expectations
+- verify at-most-one response fields allow `null` without changing populated arrays
 - verify text/vector routes pass the tenant value when the index is scoped, and project `$distance` or `$score` before navigating
 - verify exact vector and BM25 prefilters build candidates before calling the traversal-scoped search method
 - verify `bigint`/`i64(...)` is used for large integers and serialization goes through `toJsonString`/`stringifyJson`

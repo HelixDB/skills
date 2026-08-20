@@ -97,6 +97,11 @@ Use:
 - `dedup()` for `DISTINCT`
 - `order_by`, `skip`, `limit`, and `range` for result ordering and pagination
 
+Preserve Helix's empty-return contract in generated response types:
+empty at-most-one returns are `null`, empty collections/folds/mutations are
+`[]`, scalar `0` and `false` remain scalars, and populated values keep their
+existing shape.
+
 ### 5. Handle Non-1:1 Cypher Features Carefully
 
 Do not force literal translations for:
@@ -213,6 +218,7 @@ Before finishing:
 - verify optional traversals use `optional(sub(...))` when required
 - verify multi-hop traversal uses bounded `repeat(...)` with explicit emission behavior
 - verify `RETURN` became an intentional Helix output shape
+- verify at-most-one output fields allow `null` without changing populated arrays
 - verify `DISTINCT`, `ORDER BY`, `SKIP`, and `LIMIT` were mapped deliberately
 - verify `CASE`, `UNWIND`, `FOREACH`, delete, and timestamp logic were translated to Helix-native constructs when present
 - verify `MERGE` was translated semantically, not literally
