@@ -109,6 +109,11 @@ g()
 Avoid expanding a large subgraph, applying several broad filters, and limiting only
 at the end.
 
+A guaranteed upper bound of one changes only the empty response shape to
+`null`; populated values remain one-element arrays. Before adding or moving
+`limit(1)`, confirm the caller can decode `null`. Collections, folds, and
+mutations remain `[]` when empty, while scalar `0` and `false` remain scalars.
+
 ## 5. Project narrowly
 
 Prefer:
@@ -182,6 +187,7 @@ of the v3 SDK contract. Authoring with Rust `#[query]` still produces a direct r
 - [ ] index family matches the predicate or search
 - [ ] index creation has completed before performance is measured
 - [ ] expansion is bounded near its source
+- [ ] any new at-most-one bound preserves the caller's nullable response contract
 - [ ] projection includes only required fields
 - [ ] tenant-scoped search passes the tenant value at search time
 - [ ] vector and BM25 candidate filters run before traversal-scoped search

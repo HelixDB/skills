@@ -53,6 +53,10 @@ The DSLs are structurally identical but spelled differently. Most translation mi
 | `RETURN NONE` | `.returning(Vec::<&str>::new())` | `.returning([])` | Return nothing. |
 | `RETURN "ok"` (literal) | **NONE** — return a binding instead | **NONE** | DSLs return named variables, not bare literals. Bind the value first if you truly need it. |
 
+The `RETURN NONE` response is `{}`. For named returns, empty at-most-one
+results are `null`, empty collections/folds/mutations are `[]`, and scalar `0`
+or `false` remains scalar. Populated values keep their existing response shape.
+
 ---
 
 ## Sources / anchors

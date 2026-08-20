@@ -50,6 +50,11 @@ When translating a Gremlin traversal:
 | `.emit()` | `.emit_all()` inside `RepeatConfig` | usually paired with bounded repeat |
 | `.repeat(__.both("RELATED_TO")).times(3).emit()` | `.repeat(RepeatConfig::new(sub().both(Some("RELATED_TO"))).times(3).emit_all())` | bounded repeat traversal |
 
+Generated response types must preserve Helix's empty-return contract. Empty
+at-most-one returns are `null`, empty collections/folds/mutations are `[]`,
+scalar `0` and `false` remain scalars, and populated values keep their existing
+shape.
+
 ## Special Note On `g.E()`
 
 Bare `g.E()` is often a weak translation target.
@@ -202,6 +207,7 @@ Before finishing a Gremlin translation:
 - verify edge direction was preserved correctly
 - verify result-shaping steps like `dedup`, `count`, `limit`, `range`, and ordering map to deliberate Helix operators
 - verify `values` or `valueMap` became an intentional Helix result shape
+- verify at-most-one response fields allow `null` without changing populated arrays
 - verify `repeat` was translated with an explicit bound
 - verify path-building or side-effect-heavy Gremlin steps were translated semantically, not literally
 

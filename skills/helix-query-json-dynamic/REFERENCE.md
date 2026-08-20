@@ -353,6 +353,11 @@ normalized user-facing objects.
 }
 ```
 
+Apply the empty-return table in `SKILL.md`: at-most-one empties are `null`,
+collection/fold/mutation empties are `[]`, scalars keep values such as `0` and
+`false`, and `"returns": []` produces `{}`. Populated values keep their existing
+wire shape.
+
 Do not document internal `current`/`bindings` rows as the public response.
 
 ## Validation checklist
@@ -360,6 +365,8 @@ Do not document internal `current`/`bindings` rows as the public response.
 - Parse every complete `json` fence.
 - Confirm `request_type` and batch variant match.
 - Confirm every returned name exists in an entry.
+- Confirm response models allow `null` only for at-most-one returns and do not
+  collapse it into an empty collection.
 - Confirm every non-source operation has the correct nested `input`.
 - Confirm all enum tags are `snake_case`.
 - Compare hand-written JSON with an SDK serializer for the same query.

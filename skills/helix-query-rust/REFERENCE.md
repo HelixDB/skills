@@ -619,6 +619,29 @@ client.request_builder::<R>()
 request.send().await -> Result<R, HelixError>                // 200 -> R; Cloud warm success -> 204/no payload; other status -> RemoteError
 ```
 
+### Query response shapes
+
+Only empty declared returns use inferred shapes. At-most-one empties are JSON
+`null`; collection, fold, and mutation empties are `[]`; scalar terminals keep
+`0` and `false`; an empty returns list produces `{}`. Populated values retain
+their existing representation, including the one-element array for an
+at-most-one traversal.
+
+Deserialize an at-most-one field as `Option<Vec<T>>` and a collection field as
+`Vec<T>`:
+
+```rust
+#[derive(serde::Deserialize)]
+struct FindUserResponse {
+    user: Option<Vec<UserRow>>,
+    friends: Vec<UserRow>,
+    count: usize,
+}
+```
+
+Do not use a custom decoder to turn `null` into an empty vector; that erases
+the semantic distinction.
+
 For Cloud warming, use the no-content/bytes response path. Partial target
 failure still succeeds when at least one backend warms successfully.
 

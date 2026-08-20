@@ -133,6 +133,17 @@ Use `value_map(...)` when returning a loose property map is acceptable.
 g().n_with_label("User").value_map(Some(vec!["$id", "name"]))
 ```
 
+Only empty declared returns use inferred shapes:
+
+| Semantic return | Populated | Empty or skipped |
+| --- | --- | --- |
+| At most one row | Existing one-element array | `null` |
+| Collection, fold, or mutation | Existing array | `[]` |
+| Scalar terminal | Existing scalar, including `0` or `false` | No synthetic empty value |
+
+An empty returns list produces `{}`. Keep at-most-one response fields nullable;
+do not normalize `null` to `[]`.
+
 For vector search, add `$distance` only when needed:
 
 ```text
