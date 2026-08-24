@@ -8,7 +8,7 @@ Copy-pasteable, end-to-end sessions for the `helix` CLI. Pair these with `REFERE
 # Scaffold a project (writes helix.toml, .helix/, examples/request.json, .gitignore entries)
 helix init local
 
-# Start the default 'dev' instance — pulls the image and waits until /v2/query is ready
+# Start the default 'dev' instance — pulls the image and waits for GET /healthz
 helix start dev
 
 # Confirm it is up and note the URL
@@ -130,11 +130,12 @@ helix project switch payments-api
 helix cluster list
 helix add cloud --name production --cluster-id ec_01HX...
 
-# 4. Sync metadata (fills gateway_url + auth fields in helix.toml). Preview first:
+# 4. Sync metadata (fills gateway_url + auth header/env/scheme in helix.toml). Preview first:
 helix sync production --dry-run
 helix sync production
 
-# 5. Provide the API key (shell env or a project-root .env)
+# 5. Provide the raw API key (shell env or a project-root .env).
+#    query_auth_scheme adds Bearer when the synced scheme is "bearer".
 export HELIX_API_KEY="hlxk_..."
 
 # 6. Deploy and query
@@ -179,9 +180,12 @@ HELIX_NO_UPDATE_CHECK=1 helix status # skip the update check in CI
 | `helix compile` / `helix check` errors out | Removed in v3 (validation is server-side) | Drop the step; queries are validated when sent to `POST /v2/query`. |
 | `helix deploy` errors out | Removed | Use `helix push <instance>`. |
 | `helix query` connection refused (local) | Instance not started / not ready | `helix status`, then `helix start <instance>`; the start command waits for readiness. |
+| `helix query` returns `{"error":"transaction_conflict","msg":"..."}` | Concurrent write conflict | Use the `error` code with HTTP 409; reload current state, rebuild, and replay with bounded backoff only if safe. Do not parse `msg`. |
+| `helix query` returns an unfamiliar error code | Newer server or uncommon failure | Preserve the open-string code, use the HTTP status for conservative handling, and retain `msg` for diagnostics. |
 | `helix start` fails immediately | Container runtime not running | Start Docker/Podman; check `[project] container_runtime`. |
 | Data gone after `stop`/`restart` | In-memory storage (the default) | Use `--disk` (and `--persist` to save it) for persistence. |
-| Cloud query: 401 / missing auth | `HELIX_API_KEY` not set or not synced | `export HELIX_API_KEY=...` (or `.env`), and `helix sync <instance>`; ensure `helix auth login`. |
+| Cloud query: 401 / missing auth | Auth env is unset, metadata is stale, or the scheme is wrong | Set the env named by `query_auth_env`, run `helix sync <instance>`, and verify `query_auth_scheme` (`bearer` adds `Bearer`; `raw` does not). |
+| Cloud query: 3xx redirect | `gateway_url` is stale or points at an indirection | Run `helix sync <instance>` or set the final gateway origin; enterprise query requests intentionally do not follow redirects with credentials. |
 | Cloud query: no gateway URL | Metadata not synced | `helix sync <instance>` to populate `gateway_url`. |
 | `helix push` rejects the instance | Target is a local instance | Use `helix start` for local; `push` is cloud-only. |
 | TS DSL query fails to evaluate | Node missing/old | Install Node 20+ on PATH (the CLI evaluates `-e`/`--ts-file` in Node). |

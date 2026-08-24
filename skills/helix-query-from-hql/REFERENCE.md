@@ -5,13 +5,13 @@ text language (`QUERY Foo(...) => ... RETURN ...`) — into the two code-native 
 
 - **Rust v3 DSL** — `helix-db = "3.0.0"`, imported as `helix_db`; a `#[query]`
   function returns a direct `QueryRequest`.
-- **TypeScript v3 DSL** — `@helix-db/helix-db@3.0.0`; a normal builder uses
+- **TypeScript v3 DSL** — `@helix-db/helix-db@3.0.4`; a normal builder uses
   `toQueryRequest` or `toQueryJson`.
 
 Both DSLs serialize to the **same JSON query AST**. A Rust query and a TS query that produce identical JSON are
 semantically identical — that is the primary fidelity check (see §Verification).
 
-The forthcoming source lives under
+The published source lives under
 [`crates/ast`](https://github.com/HelixDB/helix-db/tree/main/crates/ast),
 [`sdks/rust`](https://github.com/HelixDB/helix-db/tree/main/sdks/rust), and
 [`sdks/typescript`](https://github.com/HelixDB/helix-db/tree/main/sdks/typescript).

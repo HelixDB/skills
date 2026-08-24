@@ -6,13 +6,13 @@ skills.
 Current benchmark groups with prompt coverage:
 
 - `cypher`
+- `dynamic`
 - `gremlin`
+- `optimize`
 
 Planned next benchmark groups:
 
 - `authoring`
-- `dynamic`
-- `optimize`
 - `sql`
 
 The goal is to evaluate whether a skill improves agent output quality and produces
@@ -26,6 +26,6 @@ Every benchmark case should include:
 - a gold translation sketch or gold expectations
 - a flat scoring checklist
 
-Gold answers must use the forthcoming v3 SDK names and the nested direct-request JSON
+Gold answers must use the published v3 SDK names and the nested direct-request JSON
 AST. Stored routes, registration, step arrays, and query bundles are failures unless
 the prompt explicitly asks to identify invalid legacy guidance.

@@ -1,7 +1,7 @@
 # HelixDB v3 JSON Examples
 
 These are direct request bodies for `POST /v2/query`. They use the same nested AST as
-the forthcoming v3 SDKs.
+the published v3 SDKs.
 
 ## Count nodes by label
 
@@ -233,7 +233,7 @@ Expected shape:
 }
 ```
 
-Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.3` instance:
+Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.4` instance:
 
 ```json
 {
@@ -372,3 +372,51 @@ not mistake them for supported requests:
 Use an SDK serializer when constructing a shape not covered here. Equivalent builders
 in the Rust, TypeScript, Python, and Go skills must serialize to the same JSON
 structure.
+
+## Interpret A Query Failure
+
+Current servers return the stable code in `error` and the diagnostic in `msg`:
+
+```http
+HTTP/1.1 409 Conflict
+Content-Type: application/json
+```
+
+```json
+{
+  "error": "transaction_conflict",
+  "msg": "transaction commit conflicted with another writer"
+}
+```
+
+Use the HTTP 409 plus `transaction_conflict` for classification. Reload current
+state before rebuilding, then replay with bounded backoff only if the operation
+is idempotent or protected by an idempotency key. Do not parse `msg`.
+
+During a rolling upgrade, also accept the legacy shape:
+
+```json
+{
+  "error": "transaction commit conflicted with another writer",
+  "code": "transaction_conflict"
+}
+```
+
+A defensive client may also preserve a noncanonical proxy shape:
+
+```json
+{
+  "code": "external_error",
+  "message": "upstream rejected the request",
+  "details": { "request_id": "req_123" }
+}
+```
+
+Decode canonical Helix, legacy Helix, then generic remote fields. Preserve
+`details`, the raw body, and unknown codes, but do not call the generic shape
+the gateway contract. Honor `Retry-After` on 429 when available. A 503
+`rate_limit_unavailable` fails closed before execution and can use bounded
+backoff with jitter; a 408 `query_timeout` write has an unknown commit outcome
+and must be reconciled before resubmission. For a 409 write conflict, reload
+current state before rebuilding and replay only when safe; do not blindly retry
+writes.

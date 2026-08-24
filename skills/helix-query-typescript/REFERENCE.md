@@ -1,7 +1,7 @@
 # Helix Query Authoring — TypeScript DSL Reference
 
-Exhaustive builder catalog for the forthcoming
-`@helix-db/helix-db@3.0.0` TypeScript DSL. Use when `SKILL.md` points
+Exhaustive builder catalog for the published
+`@helix-db/helix-db@3.0.4` TypeScript DSL. Use when `SKILL.md` points
 you at a category or when you need a signature confirmed.
 
 The public surface is defined under
@@ -680,12 +680,13 @@ client.requestBuilder<R>()
   .shouldAwaitDurability(b: boolean)       // X-Helix-Await-Durable: true|false
   .query(request)
 
-await request.send(): Promise<R>           // 200 -> parsed JSON; Cloud warm success -> 204/no payload; other status -> HelixError
+await request.send(): Promise<R>           // published 3.0.4: 200 -> parsed JSON; every other status, including Cloud warm 204, -> HelixError
 ```
 
-For Cloud warming, use a no-content response type such as
-`requestBuilder<void>()`. Partial target failure still succeeds when at least
-one backend warms successfully.
+The Cloud service returns `204 No Content` after a successful warm fanout, but
+the published TypeScript 3.0.4 client accepts only 200. Use `helix query` or
+direct HTTP for Cloud warming until a newer SDK release accepts 204. Partial
+target failure is still a service-level success when at least one backend warms.
 
 Prefer `.shouldAwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 
@@ -730,9 +731,19 @@ registration, and query bundles are not supported.
 
 ## Errors
 
-- `HelixError` — raised by `Client`/`send()`. `kind` identifies network,
-  remote, serialization, and URL errors; remote errors carry the server
-  response body in `details`.
+- `HelixError` — raised by `Client`/`send()`. `kind` distinguishes network,
+  remote, serialization, URL, invalid-request, embedded-unavailable, and
+  embedded failures. Remote errors expose `statusCode`, optional open-string
+  `code`, `serverMessage`, structured `serverDetails`, and `rawBody` while
+  retaining `details` as the diagnostic compatibility field. Canonical Helix
+  `error`/`msg` (`error` is the code), legacy Helix `error`/`code`, defensive
+  generic-remote `code`/`message`/`details`, and embedded `error`/`msg` pairs are
+  preserved. Generic-remote decoding is not the Cloud gateway contract.
+  `isConflict()` classifies HTTP 409 and `isRateLimited()` classifies HTTP 429.
+  The client does not expose `Retry-After`; use direct HTTP when the exact Cloud
+  delay is required. Reconcile a `query_timeout` write before resubmitting.
+  Preserve unknown codes and never parse diagnostic text for control flow; see
+  `../../docs/error-handling.md`.
 - `QueryError` — invalid parameter values, unknown parameters, serialization,
   or unsupported bytes parameters.
 

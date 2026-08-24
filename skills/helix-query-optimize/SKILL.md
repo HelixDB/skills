@@ -1,17 +1,18 @@
 ---
 name: helix-query-optimize
-description: Review and improve HelixDB v3 query performance. Use for index-aware sources, label scope, equality and range indexes, bounded traversals, projection size, vector and BM25 traversal-scoped prefiltering, tenant-scoped indexes, and safe write batches. Examples use direct v3 SDK requests and the nested JSON AST. When the target is Helix Cloud, always use helix-mcp first and base the review on live observability evidence.
+description: Review and improve HelixDB v3 query performance against the current planner and database execution model. Use for exact numeric equality, bitmap equality reads, bounded runtime membership, adjacent-filter canonicalization, batched unions, pre-materialization intersections, ordered range drivers, dedicated count programs, saturating windows, correctness fallbacks, bounded traversals, and vector/BM25 prefiltering. Examples use direct v3 SDK requests and the nested JSON AST. When the target is Helix Cloud, always use helix-mcp first and base the review on live observability evidence.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.2.1
 ---
 
 # HelixDB v3 Query Optimization
 
-Optimize the query shape before tuning the transport. The forthcoming v3 SDKs all
-serialize the same direct operation tree, so the same rules apply to Rust,
-TypeScript, Python, Go, and raw JSON.
+Optimize the logical query shape and let the planner select the physical program.
+The planner work changes no public query AST or DSL syntax. The published v3
+SDKs all serialize the same direct operation tree, so the same rules apply to
+Rust, TypeScript, Python, Go, and raw JSON.
 
 ## Required Helix Cloud evidence
 
@@ -38,13 +39,15 @@ Cloud-verified result.
 
 ## Review order
 
-1. Identify the first source operation.
-2. Find the narrowest label and property predicate available.
-3. Confirm a compatible index exists and is active.
-4. Bound expansion with filters, `dedup`, and `limit`.
-5. Project only the fields the caller uses.
-6. Check search tenant scope and rank-field lifetime.
-7. Check write idempotency and batch cardinality.
+1. Identify the source and effective label scope.
+2. Confirm compatible equality, unique-equality, range, vector, and text indexes.
+3. Separate exact set logic from residual predicates that require row values.
+4. Record ordering, limit/skip/range, count, distinctness, and identity requirements.
+5. Check parameter timing and types, then search scope, projection, traversal breadth, and write safety.
+
+Do not infer a physical plan from surface adjacency alone. The planner can combine
+equality/range sets and count windows across a safe logical region; an old
+one-step-lookahead rule is not the current model.
 
 ## 1. Start from the narrowest source
 
@@ -93,9 +96,64 @@ Equality and range indexes are label-scoped. Prefer
 `nWithLabelWhere("User", ...)`/`n_with_label_where("User", ...)` when the label is
 known. A property predicate without label scope may require a wider scan.
 
-## 4. Push bounds close to expansion
+## 4. Use Exact Cross-Numeric Equality
 
-Apply `dedup` and `limit` immediately after the source or traversal they should bound:
+Indexed equality and residual equality share one exact numeric model:
+
+- `i64(42)`, `f64(42.0)`, and the equivalent `f32` compare equal.
+- `-0.0` and `0.0` normalize to the same zero.
+- NaN is non-reflexive and therefore is not an indexable equality key.
+- Large integers are not rounded through `f64` to prove equality.
+
+Do not coerce or pre-round values to “help” an index. Keep parameter types
+truthful and let the shared value semantics normalize exact values.
+
+## 5. Keep Equality Set Algebra Before Materialization
+
+For proven non-unique equality indexes, the planner can select bitmap point
+reads. Equalities on the same index can become one batched bitmap union, while
+compatible equality and range ID sets can intersect before rows are loaded.
+
+Keep `and`, `or`, and membership logic in one semantic expression rather than
+splitting it into client-side queries. Every union arm still needs independent
+proof; a null, NaN, mixed identity, or unsupported residual arm can require a
+fallback.
+
+## 6. Use Bounded Runtime Membership
+
+`Predicate::is_in_param` and `Predicate.isInParam` can use an equality index even
+when the membership value is resolved from request parameters at execution time.
+For node and edge properties, the planner selects a runtime equality-set program
+bounded by `max_index_union_branches`:
+
+- scalar and array inputs normalize to a finite equality domain
+- duplicate values are removed by exact query equality
+- non-reflexive members such as NaN are skipped
+- null, unsupported, oversized, or over-limit domains use authoritative evaluation
+- an empty proven domain produces an empty collection without changing the return shape
+
+Finite `$label` membership can similarly become a bounded union of label scans.
+Keep the membership predicate intact; do not expand a caller-supplied array into
+unbounded client requests or assume every runtime array must scan.
+
+## 7. Keep Adjacent Filters Contiguous
+
+The logical planner canonicalizes a contiguous run of `where`/filter operations
+into one flat conjunction before access planning. This lets label, indexed
+property, and residual predicates participate in the same access decision even
+when the SDK chain emitted separate adjacent filters. A non-filter operation is
+a semantic boundary, so filters are never moved across traversal, order, limit,
+projection, mutation, or another pipeline operation.
+
+Write clear early filters and keep related filters adjacent. A single explicit
+`and` is still useful for readability and portability, but separate contiguous
+filters no longer imply separate access plans.
+
+## 8. Push Bounds Close To Expansion
+
+Apply `dedup` and `limit` after every filter/order operation that semantically
+must precede the bound, and as close as possible to the expansion they should
+control:
 
 ```ts
 g()
@@ -114,7 +172,7 @@ A guaranteed upper bound of one changes only the empty response shape to
 `limit(1)`, confirm the caller can decode `null`. Collections, folds, and
 mutations remain `[]` when empty, while scalar `0` and `false` remain scalars.
 
-## 5. Project narrowly
+## 9. Project Narrowly
 
 Prefer:
 
@@ -122,10 +180,9 @@ Prefer:
 .valueMap(["$id", "name"])
 ```
 
-over loading every property when the response needs only two. For a count, finish
-with `count` rather than returning every matching object to the client.
+over loading every property when the response needs only two.
 
-## 6. Treat search scope as part of the index lookup
+## 10. Treat Search Scope As Part Of The Index Lookup
 
 Vector and text index definitions may include a tenant property. Pass the matching
 tenant value to the search operation itself. A later `where` cannot repair a search
@@ -139,23 +196,53 @@ underfill top-k; BM25 prefiltering refills to `k` when enough candidates match.
 Project `$distance` for vector results or `$score` for text results before traversing
 away from the ranked hit stream.
 
-## 7. Use range indexes for large ordered reads
+## 11. Use Range Indexes As Ordered Drivers
 
-`orderBy`/`order_by` may otherwise require materializing and sorting the matching
-stream. If ordering is a frequent large query, create a range index for the same
-label and property, then apply a practical limit.
+For a compatible ordered range index, the planner can build/intersect equality
+filters, scan the range index in the requested direction, admit only matching
+IDs, and stop when the post-filter limit/window is satisfied. This filters
+before the limit and avoids a redundant in-memory sort.
+
+Match label, property, and direction. Range candidates are verified against
+authoritative values. Unsupported multi-key ordering or residual expressions
+may still require materialization and sorting.
 
 Deep offset pagination still does work proportional to the skipped prefix. Prefer a
 cursor predicate on the ordered property where possible.
 
-## 8. Bound recursive and branching work
+## 12. Let `count()` Select A Count Program
+
+When only cardinality is needed, end the logical route in `count()` rather than
+fetching IDs/rows and taking their length. The planner has dedicated bitmap,
+unique-owner, range, label, search, runtime-input, and streaming count programs.
+
+Consecutive `limit`, `skip`, and `range` operations can be normalized with
+saturating arithmetic while preserving operator order. Filters, distinctness,
+ordering, mutations, and identity-sensitive operations remain proof boundaries;
+when a rewrite is not safe, the planner keeps a streaming/materialized count.
+
+## 13. Respect Correctness Fallbacks
+
+- unique equality verifies the indexed owner against authoritative state
+- range-index candidates are verified against authoritative values
+- null equality uses an authoritative scoped scan
+- NaN equality is non-indexable
+- a late-bound equality parameter may use a dynamic equality program
+- bounded runtime membership falls back to authoritative evaluation for null,
+  unsupported, oversized, or over-limit domains
+- identity-sensitive or unsupported count pipelines use streaming/materialized execution
+
+These are correctness contracts, not failures to optimize. Prefer the narrowest
+proven plan over an unverified index read.
+
+## 14. Bound Recursive And Branching Work
 
 - Set an explicit maximum depth on recursive traversal.
 - Put cheap `coalesce` probes before expensive fallbacks.
 - Keep `forEachParam`/`for_each_param` arrays bounded.
 - Break large bulk writes into measured pages.
 
-## 9. Make writes idempotent where required
+## 15. Make Writes Idempotent Where Required
 
 `addN`/`add_n` creates new data. For an upsert:
 
@@ -165,6 +252,20 @@ cursor predicate on the ordered property where possible.
 
 On multigraphs, identify the exact edge or use a label-scoped drop. Avoid a broad
 source/target deletion when parallel edges may exist.
+
+## Anti-Patterns
+
+Do not:
+
+- claim optimization depends only on immediate `step -> Limit` lookahead
+- describe execution as a single interpreter with no planner-selected physical program
+- assume equality is type-strict across integer and floating representations
+- use null or NaN as an ordinary equality bitmap key
+- trust unique or range candidates without authoritative verification
+- apply a limit before selective filters on an ordered range route
+- materialize/project rows before `count()` when only cardinality is required
+- assume a runtime `is_in_param` is always unindexed, or force an unbounded union
+- move filters across non-filter pipeline boundaries because adjacent filters merge
 
 ## Direct requests only
 
@@ -186,13 +287,21 @@ of the v3 SDK contract. Authoring with Rust `#[query]` still produces a direct r
 - [ ] label scope is present for label-scoped indexes
 - [ ] index family matches the predicate or search
 - [ ] index creation has completed before performance is measured
+- [ ] numeric equality preserves exact cross-type semantics, normalized zero, and non-indexable NaN
+- [ ] equality unions/intersections remain one logical set expression where possible
+- [ ] every union arm is independently indexable, or its fallback is acknowledged
+- [ ] runtime membership stays bounded and preserves authoritative fallbacks
+- [ ] related filters are contiguous; no predicate is moved across an operation boundary
 - [ ] expansion is bounded near its source
 - [ ] any new at-most-one bound preserves the caller's nullable response contract
 - [ ] projection includes only required fields
 - [ ] tenant-scoped search passes the tenant value at search time
 - [ ] vector and BM25 candidate filters run before traversal-scoped search
 - [ ] `$distance` or `$score` is projected before leaving the hit stream
-- [ ] large ordering has a range index or an accepted sort cost
+- [ ] ordered range routes use a matching range index, filter before the limit, and avoid a redundant sort
+- [ ] count-only routes end in `count()` without unnecessary projection/materialization
+- [ ] limit/skip/range windows preserve semantic order and saturate rather than wrap
+- [ ] unique, range, null, dynamic-membership, late-bound, and identity-sensitive fallbacks remain authoritative
 - [ ] recursive depth and bulk batch sizes are bounded
 - [ ] writes are idempotent where the application requires it
 

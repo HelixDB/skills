@@ -216,6 +216,73 @@ readBatch()
   .returning(["active_count"]);
 ```
 
+Keep this as `count()` rather than projecting IDs and taking the client-side
+array length. With a compatible `User.status` equality index, the planner can
+select a bitmap count without materializing user rows. Compatible
+`skip`/`limit`/`range` windows are normalized with saturating arithmetic; an
+identity-sensitive or unsupported pipeline retains a streaming count.
+
+## Keep Equality Union And Intersection As One Set Expression
+
+With non-unique equality indexes on `Order.status` and `Order.region`:
+
+```ts
+g()
+  .nWithLabelWhere(
+    "Order",
+    SourcePredicate.and([
+      SourcePredicate.or([
+        SourcePredicate.eq("status", "open"),
+        SourcePredicate.eq("status", "queued"),
+      ]),
+      SourcePredicate.eq("region", "eu"),
+    ]),
+  )
+  .valueMap(["$id", "status", "region"])
+```
+
+The two same-index status points can become one batched bitmap union. The
+result can intersect the region bitmap before rows are loaded. Do not split
+this into separate client requests merely to force index use; every arm still
+needs compatible label/property/index identity.
+
+## Keep Runtime Membership Bounded
+
+When the caller supplies the status domain as a parameter, keep it as one
+membership predicate:
+
+```ts
+g()
+  .nWithLabelWhere(
+    "Order",
+    SourcePredicate.isInParam("status", "statuses"),
+  )
+  .valueMap(["$id", "status"])
+```
+
+With a compatible non-unique equality index, a scalar or bounded array can use
+a runtime equality union. Duplicate values collapse and NaN members are skipped.
+Null, unsupported, oversized, or over-limit domains fall back to authoritative
+membership evaluation; they never produce a partial indexed answer. An empty
+domain returns the normal empty collection shape.
+
+## Keep Related Filters Adjacent
+
+These filters are canonicalized into one conjunction for access planning:
+
+```ts
+g()
+  .nWithLabel("Order")
+  .where(Predicate.eqParam("region", "region"))
+  .where(Predicate.isInParam("status", "statuses"))
+  .valueMap(["$id", "status", "region"])
+```
+
+The planner can combine label scope and indexed predicates even though the SDK
+chain used separate `where` calls. A traversal, `limit`, `orderBy`, projection,
+mutation, or any other non-filter operation ends the contiguous run; do not move
+filters across that boundary unless the query semantics independently allow it.
+
 ## Rank vectors with traversal prefiltering
 
 Post-filtering source top-k hits can underfill:
@@ -270,7 +337,7 @@ writeBatch()
   .varAs(
     "index",
     g().createIndexIfNotExists(
-      IndexSpec.nodeRange("Order", "createdAt"),
+      IndexSpec.nodeRangeDesc("Order", "createdAt"),
     ),
   )
   .returning(["index"]);
@@ -281,7 +348,16 @@ readBatch()
   .varAs(
     "orders",
     g()
-      .nWithLabel("Order")
+      .nWithLabelWhere(
+        "Order",
+        SourcePredicate.and([
+          SourcePredicate.or([
+            SourcePredicate.eq("status", "open"),
+            SourcePredicate.eq("status", "queued"),
+          ]),
+          SourcePredicate.eq("region", "eu"),
+        ]),
+      )
       .orderBy("createdAt", Order.Desc)
       .limit(25)
       .valueMap(["$id", "createdAt", "total"]),
@@ -289,7 +365,15 @@ readBatch()
   .returning(["orders"]);
 ```
 
-Wait for the range index before measuring the ordered query.
+Wait for the descending range index before measuring the ordered query. The
+planner can union status IDs, intersect the region IDs, drive the route from the
+descending range index, filter before satisfying the 25-row limit, and avoid a
+redundant in-memory sort. Range candidates remain authoritatively verified.
+
+If the caller needs only the cardinality of this ordered window, replace
+`.valueMap(...)` with `.count()`. Null equality still needs a scan, NaN is
+non-indexable, a unique equality hit verifies its owner, and a genuinely
+late-bound equality parameter may select a dynamic equality program.
 
 ## Scope vector search to its tenant
 

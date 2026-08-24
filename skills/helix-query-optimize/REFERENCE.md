@@ -1,19 +1,33 @@
 # HelixDB v3 Optimization Reference
 
-This reference follows the current public query model and future source locations in
-[`HelixDB/helix-db`](https://github.com/HelixDB/helix-db):
+This reference describes the planner-selected physical behavior introduced by
+[PR #974](https://github.com/HelixDB/helix-db/pull/974) and
+[PR #975](https://github.com/HelixDB/helix-db/pull/975), in the cumulative stack
+merged by [PR #996](https://github.com/HelixDB/helix-db/pull/996), then extended
+with bounded runtime equality domains in [PR #1015](https://github.com/HelixDB/helix-db/pull/1015)
+and adjacent-filter canonicalization in [PR #1017](https://github.com/HelixDB/helix-db/pull/1017).
+Public DSL and JSON syntax are unchanged.
 
-- AST and builders:
-  [`crates/ast`](https://github.com/HelixDB/helix-db/tree/main/crates/ast)
-- Rust SDK:
-  [`sdks/rust`](https://github.com/HelixDB/helix-db/tree/main/sdks/rust)
-- TypeScript SDK:
-  [`sdks/typescript`](https://github.com/HelixDB/helix-db/tree/main/sdks/typescript)
-- Database query runtime:
-  [`crates/db`](https://github.com/HelixDB/helix-db/tree/main/crates/db)
+## Source Map
 
-Use main-branch links in published skills. Line numbers are intentionally omitted
-because the forthcoming v3 source is still changing.
+The links are pinned to reviewed main commit `9793de57`; prefer paths and symbols
+over brittle line-number citations.
+
+| Concern | Canonical sources |
+| --- | --- |
+| Exact cross-numeric equality/order | [`crates/value-semantics/src/lib.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/value-semantics/src/lib.rs) |
+| Logical equality/range set rewrites | [`crates/planner/src/rules/access/sets/equality_range/`](https://github.com/HelixDB/helix-db/tree/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/access/sets/equality_range) |
+| Runtime equality-domain analysis | [`analysis/index_atoms/equality.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/analysis/index_atoms/equality.rs), [`rules/access/filter/atoms/collect.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/access/filter/atoms/collect.rs) |
+| Runtime membership execution | [`access/membership.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/db/src/execution/interpreter/access/membership.rs) |
+| Adjacent-filter canonicalization | [`logical/access/pipeline/canonical.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/logical/access/pipeline/canonical.rs) |
+| Ordered range selection | [`range_direction.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/access/order/rules/range_direction.rs), [`sets/range/`](https://github.com/HelixDB/helix-db/tree/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/access/sets/range) |
+| Physical equality/range programs | [`exec/access/node.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/exec/access/node.rs), [`exec/access/edge.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/exec/access/edge.rs), [`exec/selected/`](https://github.com/HelixDB/helix-db/tree/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/exec/selected) |
+| Count programs and windows | [`exec/count.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/exec/count.rs), [`rules/cardinality.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/cardinality.rs) |
+| Equality/range execution | [`secondary_set.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/db/src/execution/interpreter/access/secondary_set.rs), [`range.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/db/src/execution/interpreter/access/range.rs) |
+| Count execution | [`interpreter/count.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/db/src/execution/interpreter/count.rs) |
+
+The planner directory is intentionally decomposed; do not describe the runtime as
+one monolithic interpreter-only model.
 
 ## Sources
 
@@ -33,18 +47,72 @@ when the filter is known before traversal.
 
 ## Index families
 
-| Index family | Intended operations |
-|---|---|
-| equality | exact equality, membership, property presence where supported |
-| range | ordered comparisons, bounded ranges, ordered reads |
-| vector | nearest-neighbor search on numeric arrays |
-| text | BM25 full-text search |
+| Index family | Intended operations | Correctness boundary |
+|---|---|---|
+| non-unique equality | exact bitmap point reads, membership, batched same-index unions | literal/parameter must be compatible and reflexive |
+| unique equality | owner point read | authoritative owner verification remains required |
+| range | ordered comparisons, bounded ranges, ordered reads | candidates are verified against authoritative values |
+| vector | nearest-neighbor search on numeric arrays | tenant and `k` remain part of the plan |
+| text | BM25 full-text search | tenant and `k` remain part of the plan |
+| authoritative scan | null/non-indexable/residual fallback | correctness path, not necessarily a planner failure |
 
 Node and edge indexes are distinct. Index label, property, vector dimension, distance
 metric, and tenant property must match the query.
 
 Index DDL is durable and asynchronous. A create request returns a receipt; poll its
 status and wait for the index to be active before benchmarking the read path.
+
+## Exact Value Semantics
+
+`helix_value_semantics::CanonicalNumber` is shared by planner proofs and storage
+codecs.
+
+- Integer and floating representations compare by exact mathematical value, not
+  by enum variant and not by converting integers through `f64`.
+- `42_i64 == 42.0_f64` when the floating value represents the integer exactly.
+- `-0.0` and `0.0` canonicalize to the same zero.
+- Finite values and infinities have an exact total ordering for range planning.
+- NaN stays non-reflexive and cannot be an equality bitmap key.
+
+Keep parameter types truthful, but do not add client-side coercion merely to
+match an index representation.
+
+## Equality Set Programs
+
+A proven non-unique equality lookup reads one bitmap row. Equalities on the same
+index can become a batched multi-get whose bitmaps are unioned; surface forms
+include an indexable `or` or equivalent membership predicate.
+
+Intersections combine equality bitmaps and compatible range candidates before
+row materialization. Keep all arms in one logical expression. If an arm changes
+label/property/index identity, is null/NaN, or otherwise lacks proof, the fast
+path is declined. The planner owns selected-child order; hand-ordering AST nodes
+is not a substitute for catalog and cardinality selection.
+
+### Bounded runtime equality domains
+
+Request parameters are specialized before predicate planning when their values
+are immutable and available. If `is_in_param` remains runtime-bound, a proven
+node or edge equality index can still use a `RuntimeEqualitySet` bounded by the
+planner's `max_index_union_branches` limit.
+
+At execution, typed arrays, general arrays, and scalars normalize into one exact
+equality domain. Duplicate values collapse by query equality, while
+non-reflexive values are omitted. If the domain contains null, an unsupported or
+oversized equality value, or more unique values than the bound, execution uses
+authoritative scoped membership evaluation instead of a partial index answer.
+An empty proven domain remains an empty collection, preserving the public return
+shape. Finite `$label` membership can use the same branch bound to union node or
+edge label scans.
+
+### Adjacent filter canonicalization
+
+Canonical logical pipelines flatten each contiguous filter run into one
+conjunction. This makes separate adjacent filters eligible for combined
+label-scoped and property-index planning regardless of their original order.
+Every non-filter operation flushes the run; canonicalization never moves a
+predicate across a traversal, window, order, projection, mutation, or other
+semantic boundary.
 
 ## Label scope
 
@@ -64,7 +132,8 @@ mid-stream status filter.
 ## Stream bounds
 
 Place `limit`, `range`, or `skip` as close as possible to the operation it should
-bound. `dedup().limit(n)` is a common pattern after graph expansion.
+bound, after every filter/order operation that must semantically precede it.
+`dedup().limit(n)` is a common pattern after graph expansion.
 
 Limit and skip values are stream bounds. Literal values serialize as:
 
@@ -82,14 +151,68 @@ Parameterized values serialize as expressions:
 }
 ```
 
+Count plans normalize compatible `limit`, `skip`, and `range` chains with
+saturating/min/subtract arithmetic so large values do not wrap. Do not move a
+window across a filter, distinctness, ordering, mutation, or identity-sensitive
+operation unless equivalence is proven; the fallback retains semantic order.
+
 ## Ordering
 
 Ordering a large property stream without a matching range index can require a full
-materialize-and-sort path. Pair frequent large `orderBy(property, order).limit(n)`
-queries with a range index for the same label/property.
+materialize-and-sort path. With a compatible ordered range index, execution can:
+
+1. build/intersect equality or range filter ID sets
+2. scan the range index in the requested direction
+3. admit only IDs present in the filter set
+4. stop after the post-filter limit/window is satisfied
+5. materialize only surviving rows
+
+This filters before the limit and avoids a redundant sort. Direction, property,
+label, and catalog identity must match; range candidates remain authoritatively
+verified. Unsupported multi-key order or residual expressions can still require
+sorting/materialization. This is stronger than an old immediate
+`OrderBy -> Limit` lookahead claim.
 
 For cursor pagination, add an indexed comparison such as “created_at less than the
 last returned value,” preserve the same order, and limit the page.
+
+## Count Programs
+
+`Count` has dedicated physical alternatives rather than always consuming a fully
+materialized row stream. Alternatives include:
+
+- constant or runtime-input cardinality
+- node/edge equality bitmap cardinality
+- batched bitmap union/intersection cardinality
+- verified unique-owner cardinality
+- label bitmap cardinality
+- verified range cardinality, optionally with bitmap filters
+- vector/text search cardinality
+- streaming cursors for residual filters, expansion, order, distinctness,
+  variables, identity-sensitive work, and unsupported compositions
+
+Use `.count()` directly after the logical operations whose cardinality is needed.
+Adding `.id()`, `.project(...)`, or client-side length forces work the count
+planner could otherwise avoid.
+
+## Correctness Fallbacks
+
+| Case | Why the direct fast path is declined or supplemented | Expected shape |
+| --- | --- | --- |
+| unique equality | index ownership needs authoritative confirmation | point lookup plus owner verification |
+| range | encoded entry is a candidate, not final truth | ordered candidate scan plus authoritative verification |
+| null equality | absent and explicit-null semantics need row inspection | scoped authoritative scan |
+| NaN equality | equality is non-reflexive | non-indexable/empty proof, never an equality bitmap lookup |
+| late-bound equality parameter | value is unavailable during early proof | dynamic equality program at execution, or fallback |
+| runtime membership domain | domain is null, unsupported, oversized, or exceeds the union bound | authoritative scoped membership evaluation |
+| unknown/mismatched index identity | element/label/property/direction/uniqueness would be unsafe | validation failure or authoritative alternative |
+| identity-sensitive count | row identity/distinct/order semantics matter | streaming/materialized count cursor |
+| residual predicate | no exact set proof exists | narrow indexed candidate plus residual evaluation, or scan |
+
+Literal equality can be encoded during planning. A genuinely late-bound parameter
+can remain dynamic and resolve from execution context, with index identity
+validated before lookup. Parameterized equality is therefore neither always
+unindexed nor identical to a fully proven literal bitmap program.
 
 ## Projections
 
@@ -161,7 +284,10 @@ length and body cost; keep it bounded.
 - upsert existence checks should use an equality-indexed key.
 
 Use a write batch so the lookup, conditional update/create, and any related edge
-write share one transaction.
+write share one transaction. Awaiting durability can reduce concurrent-write
+conflicts, but classify them with the stable `transaction_conflict` code, reload
+current state before rebuilding, and replay only safe operations; see
+`../../docs/error-handling.md`.
 
 ## Wire shape
 

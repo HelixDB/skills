@@ -1,8 +1,11 @@
 # HelixDB v3 JSON Wire Reference
 
-This reference describes the direct request produced by the forthcoming v3 SDKs.
+This reference describes the direct request produced by the published v3 SDKs.
 The source of truth is the `helix-ast` crate under
 [`HelixDB/helix-db`](https://github.com/HelixDB/helix-db/tree/main/crates/ast).
+The published transport schema is
+[`openapi.json`](https://docs.helix-db.com/openapi.json); use it for HTTP
+headers, status codes, body limits, and the raw-JSON parameter subset.
 
 ## Envelope
 
@@ -41,7 +44,7 @@ The source of truth is the `helix-ast` crate under
 | `query_name` | no | non-empty string or `null` |
 | `query` | yes | `{ "read": ReadBatch }` or `{ "write": WriteBatch }` |
 | `parameters` | no | object of JSON runtime values |
-| `parameter_types` | no | object of v3 parameter type descriptors |
+| `parameter_types` | no | object of v3 parameter type descriptors; when present, keys exactly match `parameters` |
 
 The batch variant must match `request_type`, and every batch must contain at
 least one entry.
@@ -324,9 +327,12 @@ current element's property.
 
 ## Parameter schemas
 
-Scalar schema names include `string`, `i64`, `f64`, `bool`, `date_time`, and `bytes`.
-Arrays and objects use their structured schema form as serialized by the SDK. Keep
-`parameters` and `parameter_types` aligned.
+The raw HTTP scalar schema names are `bool`, `i64`, `string`, `date_time`,
+`value`, and `object`. Arrays use recursive `{ "array": <schema> }` descriptors.
+When `parameter_types` is present, its keys must exactly match `parameters`;
+typed and untyped values cannot be mixed. Send floating-point JSON numbers
+without `parameter_types`, because the HTTP schema intentionally omits `f32` and
+`f64`. Raw bytes cannot be represented on the JSON route.
 
 ```json
 {
@@ -360,6 +366,37 @@ wire shape.
 
 Do not document internal `current`/`bindings` rows as the public response.
 
+## HTTP Failure Envelope
+
+Current Helix non-success responses, including responses delivered through the
+Cloud query gateway, use a separate code/diagnostic pair:
+
+```json
+{"error":"index_not_found","msg":"planner error: missing text index for `Document.body`"}
+```
+
+The current Helix body has no separate `code` field. For mixed-version
+clients, decode the legacy
+`{"error":"<diagnostic>","code":"<stable_code>"}` body as well. The Rust and
+TypeScript SDKs also defensively preserve a noncanonical remote shape:
+
+```json
+{
+  "code": "external_error",
+  "message": "upstream rejected the request",
+  "details": { "request_id": "req_123" }
+}
+```
+
+Decode canonical Helix, legacy Helix, then generic remote fields. Preserve
+structured `details`, the raw response body, and unknown codes. The third shape
+is compatibility behavior, not the Cloud gateway contract. Use HTTP status plus
+code for decisions. Honor `Retry-After` on 429 when the transport exposes it;
+reconcile a timed-out write before resubmitting; rebuild a conflicting write
+from current state and replay only when safe. See `../../docs/error-handling.md`
+for the full Cloud gateway catalog, body limits, retry rules, and gRPC/embedded
+parity.
+
 ## Validation checklist
 
 - Parse every complete `json` fence.
@@ -370,4 +407,8 @@ Do not document internal `current`/`bindings` rows as the public response.
 - Confirm every non-source operation has the correct nested `input`.
 - Confirm all enum tags are `snake_case`.
 - Compare hand-written JSON with an SDK serializer for the same query.
-- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.3`.
+- Decode current Helix `error`/`msg` failures without reversing their meanings;
+  retain legacy `error`/`code`, generic remote `code`/`message`/`details`,
+  raw/plain-text bodies, and unknown future codes without mislabeling the
+  generic shape as the gateway contract.
+- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.4`.

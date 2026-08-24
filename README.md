@@ -2,9 +2,9 @@
 
 Hosted `skills.sh` repository for HelixDB agent skills.
 
-The query skills target HelixDB v3 SDK APIs. Installation commands stay
-unpinned; verify registry availability before claiming that a package is
-published.
+The query skills target the published HelixDB Rust 3.0.0, TypeScript 3.0.4,
+Python 0.3.4, and Go 0.3.1 SDK lines. Installation commands stay unpinned;
+verify registry availability before changing release claims.
 
 These skills are for agents that need to:
 
@@ -65,12 +65,15 @@ them against. To stand one up locally — no Cloud login required:
    ```
 4. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
 
-The local runtime uses `ghcr.io/helixdb/helixdb:v0.0.3`. It is in-memory by
+The CLI currently defaults to `ghcr.io/helixdb/helixdb:v0.0.4`. It is in-memory by
 default; `--disk` uses a CLI-managed MinIO service for persistence. The skills
 produce direct `POST /v2/query` requests for a running instance reachable at a
 server URL. Helix Cloud uses Bearer authentication; GA requests also require
-the tenant context in `x-helix-tenant-id`. There is no
-`helix compile`/`helix check` step — queries are validated server-side when
+the database ID in `X-Helix-Database-Id` (`X-Helix-Tenant-Id` is a legacy GA
+alias), while cluster-mode endpoints reject both headers. The published SDK
+request builders do not expose this GA database-selection header; use the MCP,
+`helix query` with synced cluster metadata, or direct HTTP as appropriate.
+There is no `helix compile`/`helix check` step — queries are validated server-side when
 sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and
 the non-interactive/agent path.
 
@@ -120,6 +123,8 @@ It teaches agents to:
 
 - use the correct request envelope
 - target the dynamic route (`POST /v2/query`) with an inline `query` object
+- decode canonical `error`/`msg` failures with `error` as the code, migrate legacy
+  `error`/`code` bodies, and defensively preserve generic remote metadata and unknown codes
 - add `parameter_types` when typed coercion matters
 - send `DateTime` values correctly
 - avoid malformed bundle-shaped payloads
@@ -135,7 +140,9 @@ It teaches agents to:
 - declare runtime params inline with `q.ParamString`, `q.ParamI64`, `q.ParamDateTime`, and related helpers
 - avoid accidentally inlining request-specific literals in predicates and source predicates
 - execute dynamic requests with `client.Exec(ctx, request, &out)`
-- handle HTTP 409 conflicts explicitly with caller-owned retries
+- handle HTTP 409 `transaction_conflict` failures explicitly by reloading state,
+  rebuilding, and replaying only safe mutations
+- respect the v0.3.1 server-only release scope: standard installs do not ship embedded or native-graph bindings
 - avoid stored-query registration and query-bundle workflows, which are not part of the v3 SDK
 
 ### `helix-query-python`
@@ -148,6 +155,7 @@ It teaches agents to:
 - declare runtime params with `define_params` and `param.*`
 - produce direct requests with `to_query_request` / `to_query_json`
 - execute requests with synchronous `Client` or reusable server/embedded `AsyncClient`
+- branch on `HelixError.code` while keeping `details` diagnostic-only
 - use row bindings for correlated multi-hop projections
 - keep Python queries structurally identical to the Rust/TypeScript/Go JSON AST
 
@@ -192,9 +200,13 @@ It teaches agents to:
 
 - fetch the live active index inventory before deciding index usability
 - fix anchor choice before anything else
-- match query shape to existing indexes
-- move scope filters earlier
-- shrink large projections
+- use exact cross-numeric equality and understand null/NaN fallback boundaries
+- use bounded runtime `IS_IN` equality domains and preserve authoritative fallbacks for oversized or non-indexable members
+- let adjacent filters canonicalize for combined access planning while still writing clear, early predicates
+- keep equality unions/intersections as bitmap ID-set work before row materialization
+- use ordered range drivers that filter before limits and avoid redundant sorts
+- use dedicated count programs and normalized saturating windows where semantics allow
+- retain unique/range verification and identity-sensitive fallbacks
 - review BM25 and vector search routes separately
 
 ### `helix-memory-system`
@@ -208,7 +220,7 @@ It teaches agents to:
 - run the full write/maintain lifecycle (dedup-on-generate, reinforce-on-access, supersede/correct, soft-delete, decay and expiry sweeps, upsert-and-link categorisation)
 - build hybrid recall that fuses vector + BM25 app-side and expands through the graph
 
-It is TypeScript-first (`@helix-db/helix-db@3.0.0`) with a Rust v3 DSL variant in `EXAMPLES.rust.md`.
+It is TypeScript-first (`@helix-db/helix-db@3.0.4`) with a Rust 3.0.0 DSL variant in `EXAMPLES.rust.md`.
 
 ## Shared References
 
@@ -220,6 +232,7 @@ Start here when working on the next skills:
 - `docs/cypher-rosetta.md`
 - `docs/gremlin-rosetta.md`
 - `docs/dynamic-query-examples.md`
+- `docs/error-handling.md`
 - `docs/optimization-checklist.md`
 - `examples/authoring-patterns.md`
 - `examples/search-patterns.md`

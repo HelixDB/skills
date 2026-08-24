@@ -1,18 +1,18 @@
 ---
 name: helix-query-go
-description: Write and revise queries with the forthcoming HelixDB v3 Go SDK. Use for normal functions returning `helix.Request`, `ReadQuery`/`WriteQuery`, inline params, traversal builders, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, and `Client.Exec`. The module remains `github.com/helixdb/helix-db/sdks/go` without a `/v3` suffix; stored routes and query bundles are not supported. When the target is Helix Cloud, always use helix-mcp first.
+description: Write and revise queries with the published HelixDB Go SDK v0.3.1. Use for normal functions returning `helix.Request`, `ReadQuery`/`WriteQuery`, inline params, traversal builders, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, and server execution through `Client.Exec`. The module remains `github.com/helixdb/helix-db/sdks/go` without a `/v3` suffix; standard installs do not ship embedded or native-graph bindings. Stored routes and query bundles are not supported. When the target is Helix Cloud, always use helix-mcp first.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.0.3
 ---
 
 # Helix Query Authoring - Go
 
 Write HelixDB Go SDK queries that are schema-aware, direct-request-first, and
-easy for application engineers to call. The forthcoming module remains
+easy for application engineers to call. The published v0.3.1 module remains
 `github.com/helixdb/helix-db/sdks/go`, imported as `helix`; it does not gain a
-`/v3` suffix.
+`/v3` suffix because the module has not reached major version 2.
 
 Write ordinary Go functions that return `helix.Request`, declare parameters
 inline on the query builder, and execute with
@@ -147,13 +147,22 @@ err = client.Exec(ctx, CreateUser("Alice", "acme"), &created,
 )
 ```
 
-Prefer `helix.AwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them. Leaving it off is fine for low-concurrency or read paths. Either way, `Client.Exec` does not retry HTTP 409 conflicts. Application code owns retry policy and idempotency. Remote errors carry `StatusCode`, and `helix.IsConflict(err)` or `errors.Is(err, helix.ErrConflict)` detects 409 conflicts without parsing error text.
+Prefer `helix.AwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them. Leaving it off is fine for low-concurrency or read paths. Either way, `Client.Exec` does not retry HTTP 409 conflicts. Application code owns retry policy and idempotency: reload authoritative state before rebuilding a conflict, and replay only when safe. Remote failures use `*helix.HelixError`: `Code` is an open-string `helix.QueryErrorCode`, `Details` is diagnostic text, and `StatusCode` is the HTTP status. `helix.IsConflict(err)` or `errors.Is(err, helix.ErrConflict)` retains the HTTP 409 helper; use `Code == helix.QueryErrorCode("transaction_conflict")` when the database classification matters. Never parse `Details`; see `../../docs/error-handling.md`.
 
-### 6. Keep JSON Conversion Secondary
+### 6. Respect The Published Release Boundary
+
+The standard v0.3.1 module ships the operation-tree builder and HTTP client.
+It does not distribute the generated native bindings required by embedded
+constructors or `Client.Graph`. Those APIs return
+`ErrNativeBindingsUnavailable` / `ErrNativeGraphUnavailable` in a standard
+install. Do not enable the `helixdb_uniffi` build tag unless the application
+separately generates and links compatible bindings and native libraries.
+
+### 7. Keep JSON Conversion Secondary
 
 Use `helix.MarshalRequest(req)` only for tests, parity fixtures, or debugging. Do not make application code call `ToJSON`, `ToJSONString`, or equivalent helpers.
 
-### 7. Respect Sub-Traversal Limits
+### 8. Respect Sub-Traversal Limits
 
 `helix.Sub()` is for branch bodies inside `Repeat`, `Union`, `Choose`, `Coalesce`, and `Optional`. It currently supports walk/filter/bound operations such as `Out`, `In`, `Both`, `Where`, `Limit`, and `Count`. Put shared terminal projections like `ValueMap` or `Project` after the parent branch step.
 
@@ -162,7 +171,7 @@ For edge endpoint properties, prefer edge-stream `.Project(...)` with
 instead of traversing to every endpoint first. Keep `.EdgeProperties()` for full
 edge maps and internal `$from` / `$to` node ids.
 
-### 8. Prefilter Vector And Full Text Search On The Current Stream
+### 9. Prefilter Vector And Full Text Search On The Current Stream
 
 Build the candidate node or edge traversal first, then call
 `VectorSearchNodesWithin[With]`, `VectorSearchEdgesWithin[With]`,
@@ -173,7 +182,7 @@ post-filter and can return fewer than `k` eligible hits.
 Pass the same tenant partition used to construct candidates. Project
 `$distance` for vector hits or `$score` for text hits before navigating away.
 
-### 9. Avoid Unsupported Workflows
+### 10. Avoid Unsupported Workflows
 
 Do not use stored-query registration or query bundles. They are not supported
 by the v3 Go SDK.
@@ -189,7 +198,8 @@ Before finishing:
 - verify at-most-one response slices preserve JSON `null` as `nil`
 - verify vector/text search preserves tenant scope where the index is scoped
 - verify exact vector and BM25 prefilters build candidates before calling the matching `*Within[With]` method
-- verify conflict retries, if any, are explicit in application code and gated by `helix.IsConflict(err)`
+- verify standard v0.3.1 code does not assume embedded or native graph bindings are distributed
+- verify conflict retries, if any, reload current state before rebuilding, are safe to replay, and are gated by `helix.IsConflict(err)` and/or `HelixError.Code == helix.QueryErrorCode("transaction_conflict")`
 - run `go test ./...` in the Go module when editing SDK or query code
 
 ## Companion Files

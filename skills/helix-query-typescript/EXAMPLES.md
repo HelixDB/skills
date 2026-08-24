@@ -554,18 +554,48 @@ Warming uses the *same* query; `.warmOnly()` sets the `X-Helix-Warm: true` heade
 ```ts
 import { Client } from "@helix-db/helix-db";
 
-const client = new Client("https://helix.example.com").withApiKey(apiKey);
+const client = new Client("http://localhost:6969");
 const request = userById().toQueryRequest(userByIdParams, { userId: "u-42" });
 
-// Helix Cloud returns 204 No Content after at least one warm target succeeds.
-await client.requestBuilder<void>().warmOnly().query(request).send();
+// The Cloud service returns 204 after a successful warm. Published TypeScript
+// 3.0.4 treats that non-200 response as HelixError, so use helix query or direct
+// HTTP for Cloud warming until an SDK release accepts 204.
+await client.requestBuilder<void>().warmOnly().query(request).send(); // standalone 200
 ```
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writerOnly().warmOnly()` to warm only the authoritative writer.
-The standalone `v0.0.3` runtime warms one process and returns the normal query
+The standalone `v0.0.4` runtime warms one process and returns the normal query
 body. Warming is strictly read-only; a `WriteBatch` with
 `X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
+
+---
+
+## 19. Handle Structured Remote Errors
+
+```ts
+import { HelixError } from "@helix-db/helix-db";
+
+try {
+  await client.query(request).send();
+} catch (cause) {
+  if (cause instanceof HelixError && cause.isConflict() && cause.code === "transaction_conflict") {
+    // Reload state before rebuilding the write. Replay only if it is safe.
+  } else {
+    throw cause;
+  }
+}
+```
+
+`isRateLimited()` and retryable 503 codes can drive bounded backoff. The
+published client does not expose `Retry-After`, so use direct HTTP when the
+exact Cloud delay is required. Reconcile a `query_timeout` write before
+resubmitting it. Use `serverMessage`, `serverDetails`, and `rawBody` for structured remote
+diagnostics. Canonical Helix failures still use `error` as the code and `msg` as
+the diagnostic; generic `code`/`message` decoding is defensive compatibility,
+not the gateway contract. Preserve unfamiliar `code` strings and never classify
+errors by parsing `details`. Never blindly retry a write after a general server
+failure because its commit outcome may be unknown.
 
 ---
 

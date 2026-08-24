@@ -44,7 +44,23 @@ Look for:
 
 If the route shape is good but the index is missing, call that out clearly.
 
-## 3. Move Filters Earlier
+## 3. Check Equality Semantics And Set Algebra
+
+- Exact cross-numeric equality does not round integers through `f64`.
+- `-0.0` and `0.0` normalize to the same equality key.
+- NaN is non-reflexive and non-indexable; null equality needs an authoritative scan.
+- Keep same-index equality alternatives in one `or`/membership expression so the
+  planner can batch bitmap reads and union them.
+- Keep compatible equality/range filters together so ID sets can intersect before
+  rows are materialized.
+- Keep `is_in_param` as one bounded runtime membership domain. Scalar and array
+  inputs may use an equality union; null, unsupported, oversized, or over-limit
+  domains retain authoritative evaluation.
+- Adjacent filters canonicalize into one conjunction for access planning. A
+  non-filter operation remains a semantic boundary.
+- Retain unique-owner and range-candidate verification.
+
+## 4. Move Filters Earlier
 
 Apply scope and status filters before broad traversal whenever possible.
 
@@ -54,7 +70,7 @@ Common filters:
 - deleted or archived flags
 - exact identifiers before `out`, `in_`, or `both`
 
-## 4. Shrink The Projection
+## 5. Shrink The Projection
 
 Check whether the route returns more than the caller needs.
 
@@ -63,6 +79,7 @@ Prefer:
 - `project(...)` for stable service-facing output
 - explicit omission of heavy properties such as embeddings
 - `$distance` only when ranking metadata matters
+- `count()` instead of IDs/rows plus client-side length when only cardinality is needed
 
 Example:
 
@@ -80,7 +97,11 @@ g().vector_search_nodes_with(...)
     ])
 ```
 
-## 5. Control Traversal Breadth
+Dedicated bitmap, range, unique-owner, label, search, runtime-input, and streaming
+count programs are planner alternatives. Compatible `limit`/`skip`/`range` windows
+use saturating arithmetic while preserving operator order.
+
+## 6. Control Traversal Breadth
 
 After the anchor, inspect how quickly the route expands.
 
@@ -100,7 +121,7 @@ leaving populated values as one-element arrays. Confirm the caller accepts the
 nullable shape before adding or moving `limit(1)` or `first()`. Empty
 collections/folds/mutations remain `[]`; scalar `0` and `false` remain scalars.
 
-## 6. Review BM25 Routes Separately
+## 7. Review BM25 Routes Separately
 
 For BM25 routes, check:
 
@@ -128,7 +149,7 @@ Source text search followed by `where_` is a post-filter and can underfill top-k
 Traversal-scoped text search ranks the exact candidate IDs while retaining
 partition-wide BM25 statistics.
 
-## 7. Review Vector Routes Separately
+## 8. Review Vector Routes Separately
 
 For vector routes, check:
 
@@ -157,11 +178,24 @@ g().n_with_label("Document")
 Source vector search followed by `where_` is a post-filter and can underfill
 top-k. Traversal-scoped vector search enforces exact candidate membership.
 
-## 8. Steady-Traffic Reads
+## 9. Review Ordered Range Drivers
 
-Every query executes on the dynamic route (`POST /v2/query`), which parses and validates the inline AST per request. For stable, production-facing reads, warm the caches (see §9) rather than treating per-request parsing as the optimization target.
+For `orderBy(property, direction).limit(n)` over a large stream:
 
-## 9. Query Warming
+- match a range index on element kind, label, property, and direction
+- keep equality filters in the same logical route
+- expect the ordered driver to filter candidate IDs before satisfying the limit
+- avoid a redundant in-memory sort when the index supplies the requested order
+- remember that range candidates are authoritatively verified
+- prefer cursor predicates over a deep `skip`
+
+Do not claim this depends only on immediate `OrderBy -> Limit` lookahead.
+
+## 10. Steady-Traffic Reads
+
+Every query executes on the dynamic route (`POST /v2/query`), which parses and validates the inline AST per request. For stable, production-facing reads, warm the caches (see §11) rather than treating per-request parsing as the optimization target.
+
+## 11. Query Warming
 
 Consider query warming only for read queries that benefit from cache prepopulation.
 
@@ -169,18 +203,25 @@ Rules:
 
 - warming only supports reads
 - it uses the same request shape as the live read
-- standalone `v0.0.3` warms one process and returns `200 OK` with the normal response
+- standalone `v0.0.4` warms one process and returns `200 OK` with the normal response
 - Helix Cloud fans out to every eligible backend and returns `204 No Content`
   after at least one succeeds; partial backend failure is best-effort success
 - combine `X-Helix-Warm: true` with `X-Helix-Require-Writer: true` to warm only
   the authoritative writer
 - invalid warm-header values and warm writes return `400 Bad Request`
 
-## 10. Common Optimization Mistakes
+## 12. Common Optimization Mistakes
 
 Do not:
 
 - start from a broad label scan when an indexed identifier exists
+- split one equality union/intersection into client-side queries
+- assume runtime membership is always unindexed or expand it into unbounded requests
+- move a filter across a traversal, window, order, projection, or mutation boundary
+- treat null or NaN as an ordinary equality bitmap key
+- materialize rows before `count()` when only cardinality is needed
+- apply an ordered limit before selective equality filters
+- remove unique/range verification or other correctness fallbacks
 - ignore tenant scope on text or vector search
 - return embeddings by default
 - optimize around the edges before fixing the anchor and index story
@@ -192,11 +233,12 @@ When reviewing a query, answer in this order:
 
 1. current anchor and whether it is optimal
 2. matching or missing indexes
-3. filter timing issues
-4. projection-size issues
-5. traversal breadth issues
-6. search-specific issues if the route uses BM25 or vectors
-7. whether steady-traffic reads should be warmed
+3. exact equality semantics and bitmap union/intersection opportunities
+4. ordered range driver, post-filter window, and sort elimination
+5. dedicated count alternative versus identity-sensitive fallback
+6. filter timing, projection size, and traversal breadth
+7. search-specific issues if the route uses BM25 or vectors
+8. whether steady-traffic reads should be warmed
 
 ## See Also
 

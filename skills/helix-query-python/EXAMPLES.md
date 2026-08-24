@@ -341,6 +341,29 @@ def user_friend_pairs():
 
 The v3 Python SDK does not expose stored routes or query bundles.
 
+## 11. Handle Stable Error Codes
+
+```python
+from helixdb import HelixError
+
+try:
+    response = client.query(request)
+except HelixError as error:
+    if error.code == "transaction_conflict" and error.status_code == 409:
+        # Reload current state before rebuilding; replay only when safe.
+        pass
+    else:
+        raise
+```
+
+Use `error.kind` to distinguish transport from remote/embedded failures and
+`error.details` for diagnostics. Preserve unfamiliar `error.code` strings and
+never classify failures by parsing `details`. In v0.3.4, a generic noncanonical
+`message`/`code` remote body remains raw `details` and does not populate `code`,
+so keep status-aware fallback handling; it is not the gateway contract.
+Reconcile a `query_timeout` write before resubmitting. Python 0.3.4 does not
+expose `Retry-After`; use direct HTTP when the exact Cloud delay is required.
+
 ## 12. Inspect Request JSON In A Test
 
 ```python

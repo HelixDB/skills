@@ -1,8 +1,7 @@
 # Helix Query Authoring — Rust DSL Reference
 
-Exhaustive builder catalog for the forthcoming `helix-db = "3.0.0"` Rust
-crate, imported as `helix_db`. The crate is not published yet; these names
-follow the v3 source that will land on `HelixDB/helix-db` `main`.
+Exhaustive builder catalog for the published `helix-db = "3.0.0"` Rust crate,
+imported as `helix_db`. These names follow `HelixDB/helix-db` `main`.
 
 Import: `use helix_db::dsl::prelude::*;`. The SDK re-exports the shared AST and
 builders from
@@ -603,7 +602,7 @@ For the JSON wire encoding this produces, see `../helix-query-json-dynamic/REFER
 Async HTTP client for running a direct request against a Helix instance.
 
 ```text
-use helix_db::{Client, HelixError};
+use helix_db::{Client, HelixError, QueryErrorCode};
 
 Client::new(url: Option<&str>) -> Result<Self, HelixError>   // default "http://localhost:6969"; InvalidURL on bad url
     .with_api_key(api_key: Option<&str>) -> Self              // Authorization: Bearer <key>
@@ -616,7 +615,7 @@ client.request_builder::<R>()
     .should_await_durability(b: bool)    // X-Helix-Await-Durable: true|false
     .query(request)
 
-request.send().await -> Result<R, HelixError>                // 200 -> R; Cloud warm success -> 204/no payload; other status -> RemoteError
+request.send().await -> Result<R, HelixError>                // published 3.0.0: 200 -> R; every other status, including Cloud warm 204, -> RemoteError
 ```
 
 ### Query response shapes
@@ -642,13 +641,37 @@ struct FindUserResponse {
 Do not use a custom decoder to turn `null` into an empty vector; that erases
 the semantic distinction.
 
-For Cloud warming, use the no-content/bytes response path. Partial target
-failure still succeeds when at least one backend warms successfully.
+The Cloud service returns `204 No Content` after a successful warm fanout, but
+the published Rust 3.0.0 client accepts only 200. Use `helix query` or direct
+HTTP for Cloud warming until a newer SDK release accepts 204. Partial target
+failure is still a service-level success when at least one backend warms.
 
 Prefer `.should_await_durability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 
-`HelixError` distinguishes transport, remote, serialization, and invalid URL
-failures. Build the request from a `#[query]` function call or
+`HelixError::error_code() -> Option<&str>` returns a stable code when present.
+For remote failures, `status_code()`, `remote_code()`, `remote_message()`,
+`remote_details()`, and `raw_response_body()` preserve the HTTP status,
+open-string code, diagnostic, structured `details`, and original body.
+`is_conflict()` is true for HTTP 409 and `is_rate_limited()` for HTTP 429. The
+decoder supports canonical Helix `error`/`msg` (`error` is the code), legacy
+Helix `error`/`code`, and defensive generic-remote
+`code`/`message`/`details` bodies. The generic shape is not the Cloud gateway
+contract. `EmbeddedError { code: String, details }` provides code/diagnostic
+separation in embedded mode. Known Helix strings can be parsed as
+`QueryErrorCode`; unknown Helix or generic remote strings remain available.
+
+```rust
+match request.send().await {
+    Err(error) if error.is_conflict()
+        && error.error_code() == Some(QueryErrorCode::TransactionConflict.as_str()) => {
+        // Reload state before rebuilding this write. Replay only if it is safe.
+    }
+    Err(error) => return Err(error),
+    Ok(response) => return Ok(response),
+}
+```
+
+Use structured fields rather than parsing error text. Cloud `rate_limited` did not execute, but Rust 3.0.0 does not expose `Retry-After`; use an application policy or a direct transport that retains it. Reconcile a `query_timeout` write before resubmitting. For writes, reload state after a conflict and do not blindly replay a general server failure whose commit outcome may be unknown. See `../../docs/error-handling.md` for the gateway catalog, envelope migration, retry rules, and gRPC metadata. Other `HelixError` variants distinguish transport, serialization, invalid URL, and invalid request failures. Build the request from a `#[query]` function call or
 `QueryRequest::read/write(batch)`. Stored routes, registration, and bundles
 are not supported.
 
