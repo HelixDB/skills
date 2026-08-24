@@ -246,6 +246,43 @@ result can intersect the region bitmap before rows are loaded. Do not split
 this into separate client requests merely to force index use; every arm still
 needs compatible label/property/index identity.
 
+## Keep Runtime Membership Bounded
+
+When the caller supplies the status domain as a parameter, keep it as one
+membership predicate:
+
+```ts
+g()
+  .nWithLabelWhere(
+    "Order",
+    SourcePredicate.isInParam("status", "statuses"),
+  )
+  .valueMap(["$id", "status"])
+```
+
+With a compatible non-unique equality index, a scalar or bounded array can use
+a runtime equality union. Duplicate values collapse and NaN members are skipped.
+Null, unsupported, oversized, or over-limit domains fall back to authoritative
+membership evaluation; they never produce a partial indexed answer. An empty
+domain returns the normal empty collection shape.
+
+## Keep Related Filters Adjacent
+
+These filters are canonicalized into one conjunction for access planning:
+
+```ts
+g()
+  .nWithLabel("Order")
+  .where(Predicate.eqParam("region", "region"))
+  .where(Predicate.isInParam("status", "statuses"))
+  .valueMap(["$id", "status", "region"])
+```
+
+The planner can combine label scope and indexed predicates even though the SDK
+chain used separate `where` calls. A traversal, `limit`, `orderBy`, projection,
+mutation, or any other non-filter operation ends the contiguous run; do not move
+filters across that boundary unless the query semantics independently allow it.
+
 ## Rank vectors with traversal prefiltering
 
 Post-filtering source top-k hits can underfill:

@@ -1,6 +1,6 @@
 # v3 Search Patterns
 
-Generic forthcoming `helix-db = "3.0.0"` Rust SDK patterns for BM25, vector
+Generic published `helix-db = "3.0.0"` Rust SDK patterns for BM25, vector
 search, and bounded expansion. These builders serialize direct requests.
 
 ## Tenant-Scoped BM25 Search

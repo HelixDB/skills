@@ -3,8 +3,17 @@
 Full command catalog and config reference for the `helix` CLI (crate `helix-cli`, v3.x). Sourced from the CLI clap definitions and config module; where the published docs disagree with the source, the source wins. Install with:
 
 ```bash
-curl -sSL "https://install.helix-db.com" | bash   # installs ~/.helix/bin/helix
+curl -sSL "https://install.helix-db.com" | bash   # macOS/Linux: ~/.local/bin/helix
 ```
+
+On Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/HelixDB/helix-db/main/crates/cli/install.ps1 | iex
+```
+
+The Windows installer defaults to `%LOCALAPPDATA%\Helix\bin\helix.exe` and adds
+that directory to the user `PATH`.
 
 ## Global Flags
 
@@ -65,7 +74,7 @@ Add an instance to an existing `helix.toml` without clobbering others.
 
 ### `helix start [INSTANCE] [OPTIONS]` (alias `run`)
 
-Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/helixdb:v0.0.5`, publishes the host port to container port 8080, and waits (~30s) for a successful `GET /healthz` before returning.
+Start a local container (named `helix-<project>-<instance>`) in the background. Pulls `ghcr.io/helixdb/helixdb:v0.0.4` by default, publishes the host port to container port 8080, and waits (~30s) for a successful `GET /healthz` before returning.
 
 | Flag | Purpose |
 |---|---|
@@ -187,13 +196,19 @@ See `helix-query-json-dynamic` for the full inline-AST grammar.
 
 - Auto-imports in scope: `g`, `readBatch`, `writeBatch`, `defineParams`, `param`.
 - The CLI evaluates the expression in Node (needs Node 20+ on PATH), calls `.toQueryJson()`, and infers `request_type` from read-vs-write batch.
-- The forthcoming v3 `@helix-db/helix-db@3.0.0` SDK is installed once into `<helix cache>/ts-runtime/` and reused thereafter.
+- The published `@helix-db/helix-db@3.0.4` SDK is installed once into `<helix cache>/ts-runtime/` and reused thereafter.
 
-**Cloud auth:** for an `[enterprise.<instance>]` target, the CLI posts to `<gateway_url>/v2/query` with the header named by `query_auth_header` (default `Authorization`), valued from the env named by `query_auth_env` (default `HELIX_API_KEY`), read from the shell or a project-root `.env`. The GA route also requires `x-helix-tenant-id` for the active tenant.
+**Cloud auth:** for an `[enterprise.<instance>]` target, the CLI posts to `<gateway_url>/v2/query` with the header named by `query_auth_header` (default `Authorization`) and the key read from `query_auth_env` (default `HELIX_API_KEY`) in the shell or project-root `.env`. `query_auth_scheme = "bearer"` adds `Bearer`; `"raw"` sends the key unchanged. When the field is absent, `Authorization` infers bearer and any other header infers raw. Empty or invalid header values are rejected and marked sensitive in the HTTP client. Enterprise requests do not follow redirects, preventing credentials from being forwarded to another origin; a 3xx response means `gateway_url` must be synced or corrected. Direct GA HTTP requests outside the CLI also send `x-helix-tenant-id` with the database ID.
 
 **Connection errors:** if the instance is unreachable, the CLI reports `cannot reach Helix instance '<instance>' at <endpoint>` with a kind-specific hint — local: `helix start <instance>` then `helix status <instance>` (or pass `--host`/`--port`); enterprise: check `gateway_url` in `helix.toml` and run `helix sync <instance>`.
 
-**Query errors:** the CLI includes the HTTP status and response body. A current server returns `{"error":"<stable_code>","msg":"<diagnostic>"}`; branch or troubleshoot from the stable code in `error`, not from `msg`. During mixed-version migrations, also accept the legacy `{"error":"<diagnostic>","code":"<stable_code>"}` shape and preserve unknown codes. See `../../docs/error-handling.md`.
+**Query errors:** the CLI includes the HTTP status and response body. Current
+Helix query failures, including those delivered through the Cloud gateway, use
+`{"error":"<stable_code>","msg":"<diagnostic>"}` with `error` as the code.
+Mixed-version servers can return legacy
+`{"error":"<diagnostic>","code":"<stable_code>"}`. Preserve unknown codes and
+raw bodies; generic `code`/`message` SDK compatibility is not the canonical
+gateway envelope. See `../../docs/error-handling.md`.
 
 ## Cloud
 
@@ -209,7 +224,7 @@ Deploy an Enterprise instance to Helix Cloud; streams progress. Errors on a loca
 
 ### `helix sync [INSTANCE] [OPTIONS]`
 
-Reconcile enterprise metadata + source between local and cloud (SHA256/mtime diff). Updates `[enterprise.<instance>]` in `helix.toml`: `gateway_url`, `query_auth_header`, `query_auth_env`, `availability_mode`, `gateway_node_type`, `db_node_type`. Syncs all enterprise instances if omitted. Requires `helix auth login`.
+Reconcile enterprise metadata + source between local and cloud (SHA256/mtime diff). Updates `[enterprise.<instance>]` in `helix.toml`: `gateway_url`, `query_auth_header`, `query_auth_env`, `query_auth_scheme`, `availability_mode`, `gateway_node_type`, `db_node_type`. Syncs all enterprise instances if omitted. Requires `helix auth login`.
 
 - `--dry-run` — fetch remote state and print the plan without writing (conflicts with `--yes`).
 - `-y, --yes` — skip interactive conflict prompts (CI).
@@ -290,7 +305,7 @@ container_runtime = "docker"    # "docker" (default) or "podman"
 [local.dev]                     # one block per local instance
 port = 6969                     # default 6969 (host → container port 8080)
 image = "ghcr.io/helixdb/helixdb"   # default
-tag = "v0.0.5"                       # default
+tag = "v0.0.4"                       # default
 storage = "memory"              # "memory" (default) or "disk"
 
 [local.staging]
@@ -304,6 +319,7 @@ project_id = "prj_01HX..."      # optional
 gateway_url = "https://gateway.example.com"   # filled by `helix sync`
 query_auth_header = "Authorization"           # default
 query_auth_env = "HELIX_API_KEY"              # default; env var read for the auth value
+query_auth_scheme = "bearer"                   # "bearer" or "raw"; inferred from header if omitted
 availability_mode = "ha"        # from `helix sync`
 gateway_node_type = "GW-40"     # from `helix sync`
 db_node_type = "HLX-160"        # from `helix sync`
@@ -331,7 +347,7 @@ max_instances = 1               # default 1
 | Constant | Value |
 |---|---|
 | Default local port | `6969` |
-| Dev image / tag | `ghcr.io/helixdb/helixdb` / `v0.0.5` |
+| Dev image / tag | `ghcr.io/helixdb/helixdb` / `v0.0.4` |
 | Container name | `helix-<project>-<instance>` |
 | Container internal port | `8080` |
 | Default auth header | `Authorization` |

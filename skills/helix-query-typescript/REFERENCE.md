@@ -1,7 +1,7 @@
 # Helix Query Authoring — TypeScript DSL Reference
 
-Exhaustive builder catalog for the forthcoming
-`@helix-db/helix-db@3.0.0` TypeScript DSL. Use when `SKILL.md` points
+Exhaustive builder catalog for the published
+`@helix-db/helix-db@3.0.4` TypeScript DSL. Use when `SKILL.md` points
 you at a category or when you need a signature confirmed.
 
 The public surface is defined under
@@ -710,11 +710,15 @@ registration, and query bundles are not supported.
 
 - `HelixError` — raised by `Client`/`send()`. `kind` distinguishes network,
   remote, serialization, URL, invalid-request, embedded-unavailable, and
-  embedded failures. `details` contains the diagnostic and optional `code`
-  contains the stable open-string code. Current HTTP `error`/`msg`, legacy
-  `error`/`code`, and embedded `error`/`msg` pairs preserve that separation and
-  do not discard unknown future codes. Never parse `details` for control flow;
-  see `../../docs/error-handling.md`.
+  embedded failures. Remote errors expose `statusCode`, optional open-string
+  `code`, `serverMessage`, structured `serverDetails`, and `rawBody` while
+  retaining `details` as the diagnostic compatibility field. Canonical Helix
+  `error`/`msg` (`error` is the code), legacy Helix `error`/`code`, defensive
+  generic-remote `code`/`message`/`details`, and embedded `error`/`msg` pairs are
+  preserved. Generic-remote decoding is not the Cloud gateway contract.
+  `isConflict()` classifies HTTP 409 and `isRateLimited()` classifies HTTP 429.
+  Preserve unknown codes and never parse diagnostic text for control flow; see
+  `../../docs/error-handling.md`.
 - `QueryError` — invalid parameter values, unknown parameters, serialization,
   or unsupported bytes parameters.
 

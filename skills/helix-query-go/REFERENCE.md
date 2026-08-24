@@ -1,6 +1,6 @@
 # Helix Query Authoring - Go Reference
 
-Use this reference to confirm forthcoming v3 Go SDK method names and request
+Use this reference to confirm published Go SDK v0.3.1 method names and request
 patterns. The module path intentionally has no `/v3` suffix:
 
 ```text
@@ -420,16 +420,37 @@ helix.AwaitDurability(true)
 `helix.WarmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; combine it with `helix.WriterOnly()` to target only the
-authoritative writer. Standalone `v0.0.5` warming returns the normal response.
+authoritative writer. Standalone `v0.0.4` warming returns the normal response.
 
-Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more likely to hit HTTP 409 write conflicts, and awaiting durability reduces them. It does not eliminate conflicts, so callers still own retry policy.
+Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more likely to hit HTTP 409 write conflicts, and awaiting durability reduces them. It does not eliminate conflicts, so callers still own retry policy and must reload current state before rebuilding a conflicting mutation.
 
-`helix.QueryErrorCode` is an open string type. Remote errors are returned as `*helix.HelixError` with `Kind: helix.ErrorRemote`, `Code`, `Details`, and `StatusCode`; embedded failures preserve `Code` and `Details` too. Current HTTP `error`/`msg` and legacy `error`/`code` bodies are both decoded without rejecting unknown future codes. `helix.IsConflict(err)` and `errors.Is(err, helix.ErrConflict)` retain HTTP 409 detection; compare `Code` with `helix.QueryErrorCode("transaction_conflict")` when you need the stable classification. Never parse `Details`. See `../../docs/error-handling.md`.
+`helix.QueryErrorCode` is an open string type. Remote errors are returned as
+`*helix.HelixError` with `Kind: helix.ErrorRemote`, `Code`, `Details`, and
+`StatusCode`. Canonical Helix HTTP `error`/`msg` populates `Code` from `error`;
+legacy `error`/`code` is also decoded without rejecting unknown future codes.
+In v0.3.1, a generic noncanonical `message`/`code` remote body is retained as raw
+`Details` but does not populate `Code`; keep status-aware fallback handling and
+do not call that generic shape the gateway contract. `helix.IsConflict(err)` and
+`errors.Is(err, helix.ErrConflict)` retain HTTP 409 detection; compare `Code`
+with `helix.QueryErrorCode("transaction_conflict")` when you need the Helix
+classification. Never parse `Details`. See `../../docs/error-handling.md`.
+
+## Published Release Scope
+
+Version v0.3.1 distributes the server query builder and HTTP client. A standard
+module install does not include generated native bindings: embedded
+constructors return `ErrNativeBindingsUnavailable`, and `Client.Graph` returns
+`ErrNativeGraphUnavailable`. The `helixdb_uniffi` build tag is only for callers
+that separately generate and link compatible bindings and native libraries.
 
 ```text
-func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func() helix.Request, out any) error {
+func ExecWithConflictRetry(ctx context.Context, client *helix.Client, reloadAndBuild func(context.Context) (helix.Request, error), out any) error {
 	for attempt := 0; attempt < 3; attempt++ {
-		err := client.Exec(ctx, build(), out)
+		request, err := reloadAndBuild(ctx)
+		if err != nil {
+			return err
+		}
+		err = client.Exec(ctx, request, out)
 		var helixErr *helix.HelixError
 		isTransactionConflict := errors.As(err, &helixErr) && helixErr.Code == helix.QueryErrorCode("transaction_conflict")
 		if err == nil || !helix.IsConflict(err) || !isTransactionConflict || attempt == 2 {

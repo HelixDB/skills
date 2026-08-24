@@ -1,8 +1,7 @@
 # Helix Query Authoring — Rust DSL Reference
 
-Exhaustive builder catalog for the forthcoming `helix-db = "3.0.0"` Rust
-crate, imported as `helix_db`. The crate is not published yet; these names
-follow the v3 source that will land on `HelixDB/helix-db` `main`.
+Exhaustive builder catalog for the published `helix-db = "3.0.0"` Rust crate,
+imported as `helix_db`. These names follow `HelixDB/helix-db` `main`.
 
 Import: `use helix_db::dsl::prelude::*;`. The SDK re-exports the shared AST and
 builders from
@@ -624,19 +623,30 @@ failure still succeeds when at least one backend warms successfully.
 
 Prefer `.should_await_durability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 
-`HelixError::error_code() -> Option<&str>` returns the stable code when present. `RemoteError { code: Option<String>, details }` preserves the current HTTP `error`/`msg` pair and the legacy `error`/`code` envelope; `EmbeddedError { code: String, details }` provides the same separation in embedded mode. Known strings map to `QueryErrorCode`, while unknown future strings remain available.
+`HelixError::error_code() -> Option<&str>` returns a stable code when present.
+For remote failures, `status_code()`, `remote_code()`, `remote_message()`,
+`remote_details()`, and `raw_response_body()` preserve the HTTP status,
+open-string code, diagnostic, structured `details`, and original body.
+`is_conflict()` is true for HTTP 409 and `is_rate_limited()` for HTTP 429. The
+decoder supports canonical Helix `error`/`msg` (`error` is the code), legacy
+Helix `error`/`code`, and defensive generic-remote
+`code`/`message`/`details` bodies. The generic shape is not the Cloud gateway
+contract. `EmbeddedError { code: String, details }` provides code/diagnostic
+separation in embedded mode. Known Helix strings can be parsed as
+`QueryErrorCode`; unknown Helix or generic remote strings remain available.
 
 ```rust
 match request.send().await {
-    Err(error) if error.error_code() == Some(QueryErrorCode::TransactionConflict.as_str()) => {
-        // Bounded retry only if this operation is safe to replay.
+    Err(error) if error.is_conflict()
+        && error.error_code() == Some(QueryErrorCode::TransactionConflict.as_str()) => {
+        // Reload state before rebuilding this write. Replay only if it is safe.
     }
     Err(error) => return Err(error),
     Ok(response) => return Ok(response),
 }
 ```
 
-Use the code rather than parsing `details`; see `../../docs/error-handling.md` for raw-envelope migration, safe retry rules, and gRPC metadata. Other `HelixError` variants distinguish transport, serialization, invalid URL, and invalid request failures. Build the request from a `#[query]` function call or
+Use structured fields rather than parsing error text. A bounded retry is suitable for an idempotent read after `is_rate_limited()` or a temporary 5xx status. For writes, reload state after a conflict and do not blindly replay a general server failure whose commit outcome may be unknown. See `../../docs/error-handling.md` for envelope migration, retry rules, and gRPC metadata. Other `HelixError` variants distinguish transport, serialization, invalid URL, and invalid request failures. Build the request from a `#[query]` function call or
 `QueryRequest::read/write(batch)`. Stored routes, registration, and bundles
 are not supported.
 

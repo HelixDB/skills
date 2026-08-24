@@ -1,6 +1,6 @@
 # Helix Query Authoring - Go Examples
 
-All snippets target the forthcoming v3 module and assume:
+All snippets target the published v0.3.1 server module and assume:
 
 ```go
 import helix "github.com/helixdb/helix-db/sdks/go"
@@ -294,7 +294,10 @@ func TestFindUsersRequest(t *testing.T) {
 
 ## 11. Caller-Owned Conflict Retry
 
-`Client.Exec` returns HTTP 409 as a `*helix.HelixError` with `Code`, `Details`, and `StatusCode` set and `helix.ErrConflict` wrapped. It does not retry automatically; retry only when the operation is safe to replay. Use the stable code rather than parsing `Details`.
+`Client.Exec` returns HTTP 409 as a `*helix.HelixError` with `Code`, `Details`, and
+`StatusCode` set and `helix.ErrConflict` wrapped. It does not retry automatically.
+Reload authoritative state before rebuilding a conflict and replay only when the
+operation is safe. Use the stable code rather than parsing `Details`.
 
 ```go
 import (
@@ -302,9 +305,13 @@ import (
 	"time"
 )
 
-func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func() helix.Request, out any) error {
+func ExecWithConflictRetry(ctx context.Context, client *helix.Client, reloadAndBuild func(context.Context) (helix.Request, error), out any) error {
 	for attempt := 0; attempt < 3; attempt++ {
-		err := client.Exec(ctx, build(), out)
+		request, err := reloadAndBuild(ctx)
+		if err != nil {
+			return err
+		}
+		err = client.Exec(ctx, request, out)
 		var helixErr *helix.HelixError
 		isTransactionConflict := errors.As(err, &helixErr) && helixErr.Code == helix.QueryErrorCode("transaction_conflict")
 		if err == nil || !helix.IsConflict(err) || !isTransactionConflict || attempt == 2 {
@@ -315,3 +322,7 @@ func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func
 	return nil
 }
 ```
+
+In v0.3.1, a generic noncanonical `message`/`code` remote body remains raw
+`Details` and does not populate `Code`; retain `StatusCode`-aware fallback
+handling and do not call that generic shape the gateway contract.

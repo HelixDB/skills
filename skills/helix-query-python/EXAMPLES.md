@@ -350,13 +350,17 @@ try:
     response = client.query(request)
 except HelixError as error:
     if error.code == "transaction_conflict" and error.status_code == 409:
-        # Retry with bounded backoff only when the request is safe to replay.
+        # Reload current state before rebuilding; replay only when safe.
         pass
     else:
         raise
 ```
 
-Use `error.kind` to distinguish transport from remote/embedded failures and `error.details` for diagnostics. Preserve unfamiliar `error.code` strings and never classify failures by parsing `details`.
+Use `error.kind` to distinguish transport from remote/embedded failures and
+`error.details` for diagnostics. Preserve unfamiliar `error.code` strings and
+never classify failures by parsing `details`. In v0.3.4, a generic noncanonical
+`message`/`code` remote body remains raw `details` and does not populate `code`,
+so keep status-aware fallback handling; it is not the gateway contract.
 
 ## 12. Inspect Request JSON In A Test
 

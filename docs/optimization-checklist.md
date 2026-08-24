@@ -53,6 +53,11 @@ If the route shape is good but the index is missing, call that out clearly.
   planner can batch bitmap reads and union them.
 - Keep compatible equality/range filters together so ID sets can intersect before
   rows are materialized.
+- Keep `is_in_param` as one bounded runtime membership domain. Scalar and array
+  inputs may use an equality union; null, unsupported, oversized, or over-limit
+  domains retain authoritative evaluation.
+- Adjacent filters canonicalize into one conjunction for access planning. A
+  non-filter operation remains a semantic boundary.
 - Retain unique-owner and range-candidate verification.
 
 ## 4. Move Filters Earlier
@@ -193,7 +198,7 @@ Rules:
 
 - warming only supports reads
 - it uses the same request shape as the live read
-- standalone `v0.0.5` warms one process and returns `200 OK` with the normal response
+- standalone `v0.0.4` warms one process and returns `200 OK` with the normal response
 - Helix Cloud fans out to every eligible backend and returns `204 No Content`
   after at least one succeeds; partial backend failure is best-effort success
 - combine `X-Helix-Warm: true` with `X-Helix-Require-Writer: true` to warm only
@@ -206,6 +211,8 @@ Do not:
 
 - start from a broad label scan when an indexed identifier exists
 - split one equality union/intersection into client-side queries
+- assume runtime membership is always unindexed or expand it into unbounded requests
+- move a filter across a traversal, window, order, projection, or mutation boundary
 - treat null or NaN as an ordinary equality bitmap key
 - materialize rows before `count()` when only cardinality is needed
 - apply an ordered limit before selective equality filters

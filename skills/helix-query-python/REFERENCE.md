@@ -1,7 +1,8 @@
 # Helix Query Authoring - Python Reference
 
 Use this reference to confirm published Python SDK method names and request
-patterns. The package is `helix-db` and the import is `helixdb`.
+patterns. The published package is `helix-db` v0.3.4, the import is `helixdb`,
+Python 3.10 or newer is required, and the package artifacts are Apache-2.0.
 
 ```text
 from helixdb import (
@@ -391,11 +392,16 @@ client.execute(request, await_durability=True)
 The client returns parsed JSON and raises `HelixError` for network, remote,
 serialization, URL, request, or embedded failures. `code` contains the optional
 stable open-string code, `details` the diagnostic, `status_code` the HTTP status
-for remote failures, and `kind` the failure family. Current HTTP `error`/`msg`,
-legacy `error`/`code`, and embedded `error`/`msg` pairs are preserved without
-rejecting unknown future codes. Never parse `details`; see
+for remote failures, and `kind` the failure family. Canonical Helix
+`error`/`msg` populates the code from `error`; legacy `error`/`code` and embedded
+`error`/`msg` pairs are also preserved without rejecting unknown future codes.
+In v0.3.4, a generic noncanonical `message`/`code`/`details` remote body is
+retained as raw diagnostic `details` and does not populate `code`; use
+`status_code` for conservative fallback handling and do not call the generic
+shape the gateway contract.
+Never parse `details`; see
 `../../docs/error-handling.md`. A Helix Cloud warm read returns
-`204 No Content` with no query payload after fanout; standalone `v0.0.5`
+`204 No Content` with no query payload after fanout; standalone `v0.0.4`
 warming returns the normal response. Combine `warm_only=True` with
 `writer_only=True` to warm only the authoritative writer.
 

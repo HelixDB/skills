@@ -4,7 +4,7 @@ description: Drive the HelixDB `helix` CLI to run, query, and deploy Helix insta
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.1.0
+  version: 3.2.0
 ---
 
 # Helix CLI
@@ -15,7 +15,7 @@ The mental model that matters most:
 
 - **There is no `helix compile`, no `helix check`, and no `.hx` query workflow.** Those are stale v2 concepts — the v3 CLI hides them and errors with a hint if you try them.
 - **Queries are JSON "dynamic queries"** sent to a *running* instance via `POST /v2/query` (`helix query`). Validation happens server-side, in the instance.
-- **Local instances are Docker/Podman containers** (image `ghcr.io/helixdb/helixdb:v0.0.5`). `helix start` runs one; in-memory by default, MinIO-backed with `--disk`.
+- **Local instances are Docker/Podman containers** (current default image `ghcr.io/helixdb/helixdb:v0.0.4`). `helix start` runs one; in-memory by default, MinIO-backed with `--disk`.
 - **Helix Cloud instances deploy via `helix push`**, with auth and metadata managed by `helix auth`, `helix sync`, and the `workspace`/`project`/`cluster` commands.
 
 This skill is about *driving the CLI*. For authoring the query bodies themselves, use the query skills (`helix-query-rust`, `helix-query-typescript`, `helix-query-json-dynamic`, etc.).
@@ -41,7 +41,7 @@ Before running anything:
 1. **Find the project.** Check for a `helix.toml` (the CLI walks up the directory tree to find it). Run `helix status` to see configured instances and their state. If there is no project yet, you are in scaffold territory (`helix init local`).
 2. **For local work, confirm a container runtime is up.** `helix start` needs Docker or Podman running. The runtime is chosen by `[project] container_runtime` (default `docker`).
 3. **Decide local vs cloud.** Local instances live in `[local.<name>]` and run as containers; cloud instances live in `[enterprise.<name>]` and run on Helix Cloud.
-4. **For cloud, ensure auth and tenant context.** Cloud commands require `helix auth login` (credentials in `~/.helix/credentials`), and `helix query` against a cloud instance needs the API key in `HELIX_API_KEY` (or the env named by `query_auth_env`), readable from the shell or a project-root `.env`. GA requests also require the active tenant ID in `x-helix-tenant-id`.
+4. **For cloud, ensure auth.** Cloud commands require `helix auth login` (credentials in `~/.helix/credentials`), and `helix query` against an enterprise instance needs the API key in `HELIX_API_KEY` (or the env named by `query_auth_env`), readable from the shell or a project-root `.env`. Use the synced `query_auth_scheme`: `bearer` adds `Bearer`, while `raw` sends the environment value unchanged. Direct GA HTTP requests outside the CLI also require the database ID in `x-helix-tenant-id`.
 
 If you need a builder/flag beyond the common surface, open `REFERENCE.md` — do not guess flag names. For copy-pasteable sessions, see `EXAMPLES.md`.
 
@@ -82,8 +82,11 @@ helix query production --file examples/request.json   # query the cloud gateway
 Key facts:
 
 - `helix push` **deploys**; it errors on a local instance. (The old `helix deploy` is removed.)
-- `helix sync` reconciles metadata (gateway URL, auth header/env, node types) between local and cloud; `--dry-run` previews without writing, `-y/--yes` skips conflict prompts (for CI).
-- Cloud queries post to the instance's `gateway_url` with the header named by `query_auth_header` (default `Authorization`), valued from the env named by `query_auth_env` (default `HELIX_API_KEY`). GA requests also carry `x-helix-tenant-id` for the active tenant.
+- `helix sync` reconciles metadata (gateway URL, auth header/env/scheme, node types) between local and cloud; `--dry-run` previews without writing, `-y/--yes` skips conflict prompts (for CI).
+- Cloud queries post to the instance's `gateway_url` with the header named by `query_auth_header` (default `Authorization`), using the env named by `query_auth_env` (default `HELIX_API_KEY`). `query_auth_scheme = "bearer"` adds the prefix; `"raw"` sends the value unchanged. When omitted, the CLI infers bearer for `Authorization` and raw for other headers.
+- Enterprise query requests do not follow HTTP redirects, so the configured auth
+  header is never forwarded to a redirected origin. Treat a 3xx response as a
+  stale or incorrect `gateway_url`; sync or correct the URL.
 
 ## Core Usage Rules
 
@@ -121,7 +124,13 @@ To remove Helix-owned containers/volumes/networks, use `helix prune [instance]` 
 
 ### 8. Interpret Query Failures By Code
 
-For a current server, a failed query body is `{"error":"<stable_code>","msg":"<diagnostic>"}`. The `error` value is the machine-readable code; `msg` is for diagnostics. Older servers may instead return `{"error":"<diagnostic>","code":"<stable_code>"}`. Preserve unknown codes, combine the code with the HTTP status, and retry only safely replayable work. See `../../docs/error-handling.md` for the migration and retry rules.
+For a current Helix query response, including one delivered through the Cloud
+gateway, the body is `{"error":"<stable_code>","msg":"<diagnostic>"}`: `error`
+is the code. Older servers may instead return
+`{"error":"<diagnostic>","code":"<stable_code>"}`. Preserve unknown codes and
+the raw body; do not relabel generic `code`/`message` compatibility handling as
+the gateway contract. See `../../docs/error-handling.md` for migration and retry
+rules.
 
 ## Anti-Patterns
 
@@ -142,7 +151,8 @@ Before running (or after, to debug):
 
 - the instance exists in `helix.toml` and the name passed matches it
 - local: the instance is started (`helix status`) and the container runtime is up
-- cloud: `helix auth login` done, instance `push`ed + `sync`ed, `HELIX_API_KEY` set, and the GA tenant context available
+- cloud: `helix auth login` done, instance `push`ed + `sync`ed, the configured auth env set, and `query_auth_scheme` correct
+- cloud: `gateway_url` is the final query origin and does not depend on redirects
 - `helix query` has exactly one input flag and (for JSON) lowercase `request_type`
 - query failures are classified by HTTP status plus stable code, not by parsing the diagnostic message
 - not using any removed command (`compile`/`check`/`deploy`) or `.hx` workflow

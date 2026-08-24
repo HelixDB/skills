@@ -1,16 +1,16 @@
 ---
 name: helix-query-from-hql
-description: Translate legacy HelixDB HQL (.hx QUERY/RETURN syntax) into direct forthcoming v3 Rust or TypeScript SDK requests. Use when the input contains HQL concepts such as typed node, edge, or vector sources; AddN/AddE/AddV; Out/In/OutE/InE; FromN/ToN; WHERE/EQ/GT/EXISTS; SearchV/SearchBM25; GROUP_BY/AGGREGATE_BY; ORDER/RANGE; UpsertN; RerankRRF; ShortestPath; Embed; or .hx files. Flags HQL features with no v3 DSL equivalent. When the target is Helix Cloud, always use helix-mcp first.
+description: Translate legacy HelixDB HQL (.hx QUERY/RETURN syntax) into direct published v3 Rust or TypeScript SDK requests. Use when the input contains HQL concepts such as typed node, edge, or vector sources; AddN/AddE/AddV; Out/In/OutE/InE; FromN/ToN; WHERE/EQ/GT/EXISTS; SearchV/SearchBM25; GROUP_BY/AGGREGATE_BY; ORDER/RANGE; UpsertN; RerankRRF; ShortestPath; Embed; or .hx files. Flags HQL features with no v3 DSL equivalent. When the target is Helix Cloud, always use helix-mcp first.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.1
+  version: 3.0.2
 ---
 
 # HQL To Helix DSL Queries
 
 Translate legacy **HelixQL (HQL)** — the deprecated `.hx` text language (`QUERY Foo(...) => ... RETURN ...`) —
-into the forthcoming **v3 Rust DSL** or **v3 TypeScript DSL**. Both serialize to the **same JSON
+into the published **v3 Rust DSL** or **v3 TypeScript DSL**. Both serialize to the **same JSON
 query AST**, so a Rust query and a TypeScript query that emit identical JSON are semantically identical — that is
 the lever you use to confirm a migration is faithful.
 

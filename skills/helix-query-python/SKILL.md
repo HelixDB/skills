@@ -1,17 +1,18 @@
 ---
 name: helix-query-python
-description: Write and revise HelixDB queries with the published Python SDK (package `helix-db`, import `helixdb`). Use for `read_batch`, `write_batch`, direct `to_query_request`/`to_query_json` payloads, row bindings, traversal builders, projections, parameters, vector and BM25 search with traversal-scoped prefiltering, synchronous `Client`, and asynchronous server or embedded execution with `AsyncClient`. Stored routes and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
+description: Write and revise HelixDB queries with the published Python SDK v0.3.4 (package `helix-db`, import `helixdb`, Python 3.10+). Use for `read_batch`, `write_batch`, direct `to_query_request`/`to_query_json` payloads, row bindings, traversal builders, projections, parameters, vector and BM25 search with traversal-scoped prefiltering, synchronous `Client`, and asynchronous server or embedded execution with `AsyncClient`. Stored routes and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.2
+  version: 3.0.3
 ---
 
 # Helix Query Authoring - Python
 
 Write HelixDB Python SDK queries that are schema-aware, explicit, and easy for
-application code to call. The published package is `helix-db`, imported as
-`helixdb`.
+application code to call. The published v0.3.4 package is `helix-db`, imported
+as `helixdb`, requires Python 3.10 or newer, and publishes its package artifacts
+under Apache-2.0.
 
 The Python DSL emits the same direct-request JSON AST as the Rust, TypeScript,
 and Go SDKs. Use the built-in `Client` to post requests to `/v2/query`.
@@ -130,7 +131,7 @@ try:
     response = client.query(request)
 except HelixError as error:
     if error.code == "transaction_conflict" and error.status_code == 409:
-        # Retry with bounded backoff only when the request is safe to replay.
+        # Reload current state before rebuilding; replay only when safe.
         pass
     else:
         raise
@@ -167,14 +168,23 @@ remains synchronous through `Client.graph(...)`.
 Helix Cloud fans a warm read out to every eligible backend and returns
 `204 No Content` with no query payload after at least one succeeds. Pass
 `writer_only=True` with `warm_only=True` to target only the authoritative
-writer. Standalone `v0.0.5` warming returns the normal query response.
+writer. Standalone `v0.0.4` warming returns the normal query response.
 
 Prefer `await_durability=True` with `execute` or
 `client.request_builder().should_await_durability(True)` on writes. This
 reduces HTTP 409 conflicts under concurrent writers, but the SDK does not retry
-conflicts; application code owns retry policy and idempotency.
+conflicts; application code must reload current state before rebuilding and owns
+retry policy and idempotency.
 
-`HelixError.code` is the optional stable open-string code, `details` is the diagnostic, and `status_code` is set for remote failures; use `kind` to distinguish transport, remote, serialization, invalid-request, and embedded failures. Preserve unknown codes and never parse `details`. See `../../docs/error-handling.md`.
+`HelixError.code` is the optional stable open-string Helix code, `details` is the
+diagnostic, and `status_code` is set for remote failures; use `kind` to
+distinguish transport, remote, serialization, invalid-request, and embedded
+failures. Canonical Helix `error`/`msg` bodies populate `code` from `error`;
+legacy `error`/`code` bodies populate it from `code`. In v0.3.4, a generic
+noncanonical `message`/`code` remote body remains raw `details` with no parsed
+code, so retain status-aware fallback handling. Do not describe that generic
+shape as the gateway contract. Preserve unknown codes and never parse
+`details`. See `../../docs/error-handling.md`.
 
 ### 6. Shape Responses Deliberately
 
@@ -232,7 +242,7 @@ Before finishing:
 - verify vector/text search preserves tenant scope when the index is scoped
 - verify exact vector and BM25 prefilters build candidates before calling the traversal-scoped search method
 - verify `$distance` or `$score` is projected before traversing away from search hits
-- verify write callers use explicit conflict retry only when safe to replay
+- verify write callers reload current state before rebuilding a conflict and replay only when safe
 - verify asynchronous clients are reused and closed with `async with` or `await close()`
 - run the Python tests or at minimum serialize the request and inspect the JSON
 

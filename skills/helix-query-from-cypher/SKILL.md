@@ -4,12 +4,12 @@ description: Translate Cypher and Neo4j-style queries into direct HelixDB v3 Rus
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.0.1
 ---
 
 # Cypher To HelixDB v3 Requests
 
-Translate Cypher into the forthcoming `helix-db = "3.0.0"` Rust SDK by mapping
+Translate Cypher into the published `helix-db = "3.0.0"` Rust SDK by mapping
 patterns into explicit anchors, traversals, predicates, and return shaping. The
 resulting builder or `#[query]` function produces a direct `QueryRequest` for
 `client.query(request)`; do not introduce stored routes or registration.

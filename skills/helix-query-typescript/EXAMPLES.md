@@ -563,13 +563,13 @@ await client.requestBuilder<void>().warmOnly().query(request).send();
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writerOnly().warmOnly()` to warm only the authoritative writer.
-The standalone `v0.0.5` runtime warms one process and returns the normal query
+The standalone `v0.0.4` runtime warms one process and returns the normal query
 body. Warming is strictly read-only; a `WriteBatch` with
 `X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
 
 ---
 
-## 19. Handle Stable Error Codes
+## 19. Handle Structured Remote Errors
 
 ```ts
 import { HelixError } from "@helix-db/helix-db";
@@ -577,15 +577,22 @@ import { HelixError } from "@helix-db/helix-db";
 try {
   await client.query(request).send();
 } catch (cause) {
-  if (cause instanceof HelixError && cause.code === "transaction_conflict") {
-    // Retry with bounded backoff only when this request is safe to replay.
+  if (cause instanceof HelixError && cause.isConflict() && cause.code === "transaction_conflict") {
+    // Reload state before rebuilding the write. Replay only if it is safe.
   } else {
     throw cause;
   }
 }
 ```
 
-Use `kind` to distinguish transport from remote/embedded failures and `details` for diagnostics. Preserve unfamiliar `code` strings and never classify errors by parsing `details`.
+For idempotent reads, `isRateLimited()` and
+`statusCode >= 500 && statusCode < 600` can drive bounded backoff. Use
+`serverMessage`, `serverDetails`, and `rawBody` for structured remote
+diagnostics. Canonical Helix failures still use `error` as the code and `msg` as
+the diagnostic; generic `code`/`message` decoding is defensive compatibility,
+not the gateway contract. Preserve unfamiliar `code` strings and never classify
+errors by parsing `details`. Never blindly retry a write after a general server
+failure because its commit outcome may be unknown.
 
 ---
 

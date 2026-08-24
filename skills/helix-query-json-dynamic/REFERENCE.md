@@ -1,6 +1,6 @@
 # HelixDB v3 JSON Wire Reference
 
-This reference describes the direct request produced by the forthcoming v3 SDKs.
+This reference describes the direct request produced by the published v3 SDKs.
 The source of truth is the `helix-ast` crate under
 [`HelixDB/helix-db`](https://github.com/HelixDB/helix-db/tree/main/crates/ast).
 
@@ -357,13 +357,33 @@ Do not document internal `current`/`bindings` rows as the public response.
 
 ## HTTP Failure Envelope
 
-Current non-success responses use a separate code/diagnostic pair:
+Current Helix non-success responses, including responses delivered through the
+Cloud query gateway, use a separate code/diagnostic pair:
 
 ```json
 {"error":"index_not_found","msg":"planner error: missing text index for `Document.body`"}
 ```
 
-The current body has no separate `code` field. For mixed-version clients, decode the legacy `{"error":"<diagnostic>","code":"<stable_code>"}` body as well. Treat codes as open strings, use the HTTP status plus code for decisions, and retry only safely replayable work. See `../../docs/error-handling.md` for the canonical decoder and gRPC/embedded parity.
+The current Helix body has no separate `code` field. For mixed-version
+clients, decode the legacy
+`{"error":"<diagnostic>","code":"<stable_code>"}` body as well. The Rust and
+TypeScript SDKs also defensively preserve a noncanonical remote shape:
+
+```json
+{
+  "code": "external_error",
+  "message": "upstream rejected the request",
+  "details": { "request_id": "req_123" }
+}
+```
+
+Decode canonical Helix, legacy Helix, then generic remote fields. Preserve
+structured `details`, the raw response body, and unknown codes. The third shape
+is compatibility behavior, not the Cloud gateway contract. Use HTTP status plus
+code for decisions. Retry idempotent reads on 429 or temporary 5xx with bounded
+backoff; rebuild a conflicting write from current state and replay only when
+safe. See `../../docs/error-handling.md` for the canonical decoder and
+gRPC/embedded parity.
 
 ## Validation checklist
 
@@ -373,5 +393,8 @@ The current body has no separate `code` field. For mixed-version clients, decode
 - Confirm every non-source operation has the correct nested `input`.
 - Confirm all enum tags are `snake_case`.
 - Compare hand-written JSON with an SDK serializer for the same query.
-- Decode current `error`/`msg` failures without reversing their meanings; retain legacy `error`/`code`, plain-text details, and unknown future codes.
-- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.5`.
+- Decode current Helix `error`/`msg` failures without reversing their meanings;
+  retain legacy `error`/`code`, generic remote `code`/`message`/`details`,
+  raw/plain-text bodies, and unknown future codes without mislabeling the
+  generic shape as the gateway contract.
+- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.4`.

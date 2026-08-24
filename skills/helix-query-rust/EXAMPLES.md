@@ -641,24 +641,33 @@ assert!(response.is_empty());
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writer_only().warm_only()` to warm only the authoritative
-writer. The standalone `v0.0.5` runtime warms one process and returns the normal
+writer. The standalone `v0.0.4` runtime warms one process and returns the normal
 query body. Warming is strictly read-only; a `WriteBatch` with
 `X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
 
 ---
 
-## 19. Handle Stable Error Codes
+## 19. Handle Structured Remote Errors
 
 ```rust
 use helix_db::QueryErrorCode;
 
 match client.query::<serde_json::Value>(request).send().await {
-    Err(error) if error.error_code() == Some(QueryErrorCode::TransactionConflict.as_str()) => {
-        // Retry with bounded backoff only when the request is safe to replay.
+    Err(error) if error.is_conflict()
+        && error.error_code() == Some(QueryErrorCode::TransactionConflict.as_str()) => {
+        // Reload state before rebuilding the write. Replay only if it is safe.
     }
     Err(error) => return Err(error),
     Ok(response) => return Ok(response),
 }
 ```
 
-`error_code()` also returns unknown future strings from remote and embedded errors. Preserve them for telemetry and generic handling; never parse diagnostic details to classify the failure.
+For idempotent reads, `is_rate_limited()` and
+`status_code().is_some_and(|s| (500..600).contains(&s))` can drive a bounded
+backoff policy. `remote_message()`, `remote_details()`, and
+`raw_response_body()` preserve structured remote diagnostics without string
+parsing. Canonical Helix failures still use `error` as the code and `msg` as the
+diagnostic; generic `code`/`message` decoding is defensive compatibility, not
+the gateway contract. `error_code()` also returns unknown strings; preserve them
+for telemetry and generic handling. Never blindly retry a write after a general
+server failure because its commit outcome may be unknown.

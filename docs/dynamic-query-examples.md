@@ -99,7 +99,7 @@ A write request uses `request_type: "write"` and a `write` batch:
 }
 ```
 
-On a clean `ghcr.io/helixdb/helixdb:v0.0.5` instance, the response is normalized:
+On a clean `ghcr.io/helixdb/helixdb:v0.0.4` instance, the response is normalized:
 
 ```json
 {
@@ -115,7 +115,7 @@ For a direct read request, warming uses the same body plus:
 X-Helix-Warm: true
 ```
 
-On the standalone `ghcr.io/helixdb/helixdb:v0.0.5` runtime, a warm read executes
+On the standalone `ghcr.io/helixdb/helixdb:v0.0.4` runtime, a warm read executes
 on the single process and returns `200 OK` with the normal normalized response.
 
 On Helix Cloud, the `/v2/query` gateway fans the same read out to every eligible
@@ -132,17 +132,30 @@ rate limits, retries, and normal query timeouts still apply.
 
 ## Query Failures
 
-Current non-success responses separate the stable code from the diagnostic:
+Current Helix non-success responses, including responses delivered through the
+Cloud query gateway, separate the stable code from the diagnostic:
 
 ```json
 {"error":"transaction_conflict","msg":"transaction commit conflicted with another writer"}
 ```
 
 Use HTTP status plus the open-string code in `error` for decisions; keep `msg`
-for logs or display. There is no current `code` field. During a rolling upgrade,
-also accept legacy `{"error":"<diagnostic>","code":"<stable_code>"}` bodies and
-plain-text intermediary failures. Retry only safely replayable work and never
-identify a conflict by parsing the message. See `docs/error-handling.md`.
+for logs or display. There is no `code` field in the current Helix envelope.
+During a rolling upgrade, also accept legacy
+`{"error":"<diagnostic>","code":"<stable_code>"}` bodies.
+
+A defensive client may additionally preserve a noncanonical proxy body such as:
+
+```json
+{"code":"external_error","message":"upstream rejected the request","details":{"request_id":"req_123"}}
+```
+
+Decode the canonical and legacy Helix shapes before this generic remote
+fallback. Preserve structured `details`, raw JSON or plain text, and unknown
+codes, but do not call `code`/`message` the gateway contract. Retry idempotent
+reads on 429 or temporary 5xx with bounded backoff. Reload state before
+rebuilding a conflicting write and replay it only when safe; never identify a
+conflict by parsing the message. See `docs/error-handling.md`.
 
 ## Common mistakes
 
@@ -154,7 +167,9 @@ Do not:
 - use the obsolete `queries` plus `steps` AST
 - use PascalCase enum tags
 - mismatch `request_type` and the batch variant
-- reverse the current `error` and `msg` meanings or require a current `code` field
+- reverse the current `error` and `msg` meanings, require a current `code`
+  field, call generic `code`/`message` the gateway contract, or discard raw
+  remote details
 - document internal `current`/`bindings` rows as the response
 
 ## See also

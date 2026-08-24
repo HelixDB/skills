@@ -3,23 +3,28 @@
 This reference describes the planner-selected physical behavior introduced by
 [PR #974](https://github.com/HelixDB/helix-db/pull/974) and
 [PR #975](https://github.com/HelixDB/helix-db/pull/975), in the cumulative stack
-merged by [PR #996](https://github.com/HelixDB/helix-db/pull/996). Public DSL and
-JSON syntax are unchanged.
+merged by [PR #996](https://github.com/HelixDB/helix-db/pull/996), then extended
+with bounded runtime equality domains in [PR #1015](https://github.com/HelixDB/helix-db/pull/1015)
+and adjacent-filter canonicalization in [PR #1017](https://github.com/HelixDB/helix-db/pull/1017).
+Public DSL and JSON syntax are unchanged.
 
 ## Source Map
 
-The links are pinned to the reviewed stack at `07d3cc0`; prefer paths and symbols
+The links are pinned to reviewed main commit `907ff228`; prefer paths and symbols
 over brittle line-number citations.
 
 | Concern | Canonical sources |
 | --- | --- |
-| Exact cross-numeric equality/order | [`crates/value-semantics/src/lib.rs`](https://github.com/HelixDB/helix-db/blob/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/value-semantics/src/lib.rs) |
-| Logical equality/range set rewrites | [`crates/planner/src/rules/access/sets/equality_range/`](https://github.com/HelixDB/helix-db/tree/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/planner/src/rules/access/sets/equality_range) |
-| Ordered range selection | [`range_direction.rs`](https://github.com/HelixDB/helix-db/blob/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/planner/src/rules/access/order/rules/range_direction.rs), [`sets/range/`](https://github.com/HelixDB/helix-db/tree/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/planner/src/rules/access/sets/range) |
-| Physical equality/range programs | [`exec/access/node.rs`](https://github.com/HelixDB/helix-db/blob/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/planner/src/exec/access/node.rs), [`exec/access/edge.rs`](https://github.com/HelixDB/helix-db/blob/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/planner/src/exec/access/edge.rs), [`exec/selected/`](https://github.com/HelixDB/helix-db/tree/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/planner/src/exec/selected) |
-| Count programs and windows | [`exec/count.rs`](https://github.com/HelixDB/helix-db/blob/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/planner/src/exec/count.rs), [`rules/cardinality.rs`](https://github.com/HelixDB/helix-db/blob/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/planner/src/rules/cardinality.rs) |
-| Equality/range execution | [`secondary_set.rs`](https://github.com/HelixDB/helix-db/blob/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/db/src/execution/interpreter/access/secondary_set.rs), [`range.rs`](https://github.com/HelixDB/helix-db/blob/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/db/src/execution/interpreter/access/range.rs) |
-| Count execution | [`interpreter/count.rs`](https://github.com/HelixDB/helix-db/blob/07d3cc023514faea4fa0f5d06c1811b7d2138f04/crates/db/src/execution/interpreter/count.rs) |
+| Exact cross-numeric equality/order | [`crates/value-semantics/src/lib.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/value-semantics/src/lib.rs) |
+| Logical equality/range set rewrites | [`crates/planner/src/rules/access/sets/equality_range/`](https://github.com/HelixDB/helix-db/tree/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/access/sets/equality_range) |
+| Runtime equality-domain analysis | [`analysis/index_atoms/equality.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/analysis/index_atoms/equality.rs), [`rules/access/filter/atoms/collect.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/access/filter/atoms/collect.rs) |
+| Runtime membership execution | [`access/membership.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/db/src/execution/interpreter/access/membership.rs) |
+| Adjacent-filter canonicalization | [`logical/access/pipeline/canonical.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/logical/access/pipeline/canonical.rs) |
+| Ordered range selection | [`range_direction.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/access/order/rules/range_direction.rs), [`sets/range/`](https://github.com/HelixDB/helix-db/tree/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/access/sets/range) |
+| Physical equality/range programs | [`exec/access/node.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/exec/access/node.rs), [`exec/access/edge.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/exec/access/edge.rs), [`exec/selected/`](https://github.com/HelixDB/helix-db/tree/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/exec/selected) |
+| Count programs and windows | [`exec/count.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/exec/count.rs), [`rules/cardinality.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/cardinality.rs) |
+| Equality/range execution | [`secondary_set.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/db/src/execution/interpreter/access/secondary_set.rs), [`range.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/db/src/execution/interpreter/access/range.rs) |
+| Count execution | [`interpreter/count.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/db/src/execution/interpreter/count.rs) |
 
 The planner directory is intentionally decomposed; do not describe the runtime as
 one monolithic interpreter-only model.
@@ -83,6 +88,31 @@ row materialization. Keep all arms in one logical expression. If an arm changes
 label/property/index identity, is null/NaN, or otherwise lacks proof, the fast
 path is declined. The planner owns selected-child order; hand-ordering AST nodes
 is not a substitute for catalog and cardinality selection.
+
+### Bounded runtime equality domains
+
+Request parameters are specialized before predicate planning when their values
+are immutable and available. If `is_in_param` remains runtime-bound, a proven
+node or edge equality index can still use a `RuntimeEqualitySet` bounded by the
+planner's `max_index_union_branches` limit.
+
+At execution, typed arrays, general arrays, and scalars normalize into one exact
+equality domain. Duplicate values collapse by query equality, while
+non-reflexive values are omitted. If the domain contains null, an unsupported or
+oversized equality value, or more unique values than the bound, execution uses
+authoritative scoped membership evaluation instead of a partial index answer.
+An empty proven domain remains an empty collection, preserving the public return
+shape. Finite `$label` membership can use the same branch bound to union node or
+edge label scans.
+
+### Adjacent filter canonicalization
+
+Canonical logical pipelines flatten each contiguous filter run into one
+conjunction. This makes separate adjacent filters eligible for combined
+label-scoped and property-index planning regardless of their original order.
+Every non-filter operation flushes the run; canonicalization never moves a
+predicate across a traversal, window, order, projection, mutation, or other
+semantic boundary.
 
 ## Label scope
 
@@ -174,6 +204,7 @@ planner could otherwise avoid.
 | null equality | absent and explicit-null semantics need row inspection | scoped authoritative scan |
 | NaN equality | equality is non-reflexive | non-indexable/empty proof, never an equality bitmap lookup |
 | late-bound equality parameter | value is unavailable during early proof | dynamic equality program at execution, or fallback |
+| runtime membership domain | domain is null, unsupported, oversized, or exceeds the union bound | authoritative scoped membership evaluation |
 | unknown/mismatched index identity | element/label/property/direction/uniqueness would be unsafe | validation failure or authoritative alternative |
 | identity-sensitive count | row identity/distinct/order semantics matter | streaming/materialized count cursor |
 | residual predicate | no exact set proof exists | narrow indexed candidate plus residual evaluation, or scan |
@@ -251,8 +282,9 @@ length and body cost; keep it bounded.
 
 Use a write batch so the lookup, conditional update/create, and any related edge
 write share one transaction. Awaiting durability can reduce concurrent-write
-conflicts, but classify retries with the stable `transaction_conflict` code and
-replay only safe operations; see `../../docs/error-handling.md`.
+conflicts, but classify them with the stable `transaction_conflict` code, reload
+current state before rebuilding, and replay only safe operations; see
+`../../docs/error-handling.md`.
 
 ## Wire shape
 

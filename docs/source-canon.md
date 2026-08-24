@@ -1,6 +1,6 @@
 # Source Canon
 
-This repository should use public Helix documentation and repo-local canonical examples as its primary references.
+This repository should use public Helix documentation and repo-local canonical examples as its primary references. The SDK, error-transport, CLI-auth, and planner guidance was last reviewed against `HelixDB/helix-db` main at `907ff2283240dcaf416a91d3b8a522f734a7c159`.
 
 ## Working Order
 
@@ -13,8 +13,8 @@ When an agent is writing or reviewing Helix query code, it should use sources in
 5. the v3 SDK source on `HelixDB/helix-db` `main` for exact public names
 6. public skill-format docs for packaging and discovery behavior
 
-This ordering is intentional. The skills track published v3 SDKs where they are
-available and may lead unreleased packages elsewhere. Public documentation is
+This ordering is intentional. The skills track the published Rust 3.0.0,
+TypeScript 3.0.4, Python 0.3.4, and Go 0.3.1 SDK lines. Public documentation is
 the behavior contract; use the SDK source to confirm exact identifiers rather
 than guessing from an older release.
 

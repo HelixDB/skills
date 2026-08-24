@@ -4,7 +4,7 @@ description: Author and debug direct HelixDB v3 JSON query requests for POST /v2
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.1.0
+  version: 3.2.0
 ---
 
 # HelixDB v3 JSON Requests
@@ -12,7 +12,10 @@ metadata:
 Use this skill when a caller needs raw JSON rather than a v3 SDK builder. A request is
 one direct operation-tree query sent to `POST /v2/query`.
 
-For query failures, also read `../../docs/error-handling.md`; it defines the current HTTP envelope, legacy migration, open-string codes, and retry boundaries shared by every SDK.
+For query failures, also read `../../docs/error-handling.md`; it defines the
+canonical Helix HTTP envelope, legacy migration, defensive generic-remote
+decoding, open-string codes, preserved metadata, and retry boundaries shared by
+every SDK.
 
 ## Helix Cloud MCP requirement
 
@@ -73,7 +76,22 @@ The envelope rules are strict:
 
 ## Failure Envelope
 
-On failure, the current HTTP response is `{"error":"<stable_code>","msg":"<diagnostic>"}`. There is no separate `code` field: branch on `error`, log `msg`, and combine the code with the HTTP status. For compatibility with an older server, accept `{"error":"<diagnostic>","code":"<stable_code>"}` as a legacy shape. Preserve unknown future code strings and retry only safely replayable operations; never classify a failure by parsing its message.
+Helix query failures use `{"error":"<stable_code>","msg":"<diagnostic>"}`,
+including failures delivered through the Cloud query gateway. There is no
+separate `code` field in that current envelope: branch on `error`, log `msg`,
+and combine the code with the HTTP status. For compatibility with an older
+server, accept
+`{"error":"<diagnostic>","code":"<stable_code>"}` as a legacy shape.
+
+For defensive interoperability with a noncanonical proxy response, Rust and
+TypeScript also accept
+`{"code":"<remote_code>","message":"<diagnostic>","details":...}` after the two
+Helix shapes. Preserve structured `details` and the raw response body, but do
+not present this as the Helix gateway contract. Retry idempotent reads on 429 or
+temporary 5xx responses with bounded backoff. For a 409 write conflict, reload
+authoritative state before rebuilding the mutation; never blindly retry a write
+whose commit outcome may be unknown. Never classify a failure by parsing its
+message.
 
 ## Build nested operation trees
 
@@ -232,7 +250,8 @@ curl -sS "${HELIX_URL%/}/v2/query" \
 
 `HELIX_TENANT_ID` is an application-side variable in this example; the wire
 contract is the `x-helix-tenant-id` header. Omitting it in GA mode returns
-`400` with code `TENANT_ID_REQUIRED`.
+`400` in the canonical Helix envelope, with the machine code in `error` and the
+diagnostic in `msg`.
 
 ### Warm a read
 
@@ -243,7 +262,7 @@ the authoritative writer. Partial backend failure is best-effort success; if
 every target fails, the normal deterministic error is returned. A managed
 cluster with no eligible target returns `503 Service Unavailable`.
 
-The standalone `v0.0.5` runtime instead warms its single process and returns
+The standalone `v0.0.4` runtime instead warms its single process and returns
 `200 OK` with the normal query body. Header values `false` and `0` use the
 ordinary query path; warm writes and any other header value return
 `400 Bad Request`.
@@ -274,7 +293,9 @@ not part of the response.
 - stored-route names or registration metadata
 - `{ "queries": [...], "returns": [...] }`
 - `{ "Query": { "steps": [...] } }`
-- error handling that treats current `error` as diagnostic text or requires a current `code` field
+- error handling that treats current `error` as diagnostic text, requires a
+  current `code` field, labels `code`/`message` as the canonical gateway shape,
+  or discards generic remote `details`/the raw response body
 - PascalCase variants such as `"Count"` or `"NodesWhere"`
 - `request_type` values other than lowercase `read` or `write`
 - a `read` batch containing write operations

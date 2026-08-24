@@ -1,16 +1,16 @@
 ---
 name: helix-query-optimize
-description: Review and improve HelixDB v3 query performance against the current planner and database execution model. Use for exact numeric equality, bitmap equality reads, batched unions, pre-materialization intersections, ordered range drivers, dedicated count programs, saturating windows, correctness fallbacks, bounded traversals, and vector/BM25 prefiltering. Examples use direct v3 SDK requests and the nested JSON AST. When the target is Helix Cloud, always use helix-mcp first and base the review on live observability evidence.
+description: Review and improve HelixDB v3 query performance against the current planner and database execution model. Use for exact numeric equality, bitmap equality reads, bounded runtime membership, adjacent-filter canonicalization, batched unions, pre-materialization intersections, ordered range drivers, dedicated count programs, saturating windows, correctness fallbacks, bounded traversals, and vector/BM25 prefiltering. Examples use direct v3 SDK requests and the nested JSON AST. When the target is Helix Cloud, always use helix-mcp first and base the review on live observability evidence.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.1.0
+  version: 3.2.0
 ---
 
 # HelixDB v3 Query Optimization
 
 Optimize the logical query shape and let the planner select the physical program.
-The planner work changes no public query AST or DSL syntax. The forthcoming v3
+The planner work changes no public query AST or DSL syntax. The published v3
 SDKs all serialize the same direct operation tree, so the same rules apply to
 Rust, TypeScript, Python, Go, and raw JSON.
 
@@ -119,7 +119,37 @@ splitting it into client-side queries. Every union arm still needs independent
 proof; a null, NaN, mixed identity, or unsupported residual arm can require a
 fallback.
 
-## 6. Push Bounds Close To Expansion
+## 6. Use Bounded Runtime Membership
+
+`Predicate::is_in_param` and `Predicate.isInParam` can use an equality index even
+when the membership value is resolved from request parameters at execution time.
+For node and edge properties, the planner selects a runtime equality-set program
+bounded by `max_index_union_branches`:
+
+- scalar and array inputs normalize to a finite equality domain
+- duplicate values are removed by exact query equality
+- non-reflexive members such as NaN are skipped
+- null, unsupported, oversized, or over-limit domains use authoritative evaluation
+- an empty proven domain produces an empty collection without changing the return shape
+
+Finite `$label` membership can similarly become a bounded union of label scans.
+Keep the membership predicate intact; do not expand a caller-supplied array into
+unbounded client requests or assume every runtime array must scan.
+
+## 7. Keep Adjacent Filters Contiguous
+
+The logical planner canonicalizes a contiguous run of `where`/filter operations
+into one flat conjunction before access planning. This lets label, indexed
+property, and residual predicates participate in the same access decision even
+when the SDK chain emitted separate adjacent filters. A non-filter operation is
+a semantic boundary, so filters are never moved across traversal, order, limit,
+projection, mutation, or another pipeline operation.
+
+Write clear early filters and keep related filters adjacent. A single explicit
+`and` is still useful for readability and portability, but separate contiguous
+filters no longer imply separate access plans.
+
+## 8. Push Bounds Close To Expansion
 
 Apply `dedup` and `limit` after every filter/order operation that semantically
 must precede the bound, and as close as possible to the expansion they should
@@ -137,7 +167,7 @@ g()
 Avoid expanding a large subgraph, applying several broad filters, and limiting only
 at the end.
 
-## 7. Project Narrowly
+## 9. Project Narrowly
 
 Prefer:
 
@@ -147,7 +177,7 @@ Prefer:
 
 over loading every property when the response needs only two.
 
-## 8. Treat Search Scope As Part Of The Index Lookup
+## 10. Treat Search Scope As Part Of The Index Lookup
 
 Vector and text index definitions may include a tenant property. Pass the matching
 tenant value to the search operation itself. A later `where` cannot repair a search
@@ -161,7 +191,7 @@ underfill top-k; BM25 prefiltering refills to `k` when enough candidates match.
 Project `$distance` for vector results or `$score` for text results before traversing
 away from the ranked hit stream.
 
-## 9. Use Range Indexes As Ordered Drivers
+## 11. Use Range Indexes As Ordered Drivers
 
 For a compatible ordered range index, the planner can build/intersect equality
 filters, scan the range index in the requested direction, admit only matching
@@ -175,7 +205,7 @@ may still require materialization and sorting.
 Deep offset pagination still does work proportional to the skipped prefix. Prefer a
 cursor predicate on the ordered property where possible.
 
-## 10. Let `count()` Select A Count Program
+## 12. Let `count()` Select A Count Program
 
 When only cardinality is needed, end the logical route in `count()` rather than
 fetching IDs/rows and taking their length. The planner has dedicated bitmap,
@@ -186,26 +216,28 @@ saturating arithmetic while preserving operator order. Filters, distinctness,
 ordering, mutations, and identity-sensitive operations remain proof boundaries;
 when a rewrite is not safe, the planner keeps a streaming/materialized count.
 
-## 11. Respect Correctness Fallbacks
+## 13. Respect Correctness Fallbacks
 
 - unique equality verifies the indexed owner against authoritative state
 - range-index candidates are verified against authoritative values
 - null equality uses an authoritative scoped scan
 - NaN equality is non-indexable
-- a genuinely late-bound equality parameter may use a dynamic equality program
+- a late-bound equality parameter may use a dynamic equality program
+- bounded runtime membership falls back to authoritative evaluation for null,
+  unsupported, oversized, or over-limit domains
 - identity-sensitive or unsupported count pipelines use streaming/materialized execution
 
 These are correctness contracts, not failures to optimize. Prefer the narrowest
 proven plan over an unverified index read.
 
-## 12. Bound Recursive And Branching Work
+## 14. Bound Recursive And Branching Work
 
 - Set an explicit maximum depth on recursive traversal.
 - Put cheap `coalesce` probes before expensive fallbacks.
 - Keep `forEachParam`/`for_each_param` arrays bounded.
 - Break large bulk writes into measured pages.
 
-## 13. Make Writes Idempotent Where Required
+## 15. Make Writes Idempotent Where Required
 
 `addN`/`add_n` creates new data. For an upsert:
 
@@ -227,6 +259,8 @@ Do not:
 - trust unique or range candidates without authoritative verification
 - apply a limit before selective filters on an ordered range route
 - materialize/project rows before `count()` when only cardinality is required
+- assume a runtime `is_in_param` is always unindexed, or force an unbounded union
+- move filters across non-filter pipeline boundaries because adjacent filters merge
 
 ## Direct requests only
 
@@ -251,6 +285,8 @@ of the v3 SDK contract. Authoring with Rust `#[query]` still produces a direct r
 - [ ] numeric equality preserves exact cross-type semantics, normalized zero, and non-indexable NaN
 - [ ] equality unions/intersections remain one logical set expression where possible
 - [ ] every union arm is independently indexable, or its fallback is acknowledged
+- [ ] runtime membership stays bounded and preserves authoritative fallbacks
+- [ ] related filters are contiguous; no predicate is moved across an operation boundary
 - [ ] expansion is bounded near its source
 - [ ] projection includes only required fields
 - [ ] tenant-scoped search passes the tenant value at search time
@@ -259,7 +295,7 @@ of the v3 SDK contract. Authoring with Rust `#[query]` still produces a direct r
 - [ ] ordered range routes use a matching range index, filter before the limit, and avoid a redundant sort
 - [ ] count-only routes end in `count()` without unnecessary projection/materialization
 - [ ] limit/skip/range windows preserve semantic order and saturate rather than wrap
-- [ ] unique, range, null, late-bound, and identity-sensitive fallbacks remain authoritative
+- [ ] unique, range, null, dynamic-membership, late-bound, and identity-sensitive fallbacks remain authoritative
 - [ ] recursive depth and bulk batch sizes are bounded
 - [ ] writes are idempotent where the application requires it
 

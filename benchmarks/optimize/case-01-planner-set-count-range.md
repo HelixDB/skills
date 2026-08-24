@@ -16,7 +16,7 @@ g().n_with_label("Order")
     .id()
 ```
 
-The caller only needs the number of matching rows in that ordered 50-row window. Propose the optimized logical shape and explain the expected planner behavior, including what would change for null, NaN, a unique equality index, or a late-bound equality parameter.
+The caller only needs the number of matching rows in that ordered 50-row window. Propose the optimized logical shape and explain the expected planner behavior. Also explain what happens if the status disjunction is replaced by `Predicate::is_in_param("status", "statuses")`, and whether the two adjacent `where_` calls prevent combined access planning. Cover null, NaN, a unique equality index, and late-bound values.
 
 ## Expected Skill
 
@@ -30,6 +30,8 @@ The caller only needs the number of matching rows in that ordered 50-row window.
 - dedicated count program instead of ID materialization
 - exact numeric/NaN/null semantics
 - unique verification and late-bound dynamic equality
+- bounded runtime membership and authoritative fallback
+- adjacent-filter canonicalization and semantic boundaries
 - normalized saturating limit/skip/range windows
 
 ## Gold Expectations
@@ -41,6 +43,8 @@ The caller only needs the number of matching rows in that ordered 50-row window.
 - Explain that count windows use normalized saturating arithmetic while preserving operator order.
 - State that exact cross-numeric equality does not round integers through `f64`; signed zero normalizes; NaN is non-reflexive/non-indexable.
 - State that null equality needs an authoritative scan, unique equality verifies the owner, range candidates are verified, and a genuinely late-bound parameter may use a dynamic equality program.
+- State that bounded scalar/array `is_in_param` values can use a runtime equality union; duplicate values normalize, NaN members are skipped, and null, unsupported, oversized, or over-limit domains use authoritative evaluation.
+- State that contiguous filters canonicalize into one conjunction, while a non-filter operation remains a boundary.
 - Avoid claiming that only immediate `step -> Limit` lookahead enables the optimization.
 
 ## Gold Shape Sketch
@@ -72,4 +76,6 @@ g().n_with_label_where(
 - [ ] Mentions dedicated bitmap/range/streaming count alternatives and normalized saturating windows
 - [ ] Correctly covers exact cross-numeric equality, normalized zero, and non-indexable NaN
 - [ ] Retains null scans, unique-owner verification, range verification, and late-bound parameter handling
+- [ ] Covers bounded runtime membership, normalization, and authoritative fallback
+- [ ] Explains adjacent-filter canonicalization without moving filters across boundaries
 - [ ] Does not repeat the stale exact-lookahead-only mental model

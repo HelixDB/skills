@@ -72,5 +72,6 @@ normalized by the SDK, but dynamic vector params should declare `ParamTypeF32()`
 `Code`, diagnostic `Details`, and remote `StatusCode`. HTTP 409 also wraps
 `helix.ErrConflict`, so `helix.IsConflict(err)` remains available; use
 `Code == helix.QueryErrorCode("transaction_conflict")` for the stable
-classification. Do not parse `Details`, and retry only safe-to-replay work. See
+classification. Do not parse `Details`; reload current state before rebuilding,
+then replay only safe-to-replay work. See
 `docs/error-handling.md`.

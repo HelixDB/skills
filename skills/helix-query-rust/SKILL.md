@@ -1,19 +1,17 @@
 ---
 name: helix-query-rust
-description: Write and revise queries with the forthcoming HelixDB v3 Rust SDK (`helix-db = "3.0.0"`). Use for `read_batch`, `write_batch`, `#[query]`, direct `QueryRequest` values, traversal builders, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, and `Client::query`. Inspect local labels, edges, properties, and existing query patterns before inventing code. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
+description: Write and revise queries with the published HelixDB Rust SDK (`helix-db = "3.0.0"`). Use for `read_batch`, `write_batch`, `#[query]`, direct `QueryRequest` values, traversal builders, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, structured remote errors, and `Client::query`. Inspect local labels, edges, properties, and existing query patterns before inventing code. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.1
+  version: 3.0.2
 ---
 
 # Helix Query Authoring — Rust
 
 Write Helix Rust DSL queries in a way that is schema-aware, explicit, and easy
-for agents to reason about. The forthcoming package is
-`helix-db = "3.0.0"` and is imported as `helix_db`. These installation
-instructions are release-forward and are not expected to resolve before the
-coordinated v3 publication.
+for agents to reason about. The published package is `helix-db = "3.0.0"` and
+is imported as `helix_db`.
 
 This is the preferred way to author Helix queries in a Rust codebase. Drop to raw dynamic JSON (`helix-query-json-dynamic`) only for debugging or dynamically-shaped requests.
 
@@ -156,14 +154,24 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 | Mutations | `add_n`, `add_e`, `set_property`, `remove_property`, `drop`, `drop_edge`, `drop_edge_labeled`, `drop_edge_by_id` | `drop_edge_by_id` is multigraph-safe. |
 | Indexes | `IndexSpec::node_equality / node_range / node_range_desc / node_range_with_direction / edge_equality / edge_range / edge_range_desc / edge_range_with_direction / node_vector / node_text / edge_vector / edge_text` plus `create_index` / `drop_index`; convenience: `create_vector_index_nodes`, `create_text_index_nodes`, edge variants | Use `.create_index(spec)` from a write batch. `RangeIndexDirection::Desc` sets descending physical order. |
 | Transport | `QueryRequest::{read,write}(batch).with_query_name("name").with_parameter_value(...).with_parameter_type(...).to_json_string()` | Bridge from Rust DSL to the JSON payload (`helix-query-json-dynamic`). Direct unnamed requests serialize `query_name: null`; `#[query]` callable helpers set `query_name` to the Rust function name. |
-| Client | `Client::new(Some(url))?.with_api_key(...).query(request).send().await` | Sends direct requests to `POST /v2/query`. `HelixError::error_code()` exposes the optional stable open-string code; known values are `QueryErrorCode` variants. Advanced headers use `request_builder::<R>().writer_only()/.warm_only()/.should_await_durability(b).query(request).send().await`. |
+| Client | `Client::new(Some(url))?.with_api_key(...).query(request).send().await` | Sends direct requests to `POST /v2/query`. Remote errors preserve status, code, message, structured details, and raw response text. Advanced headers use `request_builder::<R>().writer_only()/.warm_only()/.should_await_durability(b).query(request).send().await`. |
 
 `warm_only()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writer_only()` to target only the authoritative writer.
-Standalone `v0.0.5` warming returns the normal query response.
+Standalone `v0.0.4` warming returns the normal query response.
 
-Remote and embedded failures keep the code separate from diagnostic details. Recognize `transaction_conflict` through `error.error_code()`, never by parsing text, and retry only when the operation is safe to replay. See `../../docs/error-handling.md`.
+Remote and embedded failures keep the code separate from diagnostic details.
+Canonical Helix HTTP failures use `error` as the code and `msg` as the
+diagnostic. For remote failures use `status_code()`, `remote_code()`,
+`remote_message()`, `remote_details()`, and `raw_response_body()`;
+`is_conflict()` and `is_rate_limited()` classify HTTP 409 and 429. The client
+also preserves generic `code`/`message` remote bodies defensively, but that is
+not the Cloud gateway contract. Retry only idempotent reads after rate limits or
+temporary 5xx failures, with bounded backoff. On a write conflict, reload current
+state before rebuilding the mutation; never blindly retry a write after a
+general server failure because its commit outcome may be unknown. See
+`../../docs/error-handling.md`.
 
 See `REFERENCE.md` for signatures and typestate constraints.
 
