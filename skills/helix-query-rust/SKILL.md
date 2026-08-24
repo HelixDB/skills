@@ -4,7 +4,7 @@ description: Write and revise queries with the published HelixDB Rust SDK (`heli
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.2
+  version: 3.0.3
 ---
 
 # Helix Query Authoring — Rust
@@ -159,7 +159,9 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 `warm_only()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writer_only()` to target only the authoritative writer.
-Standalone `v0.0.4` warming returns the normal query response.
+The published Rust 3.0.0 transport accepts only HTTP 200, so it currently
+surfaces the Cloud `204` as `RemoteError`; use `helix query` or direct HTTP for
+Cloud warming. Standalone `v0.0.4` warming returns the normal 200 response.
 
 Remote and embedded failures keep the code separate from diagnostic details.
 Canonical Helix HTTP failures use `error` as the code and `msg` as the
@@ -167,11 +169,12 @@ diagnostic. For remote failures use `status_code()`, `remote_code()`,
 `remote_message()`, `remote_details()`, and `raw_response_body()`;
 `is_conflict()` and `is_rate_limited()` classify HTTP 409 and 429. The client
 also preserves generic `code`/`message` remote bodies defensively, but that is
-not the Cloud gateway contract. Retry only idempotent reads after rate limits or
-temporary 5xx failures, with bounded backoff. On a write conflict, reload current
-state before rebuilding the mutation; never blindly retry a write after a
-general server failure because its commit outcome may be unknown. See
-`../../docs/error-handling.md`.
+not the Cloud gateway contract. Reconcile a `query_timeout` write before
+resubmitting, honor `Retry-After` through a transport that exposes response
+headers, and use bounded backoff for retryable 429/503 failures. On a write
+conflict, reload current state before rebuilding the mutation; never blindly
+retry a write after a general server failure because its commit outcome may be
+unknown. See `../../docs/error-handling.md`.
 
 See `REFERENCE.md` for signatures and typestate constraints.
 

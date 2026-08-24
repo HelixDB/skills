@@ -4,7 +4,7 @@ description: Author and debug direct HelixDB v3 JSON query requests for POST /v2
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.2.0
+  version: 3.2.1
 ---
 
 # HelixDB v3 JSON Requests
@@ -72,7 +72,9 @@ The envelope rules are strict:
 - Every operation and enum variant is `snake_case`.
 - Chained operations nest the previous operation under `input`; there is no `steps`
   array.
-- `parameters` and `parameter_types` are optional top-level maps.
+- `parameters` and `parameter_types` are optional top-level maps. When types are
+  present, their keys must exactly match the parameter keys; do not mix typed
+  and untyped parameters.
 
 ## Failure Envelope
 
@@ -87,11 +89,16 @@ For defensive interoperability with a noncanonical proxy response, Rust and
 TypeScript also accept
 `{"code":"<remote_code>","message":"<diagnostic>","details":...}` after the two
 Helix shapes. Preserve structured `details` and the raw response body, but do
-not present this as the Helix gateway contract. Retry idempotent reads on 429 or
-temporary 5xx responses with bounded backoff. For a 409 write conflict, reload
-authoritative state before rebuilding the mutation; never blindly retry a write
-whose commit outcome may be unknown. Never classify a failure by parsing its
-message.
+not present this as the Helix gateway contract. The Cloud gateway codes are
+`invalid_query_json`, `invalid_request`, `tenant_id_required`,
+`tenant_id_not_allowed`, `unauthorized`, `tenant_disabled`, `forbidden`,
+`query_timeout`, `transaction_conflict`, `payload_too_large`, `rate_limited`,
+`internal_error`, `backend_unavailable`, and `rate_limit_unavailable`. Honor
+`Retry-After` on 429 when available, reconcile a timed-out write before
+resubmitting, and use bounded backoff with jitter only for retryable conditions.
+For a 409 write conflict, reload authoritative state before rebuilding the
+mutation. Never classify a failure by parsing its message. Read
+`../../docs/error-handling.md` for the status/code matrix.
 
 ## Build nested operation trees
 
@@ -230,7 +237,20 @@ Parameters are untagged JSON values in `parameters` and their schemas are
 }
 ```
 
+For raw HTTP JSON, use `bool`, `i64`, `string`, `date_time`, `value`, `object`,
+and recursive `array` descriptors. Send floating-point JSON values without
+`parameter_types`; the HTTP schema intentionally omits typed `f32` and `f64`.
+Raw bytes cannot be represented on this JSON route. Language SDK builders can
+still use their typed float parameter APIs because they preserve the source
+numeric type before serialization.
+
 ## Execute a request
+
+The machine-readable HTTP contract is published at
+`https://docs.helix-db.com/openapi.json` and
+`https://www.helix-db.com/openapi.json`. It covers the local and Cloud
+`POST /v2/query` operation, execution headers, status codes, body limits, and
+representable raw JSON parameter types.
 
 ```bash
 curl -sS http://localhost:6969/v2/query \
@@ -238,20 +258,27 @@ curl -sS http://localhost:6969/v2/query \
   --data-binary @request.json
 ```
 
-For Helix Cloud GA, send both the Bearer API key and tenant context:
+For Helix Cloud GA, send both the Bearer API key and database context:
 
 ```bash
 curl -sS "${HELIX_URL%/}/v2/query" \
   -H 'content-type: application/json' \
   -H "authorization: Bearer ${HELIX_API_KEY}" \
-  -H "x-helix-tenant-id: ${HELIX_TENANT_ID}" \
+  -H "x-helix-database-id: ${HELIX_DATABASE_ID}" \
   --data-binary @request.json
 ```
 
-`HELIX_TENANT_ID` is an application-side variable in this example; the wire
-contract is the `x-helix-tenant-id` header. Omitting it in GA mode returns
-`400` in the canonical Helix envelope, with the machine code in `error` and the
-diagnostic in `msg`.
+`x-helix-tenant-id` remains a legacy GA alias. In cluster mode, do not send
+either header: cluster endpoints reject both with `tenant_id_not_allowed`.
+Omitting both in GA mode returns HTTP 400 with `tenant_id_required`.
+
+The published SDK request builders do not expose an arbitrary GA database-ID
+header. Use the hosted MCP or direct HTTP for a GA shared gateway; SDK clients
+can use a database-specific cluster gateway, where both database/tenant headers
+must be absent.
+
+Local encoded request bodies may be at most 16 MiB; the Cloud gateway limit is
+2 MiB. Keep portable requests at or below 2 MiB.
 
 ### Warm a read
 
@@ -261,6 +288,11 @@ after at least one succeeds. Add `X-Helix-Require-Writer: true` to target only
 the authoritative writer. Partial backend failure is best-effort success; if
 every target fails, the normal deterministic error is returned. A managed
 cluster with no eligible target returns `503 Service Unavailable`.
+
+The current published Rust 3.0.0, TypeScript 3.0.4, Python 0.3.4, and Go 0.3.1
+SDK transports still classify this Cloud `204` as a remote error because they
+accept only HTTP 200. Use `helix query` or direct HTTP for warming until a newer
+SDK release accepts `204 No Content`.
 
 The standalone `v0.0.4` runtime instead warms its single process and returns
 `200 OK` with the normal query body. Header values `false` and `0` use the

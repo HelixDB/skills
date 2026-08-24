@@ -4,7 +4,7 @@ description: Write and revise HelixDB queries with the published Python SDK v0.3
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.3
+  version: 3.0.4
 ---
 
 # Helix Query Authoring - Python
@@ -168,7 +168,10 @@ remains synchronous through `Client.graph(...)`.
 Helix Cloud fans a warm read out to every eligible backend and returns
 `204 No Content` with no query payload after at least one succeeds. Pass
 `writer_only=True` with `warm_only=True` to target only the authoritative
-writer. Standalone `v0.0.4` warming returns the normal query response.
+writer. The published Python 0.3.4 transport accepts only HTTP 200, so it
+currently raises a remote `HelixError` for the Cloud `204`; use `helix query` or
+direct HTTP for Cloud warming. Standalone `v0.0.4` warming returns the normal
+200 response.
 
 Prefer `await_durability=True` with `execute` or
 `client.request_builder().should_await_durability(True)` on writes. This
@@ -184,7 +187,9 @@ legacy `error`/`code` bodies populate it from `code`. In v0.3.4, a generic
 noncanonical `message`/`code` remote body remains raw `details` with no parsed
 code, so retain status-aware fallback handling. Do not describe that generic
 shape as the gateway contract. Preserve unknown codes and never parse
-`details`. See `../../docs/error-handling.md`.
+`details`. Reconcile a `query_timeout` write before resubmitting. The SDK does
+not expose `Retry-After`; use direct HTTP when the exact Cloud delay is
+required. See `../../docs/error-handling.md`.
 
 ### 6. Shape Responses Deliberately
 

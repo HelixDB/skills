@@ -10,21 +10,21 @@ Public DSL and JSON syntax are unchanged.
 
 ## Source Map
 
-The links are pinned to reviewed main commit `907ff228`; prefer paths and symbols
+The links are pinned to reviewed main commit `9793de57`; prefer paths and symbols
 over brittle line-number citations.
 
 | Concern | Canonical sources |
 | --- | --- |
-| Exact cross-numeric equality/order | [`crates/value-semantics/src/lib.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/value-semantics/src/lib.rs) |
-| Logical equality/range set rewrites | [`crates/planner/src/rules/access/sets/equality_range/`](https://github.com/HelixDB/helix-db/tree/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/access/sets/equality_range) |
-| Runtime equality-domain analysis | [`analysis/index_atoms/equality.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/analysis/index_atoms/equality.rs), [`rules/access/filter/atoms/collect.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/access/filter/atoms/collect.rs) |
-| Runtime membership execution | [`access/membership.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/db/src/execution/interpreter/access/membership.rs) |
-| Adjacent-filter canonicalization | [`logical/access/pipeline/canonical.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/logical/access/pipeline/canonical.rs) |
-| Ordered range selection | [`range_direction.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/access/order/rules/range_direction.rs), [`sets/range/`](https://github.com/HelixDB/helix-db/tree/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/access/sets/range) |
-| Physical equality/range programs | [`exec/access/node.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/exec/access/node.rs), [`exec/access/edge.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/exec/access/edge.rs), [`exec/selected/`](https://github.com/HelixDB/helix-db/tree/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/exec/selected) |
-| Count programs and windows | [`exec/count.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/exec/count.rs), [`rules/cardinality.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/planner/src/rules/cardinality.rs) |
-| Equality/range execution | [`secondary_set.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/db/src/execution/interpreter/access/secondary_set.rs), [`range.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/db/src/execution/interpreter/access/range.rs) |
-| Count execution | [`interpreter/count.rs`](https://github.com/HelixDB/helix-db/blob/907ff2283240dcaf416a91d3b8a522f734a7c159/crates/db/src/execution/interpreter/count.rs) |
+| Exact cross-numeric equality/order | [`crates/value-semantics/src/lib.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/value-semantics/src/lib.rs) |
+| Logical equality/range set rewrites | [`crates/planner/src/rules/access/sets/equality_range/`](https://github.com/HelixDB/helix-db/tree/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/access/sets/equality_range) |
+| Runtime equality-domain analysis | [`analysis/index_atoms/equality.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/analysis/index_atoms/equality.rs), [`rules/access/filter/atoms/collect.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/access/filter/atoms/collect.rs) |
+| Runtime membership execution | [`access/membership.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/db/src/execution/interpreter/access/membership.rs) |
+| Adjacent-filter canonicalization | [`logical/access/pipeline/canonical.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/logical/access/pipeline/canonical.rs) |
+| Ordered range selection | [`range_direction.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/access/order/rules/range_direction.rs), [`sets/range/`](https://github.com/HelixDB/helix-db/tree/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/access/sets/range) |
+| Physical equality/range programs | [`exec/access/node.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/exec/access/node.rs), [`exec/access/edge.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/exec/access/edge.rs), [`exec/selected/`](https://github.com/HelixDB/helix-db/tree/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/exec/selected) |
+| Count programs and windows | [`exec/count.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/exec/count.rs), [`rules/cardinality.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/planner/src/rules/cardinality.rs) |
+| Equality/range execution | [`secondary_set.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/db/src/execution/interpreter/access/secondary_set.rs), [`range.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/db/src/execution/interpreter/access/range.rs) |
+| Count execution | [`interpreter/count.rs`](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/crates/db/src/execution/interpreter/count.rs) |
 
 The planner directory is intentionally decomposed; do not describe the runtime as
 one monolithic interpreter-only model.

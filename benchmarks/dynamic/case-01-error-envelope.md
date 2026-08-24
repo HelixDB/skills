@@ -52,7 +52,12 @@ failed write.
   non-JSON/plain-text bodies as the message with no code.
 - Preserve an unknown current code as an open string and fall back to conservative status-aware handling.
 - Recognize `transaction_conflict` with HTTP 409 without searching the diagnostic text.
-- Retry idempotent reads on 429 or temporary 5xx with bounded backoff.
+- Honor `Retry-After` on `429 rate_limited` when the transport exposes it and
+  add jitter to bounded retries.
+- Treat `408 query_timeout` on a write as an unknown commit outcome and
+  reconcile before resubmission.
+- Distinguish `503 rate_limit_unavailable`, which fails closed before execution,
+  from `backend_unavailable` and generic `internal_error`.
 - For a 409 write conflict, reload current state before rebuilding the mutation;
   replay only when it is idempotent or protected by an application idempotency key.
 - Correct validation/schema/index errors before retrying; do not retry merely because a code exists.
@@ -107,6 +112,8 @@ function decodeHelixError(status: number, body: string) {
 - [ ] Preserves the raw response body for every remote failure
 - [ ] Uses both status and code for classification
 - [ ] Recognizes HTTP 409 plus `transaction_conflict` without parsing a message
-- [ ] Retries idempotent reads on 429/temporary 5xx with bounded backoff
+- [ ] Honors `Retry-After` on 429 when available and bounds retries with jitter
+- [ ] Reconciles a timed-out write before resubmission
+- [ ] Distinguishes the Cloud 402/408/413/429/503 conditions by status and code
 - [ ] Reloads state before rebuilding a conflict and replays writes only when safe
 - [ ] Does not retry validation/planning failures without correcting the cause

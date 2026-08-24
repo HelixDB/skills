@@ -627,16 +627,18 @@ Warming uses the *same* query; `.warm_only()` sets the `X-Helix-Warm: true` head
 ```rust
 use helix_db::Client;
 
-let client = Client::new(Some("https://helix.example.com"))?.with_api_key(Some(&api_key));
+let client = Client::new(Some("http://localhost:6969"))?;
 
-// Helix Cloud returns 204 No Content after at least one warm target succeeds.
+// Helix Cloud returns 204 after a successful warm. Published Rust 3.0.0
+// classifies that non-200 response as RemoteError, so use this builder only
+// against this standalone server until an SDK release accepts 204.
 let response = client
     .request_builder::<serde_json::Value>()
     .warm_only()
     .query(user_by_id("u-42".to_string()))
     .send_bytes()
     .await?;
-assert!(response.is_empty());
+# let _ = response;
 ```
 
 Helix Cloud fans the read out to every eligible backend and discards the result
@@ -662,9 +664,10 @@ match client.query::<serde_json::Value>(request).send().await {
 }
 ```
 
-For idempotent reads, `is_rate_limited()` and
-`status_code().is_some_and(|s| (500..600).contains(&s))` can drive a bounded
-backoff policy. `remote_message()`, `remote_details()`, and
+`is_rate_limited()` and temporary 503 codes can drive a bounded backoff policy.
+The published client does not expose `Retry-After`, so use direct HTTP when the
+exact Cloud delay is required. Reconcile a `query_timeout` write before
+resubmitting it. `remote_message()`, `remote_details()`, and
 `raw_response_body()` preserve structured remote diagnostics without string
 parsing. Canonical Helix failures still use `error` as the code and `msg` as the
 diagnostic; generic `code`/`message` decoding is defensive compatibility, not

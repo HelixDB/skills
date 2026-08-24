@@ -615,11 +615,13 @@ client.request_builder::<R>()
     .should_await_durability(b: bool)    // X-Helix-Await-Durable: true|false
     .query(request)
 
-request.send().await -> Result<R, HelixError>                // 200 -> R; Cloud warm success -> 204/no payload; other status -> RemoteError
+request.send().await -> Result<R, HelixError>                // published 3.0.0: 200 -> R; every other status, including Cloud warm 204, -> RemoteError
 ```
 
-For Cloud warming, use the no-content/bytes response path. Partial target
-failure still succeeds when at least one backend warms successfully.
+The Cloud service returns `204 No Content` after a successful warm fanout, but
+the published Rust 3.0.0 client accepts only 200. Use `helix query` or direct
+HTTP for Cloud warming until a newer SDK release accepts 204. Partial target
+failure is still a service-level success when at least one backend warms.
 
 Prefer `.should_await_durability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 
@@ -646,7 +648,7 @@ match request.send().await {
 }
 ```
 
-Use structured fields rather than parsing error text. A bounded retry is suitable for an idempotent read after `is_rate_limited()` or a temporary 5xx status. For writes, reload state after a conflict and do not blindly replay a general server failure whose commit outcome may be unknown. See `../../docs/error-handling.md` for envelope migration, retry rules, and gRPC metadata. Other `HelixError` variants distinguish transport, serialization, invalid URL, and invalid request failures. Build the request from a `#[query]` function call or
+Use structured fields rather than parsing error text. Cloud `rate_limited` did not execute, but Rust 3.0.0 does not expose `Retry-After`; use an application policy or a direct transport that retains it. Reconcile a `query_timeout` write before resubmitting. For writes, reload state after a conflict and do not blindly replay a general server failure whose commit outcome may be unknown. See `../../docs/error-handling.md` for the gateway catalog, envelope migration, retry rules, and gRPC metadata. Other `HelixError` variants distinguish transport, serialization, invalid URL, and invalid request failures. Build the request from a `#[query]` function call or
 `QueryRequest::read/write(batch)`. Stored routes, registration, and bundles
 are not supported.
 

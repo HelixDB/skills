@@ -4,7 +4,7 @@ description: Write and revise queries with the published HelixDB Go SDK v0.3.1. 
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.2
+  version: 3.0.3
 ---
 
 # Helix Query Authoring - Go

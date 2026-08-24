@@ -326,3 +326,6 @@ func ExecWithConflictRetry(ctx context.Context, client *helix.Client, reloadAndB
 In v0.3.1, a generic noncanonical `message`/`code` remote body remains raw
 `Details` and does not populate `Code`; retain `StatusCode`-aware fallback
 handling and do not call that generic shape the gateway contract.
+Reconcile a `query_timeout` write before resubmitting. Go v0.3.1 does not expose
+`Retry-After`; use a custom HTTP transport or direct HTTP when the exact Cloud
+delay is required.

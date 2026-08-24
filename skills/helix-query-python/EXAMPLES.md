@@ -361,6 +361,8 @@ Use `error.kind` to distinguish transport from remote/embedded failures and
 never classify failures by parsing `details`. In v0.3.4, a generic noncanonical
 `message`/`code` remote body remains raw `details` and does not populate `code`,
 so keep status-aware fallback handling; it is not the gateway contract.
+Reconcile a `query_timeout` write before resubmitting. Python 0.3.4 does not
+expose `Retry-After`; use direct HTTP when the exact Cloud delay is required.
 
 ## 12. Inspect Request JSON In A Test
 

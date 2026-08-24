@@ -420,7 +420,10 @@ helix.AwaitDurability(true)
 `helix.WarmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; combine it with `helix.WriterOnly()` to target only the
-authoritative writer. Standalone `v0.0.4` warming returns the normal response.
+authoritative writer. The published Go v0.3.1 client accepts only HTTP 200, so
+it currently returns a remote `*helix.HelixError` for the Cloud `204`; use
+`helix query` or direct HTTP for Cloud warming. Standalone `v0.0.4` warming
+returns the normal 200 response.
 
 Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more likely to hit HTTP 409 write conflicts, and awaiting durability reduces them. It does not eliminate conflicts, so callers still own retry policy and must reload current state before rebuilding a conflicting mutation.
 
@@ -433,7 +436,10 @@ In v0.3.1, a generic noncanonical `message`/`code` remote body is retained as ra
 do not call that generic shape the gateway contract. `helix.IsConflict(err)` and
 `errors.Is(err, helix.ErrConflict)` retain HTTP 409 detection; compare `Code`
 with `helix.QueryErrorCode("transaction_conflict")` when you need the Helix
-classification. Never parse `Details`. See `../../docs/error-handling.md`.
+classification. Reconcile a `query_timeout` write before resubmitting. Go
+v0.3.1 does not expose `Retry-After`; use a custom HTTP transport or direct HTTP
+when the exact Cloud delay is required. Never parse `Details`. See
+`../../docs/error-handling.md`.
 
 ## Published Release Scope
 

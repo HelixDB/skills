@@ -414,6 +414,9 @@ A defensive client may also preserve a noncanonical proxy shape:
 
 Decode canonical Helix, legacy Helix, then generic remote fields. Preserve
 `details`, the raw body, and unknown codes, but do not call the generic shape
-the gateway contract. An idempotent read may retry a 429 or temporary 5xx with
-bounded backoff. For a 409 write conflict, reload current state before rebuilding
-and replay only when safe; do not blindly retry writes.
+the gateway contract. Honor `Retry-After` on 429 when available. A 503
+`rate_limit_unavailable` fails closed before execution and can use bounded
+backoff with jitter; a 408 `query_timeout` write has an unknown commit outcome
+and must be reconciled before resubmission. For a 409 write conflict, reload
+current state before rebuilding and replay only when safe; do not blindly retry
+writes.

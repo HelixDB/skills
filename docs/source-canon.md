@@ -1,6 +1,6 @@
 # Source Canon
 
-This repository should use public Helix documentation and repo-local canonical examples as its primary references. The SDK, error-transport, CLI-auth, and planner guidance was last reviewed against `HelixDB/helix-db` main at `907ff2283240dcaf416a91d3b8a522f734a7c159`.
+This repository should use public Helix documentation and repo-local canonical examples as its primary references. The SDK, error-transport, CLI-auth, HTTP/OpenAPI, and planner guidance was last reviewed against `HelixDB/helix-db` main at `9793de57b05d2fa93dd2d5706618c4776227672b`.
 
 ## Working Order
 
@@ -40,6 +40,9 @@ Use these for product semantics and supported behavior:
 - `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
 - `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
 - `https://docs.helix-db.com/database/helix-db/query-guides/parameters`
+- `https://docs.helix-db.com/database/helix-db/query-guides/http-api`
+- `https://docs.helix-db.com/database/helix-cloud/operate/error-handling`
+- `https://docs.helix-db.com/database/helix-cloud/operate/limits`
 - `https://docs.helix-db.com/database/helix-db/query-guides/traversals`
 - `https://docs.helix-db.com/database/helix-db/query-guides/filtering`
 - `https://docs.helix-db.com/database/helix-db/query-guides/advanced`

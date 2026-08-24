@@ -3,6 +3,9 @@
 This reference describes the direct request produced by the published v3 SDKs.
 The source of truth is the `helix-ast` crate under
 [`HelixDB/helix-db`](https://github.com/HelixDB/helix-db/tree/main/crates/ast).
+The published transport schema is
+[`openapi.json`](https://docs.helix-db.com/openapi.json); use it for HTTP
+headers, status codes, body limits, and the raw-JSON parameter subset.
 
 ## Envelope
 
@@ -41,7 +44,7 @@ The source of truth is the `helix-ast` crate under
 | `query_name` | no | non-empty string or `null` |
 | `query` | yes | `{ "read": ReadBatch }` or `{ "write": WriteBatch }` |
 | `parameters` | no | object of JSON runtime values |
-| `parameter_types` | no | object of v3 parameter type descriptors |
+| `parameter_types` | no | object of v3 parameter type descriptors; when present, keys exactly match `parameters` |
 
 The batch variant must match `request_type`, and every batch must contain at
 least one entry.
@@ -324,9 +327,12 @@ current element's property.
 
 ## Parameter schemas
 
-Scalar schema names include `string`, `i64`, `f64`, `bool`, `date_time`, and `bytes`.
-Arrays and objects use their structured schema form as serialized by the SDK. Keep
-`parameters` and `parameter_types` aligned.
+The raw HTTP scalar schema names are `bool`, `i64`, `string`, `date_time`,
+`value`, and `object`. Arrays use recursive `{ "array": <schema> }` descriptors.
+When `parameter_types` is present, its keys must exactly match `parameters`;
+typed and untyped values cannot be mixed. Send floating-point JSON numbers
+without `parameter_types`, because the HTTP schema intentionally omits `f32` and
+`f64`. Raw bytes cannot be represented on the JSON route.
 
 ```json
 {
@@ -380,10 +386,11 @@ TypeScript SDKs also defensively preserve a noncanonical remote shape:
 Decode canonical Helix, legacy Helix, then generic remote fields. Preserve
 structured `details`, the raw response body, and unknown codes. The third shape
 is compatibility behavior, not the Cloud gateway contract. Use HTTP status plus
-code for decisions. Retry idempotent reads on 429 or temporary 5xx with bounded
-backoff; rebuild a conflicting write from current state and replay only when
-safe. See `../../docs/error-handling.md` for the canonical decoder and
-gRPC/embedded parity.
+code for decisions. Honor `Retry-After` on 429 when the transport exposes it;
+reconcile a timed-out write before resubmitting; rebuild a conflicting write
+from current state and replay only when safe. See `../../docs/error-handling.md`
+for the full Cloud gateway catalog, body limits, retry rules, and gRPC/embedded
+parity.
 
 ## Validation checklist
 

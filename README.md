@@ -69,8 +69,11 @@ The CLI currently defaults to `ghcr.io/helixdb/helixdb:v0.0.4`. It is in-memory 
 default; `--disk` uses a CLI-managed MinIO service for persistence. The skills
 produce direct `POST /v2/query` requests for a running instance reachable at a
 server URL. Helix Cloud uses Bearer authentication; GA requests also require
-the tenant context in `x-helix-tenant-id`. There is no
-`helix compile`/`helix check` step — queries are validated server-side when
+the database ID in `X-Helix-Database-Id` (`X-Helix-Tenant-Id` is a legacy GA
+alias), while cluster-mode endpoints reject both headers. The published SDK
+request builders do not expose this GA database-selection header; use the MCP,
+`helix query` with synced cluster metadata, or direct HTTP as appropriate.
+There is no `helix compile`/`helix check` step — queries are validated server-side when
 sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and
 the non-interactive/agent path.
 

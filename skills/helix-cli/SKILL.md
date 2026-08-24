@@ -4,7 +4,7 @@ description: Drive the HelixDB `helix` CLI to run, query, and deploy Helix insta
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.2.0
+  version: 3.2.1
 ---
 
 # Helix CLI
@@ -41,7 +41,7 @@ Before running anything:
 1. **Find the project.** Check for a `helix.toml` (the CLI walks up the directory tree to find it). Run `helix status` to see configured instances and their state. If there is no project yet, you are in scaffold territory (`helix init local`).
 2. **For local work, confirm a container runtime is up.** `helix start` needs Docker or Podman running. The runtime is chosen by `[project] container_runtime` (default `docker`).
 3. **Decide local vs cloud.** Local instances live in `[local.<name>]` and run as containers; cloud instances live in `[enterprise.<name>]` and run on Helix Cloud.
-4. **For cloud, ensure auth.** Cloud commands require `helix auth login` (credentials in `~/.helix/credentials`), and `helix query` against an enterprise instance needs the API key in `HELIX_API_KEY` (or the env named by `query_auth_env`), readable from the shell or a project-root `.env`. Use the synced `query_auth_scheme`: `bearer` adds `Bearer`, while `raw` sends the environment value unchanged. Direct GA HTTP requests outside the CLI also require the database ID in `x-helix-tenant-id`.
+4. **For cloud, ensure auth.** Cloud commands require `helix auth login` (credentials in `~/.helix/credentials`), and `helix query` against an enterprise instance needs the API key in `HELIX_API_KEY` (or the env named by `query_auth_env`), readable from the shell or a project-root `.env`. Use the synced `query_auth_scheme`: `bearer` adds `Bearer`, while `raw` sends the environment value unchanged. Direct GA HTTP requests outside the CLI also require `X-Helix-Database-Id`; `X-Helix-Tenant-Id` is a legacy GA alias, and cluster-mode endpoints reject both headers.
 
 If you need a builder/flag beyond the common surface, open `REFERENCE.md` — do not guess flag names. For copy-pasteable sessions, see `EXAMPLES.md`.
 
