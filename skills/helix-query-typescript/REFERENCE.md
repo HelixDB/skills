@@ -699,8 +699,30 @@ const request = findUsers().toQueryRequest(params, {
   tenantId: "acme",
   limit: 25n,
 });
-const users = await client.query<UserRow[]>(request).send();
+type FindUsersResponse = { users: UserRow[] };
+const response = await client.query<FindUsersResponse>(request).send();
 ```
+
+Only empty declared returns use inferred shapes. At-most-one empties are
+`null`; collection, fold, and mutation empties are `[]`; scalar terminals keep
+`0` and `false`; an empty returns list produces `{}`. Populated values retain
+their existing representation, including the one-element array for an
+at-most-one traversal.
+
+Type the complete top-level response by returned name:
+
+```ts
+type FindUserResponse = {
+  user: UserRow[] | null;
+  friends: UserRow[];
+  count: number;
+};
+
+const response = await client.query<FindUserResponse>(request).send();
+```
+
+Do not replace `null` with `[]` before contract validation; they represent
+different semantic cardinalities.
 
 Build the `QueryRequest` with `batch.toQueryRequest(...)`. Stored routes,
 registration, and query bundles are not supported.

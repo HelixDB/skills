@@ -200,6 +200,10 @@ required. See `../../docs/error-handling.md`.
   alias)` instead of traversing to every endpoint first.
 - Avoid returning large properties such as embeddings unless the caller needs them.
 - Match `.returning([...])` names to the response keys your application expects.
+- Preserve inferred empty shapes: at-most-one is `None`,
+  collections/folds/mutations are `[]`, and scalars keep values such as `0`
+  and `False`. Populated values keep the existing shape. Type at-most-one
+  fields as `list[T] | None`; keep collection fields as `list[T]`.
 
 Python v3 supports row-local correlation with `bind`,
 `project_bindings`, and `project_distinct_bindings`:
@@ -244,6 +248,7 @@ Before finishing:
 - verify write traversals are not placed in read batches
 - verify request-specific values use `define_params` refs instead of direct literals
 - verify `.returning([...])` names match the expected response shape
+- verify at-most-one response fields allow `None` without changing populated lists
 - verify vector/text search preserves tenant scope when the index is scoped
 - verify exact vector and BM25 prefilters build candidates before calling the traversal-scoped search method
 - verify `$distance` or `$score` is projected before traversing away from search hits

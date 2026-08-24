@@ -408,6 +408,15 @@ accepts only 200 and surfaces that response as a remote `HelixError`. Use
 `warm_only=True` with `writer_only=True` to target only the authoritative
 writer.
 
+Only empty declared returns use inferred shapes. At-most-one empties decode as
+`None`; collection, fold, and mutation empties decode as `[]`; scalar terminals
+keep `0` and `False`; an empty returns list produces `{}`. Populated values
+retain their existing representation, including the one-element list for an
+at-most-one traversal.
+
+Use `list[UserRow] | None` for an at-most-one field and `list[UserRow]` for a
+collection field. Do not normalize `None` to `[]` before contract validation.
+
 Asynchronous server execution:
 
 ```text

@@ -261,6 +261,9 @@ matches, so candidate selectivity does not guarantee proportional latency.
 
 Batch entries execute in order. Later entries can refer to earlier named results.
 Only names in `returns` become response members, but non-returned entries still run.
+An empty at-most-one return is `null`; empty collections, folds, and mutations
+are `[]`; scalar `0` and `false` remain scalars. Adding `limit(1)` therefore
+requires a nullable response field even though populated values remain arrays.
 
 Conditional entries can avoid unnecessary work:
 

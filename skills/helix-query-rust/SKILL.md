@@ -106,6 +106,12 @@ Use:
 
 Do not return oversized properties like embeddings unless the caller explicitly needs them.
 
+Empty declared returns follow semantic cardinality: at-most-one is `null`,
+collections/folds/mutations are `[]`, and scalars keep values such as `0` and
+`false`. Populated values keep the existing shape. Model an at-most-one response
+field as `Option<Vec<T>>`; keep collection fields as `Vec<T>`. See
+`REFERENCE.md` for the decoding contract.
+
 ### 6. Preserve Search Scope
 
 For BM25 and vector search:
@@ -273,6 +279,8 @@ Before finishing:
 - verify the first anchor is the narrowest practical indexed set
 - verify scope filters happen before or as early as possible
 - verify the returned variable names and shape match service expectations
+- verify at-most-one response fields deserialize `null` without changing
+  populated arrays
 - verify text and vector routes preserve tenant scope when required
 - verify exact vector and BM25 prefilters build candidates before calling the traversal-scoped search method
 - verify large properties are omitted unless needed

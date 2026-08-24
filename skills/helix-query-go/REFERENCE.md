@@ -417,6 +417,26 @@ helix.AwaitDurability(true)
 
 `Exec` posts to `/v2/query`, serializes the request internally, and decodes responses with `json.Decoder.UseNumber()`.
 
+Only empty declared returns use inferred shapes. At-most-one empties are JSON
+`null`; collection, fold, and mutation empties are `[]`; scalar terminals keep
+`0` and `false`; an empty returns list produces `{}`. Populated values retain
+their existing representation, including the one-element array for an
+at-most-one traversal.
+
+Use slices for both row categories and preserve their decoded state:
+
+```go
+type FindUserResponse struct {
+	User    []UserRow `json:"user"`    // nil for null; one element when present
+	Friends []UserRow `json:"friends"` // non-nil empty slice for []
+	Count   int       `json:"count"`
+}
+```
+
+Do not normalize a nil at-most-one slice to an empty slice before contract
+validation. Use `*[]T` or `json.RawMessage` only when the application needs
+additional presence tracking.
+
 `helix.WarmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; combine it with `helix.WriterOnly()` to target only the

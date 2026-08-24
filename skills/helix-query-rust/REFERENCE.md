@@ -618,6 +618,29 @@ client.request_builder::<R>()
 request.send().await -> Result<R, HelixError>                // published 3.0.0: 200 -> R; every other status, including Cloud warm 204, -> RemoteError
 ```
 
+### Query response shapes
+
+Only empty declared returns use inferred shapes. At-most-one empties are JSON
+`null`; collection, fold, and mutation empties are `[]`; scalar terminals keep
+`0` and `false`; an empty returns list produces `{}`. Populated values retain
+their existing representation, including the one-element array for an
+at-most-one traversal.
+
+Deserialize an at-most-one field as `Option<Vec<T>>` and a collection field as
+`Vec<T>`:
+
+```rust
+#[derive(serde::Deserialize)]
+struct FindUserResponse {
+    user: Option<Vec<UserRow>>,
+    friends: Vec<UserRow>,
+    count: usize,
+}
+```
+
+Do not use a custom decoder to turn `null` into an empty vector; that erases
+the semantic distinction.
+
 The Cloud service returns `204 No Content` after a successful warm fanout, but
 the published Rust 3.0.0 client accepts only 200. Use `helix query` or direct
 HTTP for Cloud warming until a newer SDK release accepts 204. Partial target

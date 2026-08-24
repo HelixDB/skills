@@ -116,6 +116,11 @@ Check whether it should use:
 
 These controls should be driven by route semantics, not habit.
 
+Adding a guaranteed upper bound of one changes an empty return to `null` while
+leaving populated values as one-element arrays. Confirm the caller accepts the
+nullable shape before adding or moving `limit(1)` or `first()`. Empty
+collections/folds/mutations remain `[]`; scalar `0` and `false` remain scalars.
+
 ## 7. Review BM25 Routes Separately
 
 For BM25 routes, check:

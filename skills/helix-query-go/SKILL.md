@@ -117,7 +117,14 @@ Always pass explicit response variable names to `.Returning(...)` when rows shou
 return q.VarAs("users", traversal).Returning("users")
 ```
 
-Use zero-arg `.Returning()` only for intentional empty responses. The SDK serializes it as `"returns":[]`, but explicit names are clearer and avoid mismatched response structs.
+Use zero-arg `.Returning()` only for intentional empty responses. The SDK
+serializes it as `"returns":[]`, and the server responds with `{}`. Explicit
+names are clearer and avoid mismatched response structs.
+
+Empty declared returns follow semantic cardinality: at-most-one is JSON
+`null`, collections/folds/mutations are `[]`, and scalars keep values such as
+`0` and `false`. Populated values keep the existing shape. A Go slice decodes
+`null` as `nil` and `[]` as a non-nil empty slice; preserve that distinction.
 
 ### 5. Execute With `Client.Exec`
 
@@ -188,6 +195,7 @@ Before finishing:
 - verify write traversals are not placed in read queries
 - verify request-specific values use `q.Param*` refs instead of direct literals in predicates, source predicates, limits, inputs, or search arguments
 - verify response structs match `.Returning(...)` names and projected fields
+- verify at-most-one response slices preserve JSON `null` as `nil`
 - verify vector/text search preserves tenant scope where the index is scoped
 - verify exact vector and BM25 prefilters build candidates before calling the matching `*Within[With]` method
 - verify standard v0.3.1 code does not assume embedded or native graph bindings are distributed

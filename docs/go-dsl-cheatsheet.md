@@ -24,6 +24,12 @@ var out FindUsersResponse
 err = client.Exec(ctx, FindUsers("acme", 25), &out)
 ```
 
+Empty at-most-one returns decode from JSON `null` to a nil Go slice. Empty
+collections, folds, and mutations decode from `[]` to a non-nil empty slice;
+scalar `0` and `false` remain scalars. Populated values keep their existing
+shape. Do not normalize nil at-most-one slices to empty slices before contract
+validation. A zero-argument `.Returning()` produces `{}`.
+
 ## Do
 
 - use `helix.ReadQuery("name")` or `helix.WriteQuery("name")`
@@ -39,7 +45,7 @@ err = client.Exec(ctx, FindUsers("acme", 25), &out)
 - do not use `WithQueryName(...)`
 - do not use stored-query or bundle workflows in the v3 SDK
 - do not call JSON serialization in normal application code
-- do not call `.Returning()` with no names unless the response is intentionally empty
+- do not call `.Returning()` with no names unless the `{}` response is intentional
 
 ## Common Builders
 

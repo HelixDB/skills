@@ -229,6 +229,8 @@ Before finishing:
 - evaluation covers tenant isolation, user/container isolation, stale-memory suppression, contextual follow-up extraction, exact-token recall, temporal corrections, deletion, profile rebuilds, latency, and token budget
 - timestamps use one consistent convention; this skill uses typed DateTime via `Expr.datetime()` and `param.dateTime()`
 - no projected output includes `embedding` unless explicitly required
+- at-most-one response fields allow `null`, collection/fold/mutation empties
+  remain `[]`, and scalar `0` or `false` remains scalar
 - labels/edges/properties match existing repo casing
 
 ## Reference Files
