@@ -1,0 +1,7 @@
+interface:
+  display_name: "Helix CLI"
+  short_description: "Operate local and WorkOS-authenticated Helix"
+  default_prompt: "Use $helix-cli to inspect this project and run the minimum safe Helix CLI commands for my task."
+
+policy:
+  allow_implicit_invocation: true

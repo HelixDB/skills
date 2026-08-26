@@ -1,0 +1,15 @@
+interface:
+  display_name: "Helix Admin MCP"
+  short_description: "Run confirmed Helix Cloud admin operations"
+  default_prompt: "Use $helix-admin-mcp for the exact explicitly requested Helix Cloud tenant or database-key operation."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "helix-admin"
+      description: "Hosted Helix Cloud Admin MCP server"
+      transport: "streamable_http"
+      url: "https://admin-mcp.helix-db.com/mcp"
+
+policy:
+  allow_implicit_invocation: false

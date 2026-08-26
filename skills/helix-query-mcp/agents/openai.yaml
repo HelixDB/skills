@@ -1,0 +1,15 @@
+interface:
+  display_name: "Helix Query MCP"
+  short_description: "Run brokered Helix Cloud queries"
+  default_prompt: "Use $helix-query-mcp to run the explicitly requested query against the authorized Helix Cloud database."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "helix-query"
+      description: "Hosted Helix Cloud Query MCP broker"
+      transport: "streamable_http"
+      url: "https://query-mcp.helix-db.com/mcp"
+
+policy:
+  allow_implicit_invocation: false
