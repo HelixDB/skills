@@ -37,9 +37,11 @@ helix api get|post|patch|delete /v1/...
 helix init|add cloud [--database tenant:<id>|cluster:<id>] [--project ID] [--workspace ID]
 ```
 
-Database create is tenant-only and tokenless. Dedicated cluster deletion is rejected. Application key
-access values are `read-only` or `read-write`. Service-credential grants are repeatable
-`PROJECT=project-read,project-write,query-read,query-write`, with matching read required for write.
+Database create is tenant-only. It creates a default read-write application key and returns the raw
+token once; the CLI displays but never stores or uses it. Dedicated cluster deletion is rejected.
+Additional application-key access values are `read-only` or `read-write`. Service-credential grants
+are repeatable `PROJECT=project-read,project-write,query-read,query-write`, with matching read required
+for write.
 
 ## `helix.toml`
 

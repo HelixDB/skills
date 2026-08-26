@@ -67,7 +67,8 @@ Management `read`/`write` does not imply query access.
 
 ## Secret lifecycle
 
-- `helix database create` creates no key.
+- `helix database create` creates a default read-write application key and prints its token once;
+  the CLI never stores or uses it.
 - `helix database key create ... --access read-only|read-write` prints an application token once;
   the CLI never stores or uses it.
 - `helix service-credential create` prints a headless API/MCP token once; the CLI never stores or

@@ -11,14 +11,20 @@ helix query production --file request.json
 
 No API key, gateway URL, push, or sync step is used.
 
-## Explicit application key
+## Create a database and capture its default application key
 
 ```bash
 helix database create --project project_123 --name app --slug app --plan starter
+```
+
+Capture the returned default read-write token in the application's secrets manager. The CLI does not
+retain or use it. Create another key only when the application needs a separate credential:
+
+```bash
 helix database key create tenant:tenant_123 --access read-only --name reporting
 ```
 
-Capture the printed token in the application's secrets manager. The CLI does not retain it.
+Capture that printed token once as well.
 
 ## Headless MCP credential
 

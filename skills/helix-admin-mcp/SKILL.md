@@ -21,7 +21,7 @@ credential. Application database keys do not authenticate MCP.
 
 Supported operation identifiers:
 
-- `create_tenant` (creates no key and returns no token)
+- `create_tenant` (creates a default read-write application key and returns its raw token once)
 - `delete_tenant`
 - `create_database_key` (`read_only` or `read_write`; raw token returns once)
 - `revoke_database_key`
