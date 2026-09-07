@@ -14,6 +14,8 @@ These skills are for agents that need to:
 - optimize Helix query shape and index usage
 - build correct dynamic `POST /v2/query` payloads
 - inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the hosted read-only MCP server
+- execute authorized Helix Cloud queries through the separate Query MCP broker
+- run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 
 ## Status
@@ -22,6 +24,8 @@ Available now:
 
 - `helix-cli`
 - `helix-mcp`
+- `helix-query-mcp`
+- `helix-admin-mcp`
 - `helix-query-from-cypher`
 - `helix-query-from-gremlin`
 - `helix-query-from-hql`
@@ -45,11 +49,11 @@ npx skills add HelixDB/skills
 
 ## Helix Cloud queries
 
-When the target is Helix Cloud, every `helix-query-*` skill requires
+When the target is Helix Cloud, every query-authoring skill uses
 `helix-mcp` first. The agent resolves the live database and reads relevant
 active indexes, insights, latency, and recommendations before authoring,
-translating, debugging, or optimizing a query. MCP remains read-only; SDKs and
-`/v2/query` remain the query execution surfaces.
+translating, debugging, or optimizing a query. `helix-mcp` remains read-only;
+explicit agent-side Cloud execution uses the separate `helix-query-mcp` broker.
 
 ## Running queries (prerequisites)
 
@@ -65,11 +69,11 @@ them against. To stand one up locally — no Cloud login required:
    ```
 4. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
 
-The local runtime uses `ghcr.io/helixdb/helixdb:v0.0.3`. It is in-memory by
+The local runtime is in-memory by
 default; `--disk` uses a CLI-managed MinIO service for persistence. The skills
 produce direct `POST /v2/query` requests for a running instance reachable at a
-server URL. Helix Cloud uses Bearer authentication; GA requests also require
-the tenant context in `x-helix-tenant-id`. There is no
+server URL. Cloud CLI query execution instead uses a WorkOS session and the
+backend broker. Application gateway clients still use explicitly created database keys. There is no
 `helix compile`/`helix check` step — queries are validated server-side when
 sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and
 the non-interactive/agent path.
@@ -99,17 +103,30 @@ It teaches agents to:
 
 ### `helix-cli`
 
-Use this skill when an agent needs to drive the `helix` CLI itself — run, query, and deploy Helix instances — rather than author the query bodies.
+Use this skill when an agent needs to drive the `helix` CLI itself — run/query local instances or use the WorkOS-authenticated Cloud control plane and broker — rather than author query bodies.
 
 It teaches agents to:
 
 - use the v3 mental model: a runtime orchestrator, not a compiler (no `helix compile`/`helix check`, no `.hx` workflow)
 - run the local dev loop (`helix init local` → `start` → `query` → `stop`) with Docker/Podman, including in-memory vs `--disk` persistence
 - send dynamic queries to `POST /v2/query` via `helix query` (`--file`/`--json`/`-e` TypeScript DSL/`--ts-file`)
-- operate on Helix Cloud (`helix auth`, `push`, `sync`, `workspace`/`project`/`cluster`)
-- read and edit `helix.toml` and the `~/.helix/*` state files
+- operate on Helix Cloud with a WorkOS session (`auth`, `workspace`, `project`, `cluster`, `database`, `service-credential`, `api`)
+- run Cloud `query`/`shell` through the broker without application keys or direct gateway URLs
+- read stable links in `helix.toml`; there is no global workspace-selection file
 
 It points to the `helix-query-*` skills for the query bodies themselves; see its `REFERENCE.md` for the full command catalog and `EXAMPLES.md` for end-to-end sessions.
+
+### `helix-query-mcp`
+
+Use this skill for explicitly requested Helix Cloud reads and durable-confirmation-gated writes. It
+teaches independent query permissions, exact v3 payload binding, no-retry execution, and the
+untrusted-data boundary.
+
+### `helix-admin-mcp`
+
+Use this skill only for explicitly requested tenant create/delete or application database-key
+create/revoke operations. It teaches typed durable confirmations, raw-secret-once handling, and the
+excluded Cloud lifecycle surfaces.
 
 ### `helix-query-json-dynamic`
 

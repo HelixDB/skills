@@ -9,7 +9,7 @@ dependencies:
       value: "helix-db"
       description: "Hosted read-only Helix Cloud MCP server"
       transport: "streamable_http"
-      url: "https://mcp.dev.helix-db.com/mcp"
+      url: "https://mcp.helix-db.com/mcp"
 
 policy:
   allow_implicit_invocation: true
