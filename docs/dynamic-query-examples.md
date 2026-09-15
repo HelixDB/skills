@@ -70,11 +70,12 @@ Runtime values are ordinary JSON. Add a schema when the SDK/query declares one:
 
 The full request still needs the normal envelope and query batch.
 
-For raw HTTP JSON, use `bool`, `i64`, `string`, `date_time`, `value`, `object`,
-and recursive `array` descriptors. Send floating-point JSON values without
-`parameter_types`; the published HTTP schema intentionally omits `f32` and
-`f64`. Raw bytes cannot be represented on this JSON route. These restrictions
-do not remove the typed float builders available inside the language SDKs.
+For raw HTTP JSON, use `bool`, `i64`, `f32`, `f64`, `string`, `date_time`, `value`,
+`object`, and recursive `array` descriptors. The v0.0.5 decoder accepts integer
+and floating-point JSON numbers for `f32`/`f64` and converts them to the declared
+type. Values must be finite; `f32` values must fit within its finite range.
+Floating-point parameters may also be untyped, but a supplied `parameter_types`
+map must describe every parameter. Raw bytes cannot be represented on this route.
 
 Local requests may be at most 16 MiB; Helix Cloud requests may be at most
 2 MiB. Keep portable request bodies at or below 2 MiB.
@@ -110,7 +111,7 @@ A write request uses `request_type: "write"` and a `write` batch:
 }
 ```
 
-On a clean `ghcr.io/helixdb/helixdb:v0.0.4` instance, the response is normalized:
+On a clean `ghcr.io/helixdb/helixdb:v0.0.5` instance, the response is normalized:
 
 ```json
 {
@@ -131,7 +132,7 @@ For a direct read request, warming uses the same body plus:
 X-Helix-Warm: true
 ```
 
-On the standalone `ghcr.io/helixdb/helixdb:v0.0.4` runtime, a warm read executes
+On the standalone `ghcr.io/helixdb/helixdb:v0.0.5` runtime, a warm read executes
 on the single process and returns `200 OK` with the normal normalized response.
 
 On Helix Cloud, the `/v2/query` gateway fans the same read out to every eligible
@@ -148,8 +149,11 @@ rate limits, retries, and normal query timeouts still apply.
 
 The current published Rust 3.0.0, TypeScript 3.0.4, Python 0.3.4, and Go 0.3.1
 SDK transports treat only HTTP 200 as success, so they currently surface this
-Cloud `204` as a remote error. Use `helix query` or direct HTTP for Cloud warming
+Cloud `204` as a remote error. Use direct HTTP for Cloud warming
 until an SDK release accepts `204 No Content`.
+
+The CLI's `--warm` flag is local-only and cannot warm a Cloud database. Current
+SDK source accepts 204, but that fix is absent from these published versions.
 
 ## Query Failures
 

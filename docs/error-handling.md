@@ -2,7 +2,7 @@
 
 Use the stable error code for control flow and the diagnostic message for logs or user-facing context. Error messages may change; codes are compatibility identifiers.
 
-The canonical local query catalog is [Handle query errors](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/docs/database/helix-db/query-guides/error-handling.mdx). The separate [Cloud gateway catalog](https://github.com/HelixDB/helix-db/blob/9793de57b05d2fa93dd2d5706618c4776227672b/docs/database/helix-cloud/operate/error-handling.mdx) defines the managed-gateway statuses and codes. Keep exhaustive database error catalogs upstream; this guide records the transport contract and decisions that recur across the skills.
+The canonical local query catalog is [Handle query errors](https://github.com/HelixDB/helix-db/blob/5ec14e5f8cf059aa03f42917d560b3cded09fb26/docs/database/helix-db/query-guides/error-handling.mdx). The separate [Cloud gateway catalog](https://github.com/HelixDB/helix-db/blob/5ec14e5f8cf059aa03f42917d560b3cded09fb26/docs/database/helix-cloud/operate/error-handling.mdx) defines the managed-gateway statuses and codes. Keep exhaustive database error catalogs upstream; this guide records the transport contract and decisions that recur across the skills.
 
 ## HTTP Contract
 
@@ -85,6 +85,7 @@ Use the HTTP status and stable code together:
 | 400 | `invalid_request` | Fix the required header or request option. |
 | 400 | `tenant_id_required` | In GA mode, identify the database with `X-Helix-Database-Id`; the legacy `X-Helix-Tenant-Id` alias is also accepted. |
 | 400 | `tenant_id_not_allowed` | Remove both database/tenant headers in cluster mode. |
+| 400 | `active_text_mutation_limit_exceeded` | Reduce the number or size of mutations before retrying. The hard engine admission limit rejects the mutation before commit; its graph changes are not committed. |
 | 401 | `unauthorized` | Refresh or replace the API key. |
 | 402 | `tenant_disabled` | Resolve the account-credit state before retrying. |
 | 403 | `forbidden` | Use a key with the required permission. |
@@ -113,7 +114,7 @@ Use both HTTP status and stable code. A code classifies the failure; it does not
 - After HTTP 429, honor `Retry-After` when the transport exposes it, add jitter, and bound retries. The rejected request did not reach database execution.
 - Retry `rate_limit_unavailable` and safe `backend_unavailable` operations with bounded exponential backoff and jitter.
 - Treat `query_timeout` on a write as an unknown commit outcome; reconcile by application identity or idempotency key before resubmitting.
-- Do not retry `tenant_disabled`, authentication/authorization failures, malformed input, or `payload_too_large` until the named condition is corrected.
+- Do not retry `tenant_disabled`, authentication/authorization failures, malformed input, `active_text_mutation_limit_exceeded`, or `payload_too_large` until the named condition is corrected.
 - `transaction_conflict` is the database HTTP 409 classification. For a write conflict, reload current state before rebuilding the mutation; retry only when replay is safe.
 - Do not blindly retry a write after a general server or network failure. The mutation may have committed before the response failed.
 - A write is safely replayable only when it is idempotent or protected by an application-level idempotency key.
@@ -125,5 +126,10 @@ Use both HTTP status and stable code. A code classifies the failure; it does not
 ## gRPC And Embedded Parity
 
 gRPC keeps the readable diagnostic in the status message and attaches the same stable code as ASCII metadata under `helix-error-code`. Use the gRPC status class and metadata together.
+
+`active_text_mutation_limit_exceeded` uses gRPC `InvalidArgument` and the
+embedded `InvalidRequest` binding category. It is a deterministic pre-commit
+rejection, not a transient rate limit or an unknown write outcome. See the
+[active-text mutation limits](https://docs.helix-db.com/database/helix-cloud/operate/limits#active-text-mutation-admission).
 
 Embedded Rust errors expose `error_code()`. UniFFI errors carry the explicit pair `error` (code) and `msg` (diagnostic), and generated SDK bindings preserve that pair. Embedded callers should not infer a code from exception text.

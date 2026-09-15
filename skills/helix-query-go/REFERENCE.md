@@ -442,7 +442,7 @@ backend and returns `204 No Content` with no query payload after at least one
 target succeeds; combine it with `helix.WriterOnly()` to target only the
 authoritative writer. The published Go v0.3.1 client accepts only HTTP 200, so
 it currently returns a remote `*helix.HelixError` for the Cloud `204`; use
-`helix query` or direct HTTP for Cloud warming. Standalone `v0.0.4` warming
+direct HTTP for Cloud warming. Standalone `v0.0.5` warming
 returns the normal 200 response.
 
 Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more likely to hit HTTP 409 write conflicts, and awaiting durability reduces them. It does not eliminate conflicts, so callers still own retry policy and must reload current state before rebuilding a conflicting mutation.

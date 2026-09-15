@@ -4,7 +4,7 @@ description: Drive the HelixDB v3 `helix` CLI for local Docker/Podman instances 
 license: MIT
 metadata:
   author: HelixDB
-  version: 4.0.0
+  version: 4.0.1
 ---
 
 # Helix CLI
@@ -18,6 +18,19 @@ bundles, push source, or sync gateway metadata.
 - Cloud `[enterprise.<name>]`: stable `tenant:<id>` or dedicated `cluster:<id>` linkage.
 - Cloud `query` and `shell`: backend query broker, never a direct gateway request.
 - Direct application gateway access: outside CLI authentication; explicitly created database key.
+
+## Local image and storage
+
+Use `ghcr.io/helixdb/helixdb:v0.0.5`. Set `tag = "v0.0.5"` in the relevant
+`[local.<name>]` block before starting an existing project or using a CLI with an
+older default. The server exposes `/healthz`, `/readyz`, and `/v2/query` on port
+8080; the CLI defaults to host port 6969 and waits for `/healthz`.
+
+Memory is the default and loses data on stop/restart. The CLI's `--disk` uses
+MinIO; `--storage-uri` selects an existing S3-compatible store. Direct Docker
+native persistence uses `HELIX_DATA_DIR` with a writable mounted directory.
+`HELIX_DATA_DIR` and `S3_BUCKET` are mutually exclusive; omit both for memory.
+Use `REFERENCE.md` for S3 flags and `EXAMPLES.md` for the distinct storage setups.
 
 ## Cloud authentication
 

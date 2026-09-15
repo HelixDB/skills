@@ -558,14 +558,14 @@ const client = new Client("http://localhost:6969");
 const request = userById().toQueryRequest(userByIdParams, { userId: "u-42" });
 
 // The Cloud service returns 204 after a successful warm. Published TypeScript
-// 3.0.4 treats that non-200 response as HelixError, so use helix query or direct
+// 3.0.4 treats that non-200 response as HelixError, so use direct
 // HTTP for Cloud warming until an SDK release accepts 204.
 await client.requestBuilder<void>().warmOnly().query(request).send(); // standalone 200
 ```
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writerOnly().warmOnly()` to warm only the authoritative writer.
-The standalone `v0.0.4` runtime warms one process and returns the normal query
+The standalone `v0.0.5` runtime warms one process and returns the normal query
 body. Warming is strictly read-only; a `WriteBatch` with
 `X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
 

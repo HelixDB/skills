@@ -684,8 +684,7 @@ await request.send(): Promise<R>           // published 3.0.4: 200 -> parsed JSO
 ```
 
 The Cloud service returns `204 No Content` after a successful warm fanout, but
-the published TypeScript 3.0.4 client accepts only 200. Use `helix query` or
-direct HTTP for Cloud warming until a newer SDK release accepts 204. Partial
+the published TypeScript 3.0.4 client accepts only 200. Use direct HTTP for Cloud warming until a newer SDK release accepts 204. Partial
 target failure is still a service-level success when at least one backend warms.
 
 Prefer `.shouldAwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.

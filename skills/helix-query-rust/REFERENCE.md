@@ -642,7 +642,7 @@ Do not use a custom decoder to turn `null` into an empty vector; that erases
 the semantic distinction.
 
 The Cloud service returns `204 No Content` after a successful warm fanout, but
-the published Rust 3.0.0 client accepts only 200. Use `helix query` or direct
+the published Rust 3.0.0 client accepts only 200. Use direct
 HTTP for Cloud warming until a newer SDK release accepts 204. Partial target
 failure is still a service-level success when at least one backend warms.
 

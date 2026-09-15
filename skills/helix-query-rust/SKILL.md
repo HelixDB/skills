@@ -4,7 +4,7 @@ description: Write and revise queries with the published HelixDB Rust SDK (`heli
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.3
+  version: 3.0.4
 ---
 
 # Helix Query Authoring — Rust
@@ -166,8 +166,8 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writer_only()` to target only the authoritative writer.
 The published Rust 3.0.0 transport accepts only HTTP 200, so it currently
-surfaces the Cloud `204` as `RemoteError`; use `helix query` or direct HTTP for
-Cloud warming. Standalone `v0.0.4` warming returns the normal 200 response.
+surfaces the Cloud `204` as `RemoteError`; use direct HTTP for
+Cloud warming. Standalone `v0.0.5` warming returns the normal 200 response.
 
 Remote and embedded failures keep the code separate from diagnostic details.
 Canonical Helix HTTP failures use `error` as the code and `msg` as the

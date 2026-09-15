@@ -4,7 +4,7 @@ description: Author and debug direct HelixDB v3 JSON query requests for POST /v2
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.2.1
+  version: 3.2.2
 ---
 
 # HelixDB v3 JSON Requests
@@ -91,13 +91,16 @@ TypeScript also accept
 Helix shapes. Preserve structured `details` and the raw response body, but do
 not present this as the Helix gateway contract. The Cloud gateway codes are
 `invalid_query_json`, `invalid_request`, `tenant_id_required`,
-`tenant_id_not_allowed`, `unauthorized`, `tenant_disabled`, `forbidden`,
+`tenant_id_not_allowed`, `active_text_mutation_limit_exceeded`, `unauthorized`,
+`tenant_disabled`, `forbidden`,
 `query_timeout`, `transaction_conflict`, `payload_too_large`, `rate_limited`,
 `internal_error`, `backend_unavailable`, and `rate_limit_unavailable`. Honor
 `Retry-After` on 429 when available, reconcile a timed-out write before
 resubmitting, and use bounded backoff with jitter only for retryable conditions.
 For a 409 write conflict, reload authoritative state before rebuilding the
-mutation. Never classify a failure by parsing its message. Read
+mutation. For `active_text_mutation_limit_exceeded`, reduce the mutation; its
+graph changes were rejected before commit. Never classify a failure by parsing
+its message. Read
 `../../docs/error-handling.md` for the status/code matrix.
 
 ## Build nested operation trees
@@ -237,12 +240,12 @@ Parameters are untagged JSON values in `parameters` and their schemas are
 }
 ```
 
-For raw HTTP JSON, use `bool`, `i64`, `string`, `date_time`, `value`, `object`,
-and recursive `array` descriptors. Send floating-point JSON values without
-`parameter_types`; the HTTP schema intentionally omits typed `f32` and `f64`.
-Raw bytes cannot be represented on this JSON route. Language SDK builders can
-still use their typed float parameter APIs because they preserve the source
-numeric type before serialization.
+For raw HTTP JSON, use `bool`, `i64`, `f32`, `f64`, `string`, `date_time`, `value`,
+`object`, and recursive `array` descriptors. The v0.0.5 decoder accepts integer
+or floating-point JSON numbers for typed floats and converts them to the declared
+type. Values must be finite; `f32` values must fit within its finite range. A
+supplied `parameter_types` map must cover every parameter. Raw bytes cannot be
+represented on this JSON route.
 
 ## Execute a request
 
@@ -291,10 +294,13 @@ cluster with no eligible target returns `503 Service Unavailable`.
 
 The current published Rust 3.0.0, TypeScript 3.0.4, Python 0.3.4, and Go 0.3.1
 SDK transports still classify this Cloud `204` as a remote error because they
-accept only HTTP 200. Use `helix query` or direct HTTP for warming until a newer
+accept only HTTP 200. Use direct HTTP for warming until a newer
 SDK release accepts `204 No Content`.
 
-The standalone `v0.0.4` runtime instead warms its single process and returns
+The CLI's `--warm` flag is local-only. Current SDK source accepts 204, but the
+published versions above do not include that fix.
+
+The standalone `v0.0.5` runtime instead warms its single process and returns
 `200 OK` with the normal query body. Header values `false` and `0` use the
 ordinary query path; warm writes and any other header value return
 `400 Bad Request`.

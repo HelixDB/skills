@@ -4,7 +4,7 @@ description: Write and revise queries with the published HelixDB TypeScript SDK 
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.3
+  version: 3.0.4
 ---
 
 # Helix Query Authoring — TypeScript
@@ -155,8 +155,8 @@ function findUsers(p = params) {
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writerOnly()` to target only the authoritative writer.
 The published TypeScript 3.0.4 transport accepts only HTTP 200, so it currently
-throws a remote `HelixError` for the Cloud `204`; use `helix query` or direct
-HTTP for Cloud warming. Standalone `v0.0.4` warming returns the normal 200
+throws a remote `HelixError` for the Cloud `204`; use direct
+HTTP for Cloud warming. Standalone `v0.0.5` warming returns the normal 200
 response.
 
 `isConflict()` and `isRateLimited()` classify HTTP 409 and 429. Reconcile a `query_timeout` write before resubmitting, honor `Retry-After` through a transport that exposes response headers, and use bounded backoff for retryable 429/503 failures. On a write conflict, reload current state before rebuilding the mutation; never blindly retry a write after a general server failure because its commit outcome may be unknown. See `../../docs/error-handling.md`.

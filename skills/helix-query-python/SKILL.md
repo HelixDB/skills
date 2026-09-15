@@ -4,7 +4,7 @@ description: Write and revise HelixDB queries with the published Python SDK v0.3
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.4
+  version: 3.0.5
 ---
 
 # Helix Query Authoring - Python
@@ -169,8 +169,8 @@ Helix Cloud fans a warm read out to every eligible backend and returns
 `204 No Content` with no query payload after at least one succeeds. Pass
 `writer_only=True` with `warm_only=True` to target only the authoritative
 writer. The published Python 0.3.4 transport accepts only HTTP 200, so it
-currently raises a remote `HelixError` for the Cloud `204`; use `helix query` or
-direct HTTP for Cloud warming. Standalone `v0.0.4` warming returns the normal
+currently raises a remote `HelixError` for the Cloud `204`; use direct HTTP for
+Cloud warming. Standalone `v0.0.5` warming returns the normal
 200 response.
 
 Prefer `await_durability=True` with `execute` or

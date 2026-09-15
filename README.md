@@ -2,9 +2,10 @@
 
 Hosted `skills.sh` repository for HelixDB agent skills.
 
-The query skills target HelixDB v3 SDK APIs. Installation commands stay
-unpinned; verify registry availability before claiming that a package is
-published.
+The query skills target the published Rust 3.0.0, TypeScript 3.0.4, Python 0.3.4,
+and Go v0.3.1 SDKs. Installation commands stay unpinned; verify registry
+availability before changing release claims. See [Source Canon](docs/source-canon.md)
+for the distinction between published packages and current source.
 
 These skills are for agents that need to:
 
@@ -62,15 +63,17 @@ them against. To stand one up locally — no Cloud login required:
 
 1. Install the [Helix CLI](https://docs.helix-db.com/cli/getting-started): `curl -sSL "https://install.helix-db.com" | bash`.
 2. Make sure **Docker or Podman is installed _and running_** — the local instance runs in a container (`docker info` should succeed).
-3. Scaffold and start a local instance:
+3. Scaffold a local instance:
    ```bash
    helix init local
-   helix start dev          # `helix run` is kept as an alias
    ```
-4. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
+4. Set `tag = "v0.0.5"` in the generated `[local.dev]` block in `helix.toml`, then run `helix start dev` (`helix run` is an alias). The explicit tag also works with CLI versions that default to an older image.
+5. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
 
-The local runtime is in-memory by
-default; `--disk` uses a CLI-managed MinIO service for persistence. The skills
+The `ghcr.io/helixdb/helixdb:v0.0.5` runtime is in-memory by default; `--disk`
+uses a CLI-managed MinIO service for persistence. Direct Docker runs also support
+native-volume storage through `HELIX_DATA_DIR`; see the
+[CLI examples](skills/helix-cli/EXAMPLES.md). The skills
 produce direct `POST /v2/query` requests for a running instance reachable at a
 server URL. Cloud CLI query execution instead uses a WorkOS session and the
 backend broker. Application gateway clients still use explicitly created database keys. There is no
@@ -225,7 +228,7 @@ It teaches agents to:
 - run the full write/maintain lifecycle (dedup-on-generate, reinforce-on-access, supersede/correct, soft-delete, decay and expiry sweeps, upsert-and-link categorisation)
 - build hybrid recall that fuses vector + BM25 app-side and expands through the graph
 
-It is TypeScript-first (`@helix-db/helix-db@3.0.0`) with a Rust v3 DSL variant in `EXAMPLES.rust.md`.
+It is TypeScript-first (`@helix-db/helix-db@3.0.4`) with a Rust v3 DSL variant in `EXAMPLES.rust.md`.
 
 ## Shared References
 
