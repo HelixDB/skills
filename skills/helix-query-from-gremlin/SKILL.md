@@ -4,12 +4,12 @@ description: Translate Gremlin and TinkerPop-style traversals into direct HelixD
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.0
+  version: 3.0.1
 ---
 
 # Gremlin To HelixDB v3 Requests
 
-Translate Gremlin into the forthcoming `helix-db = "3.0.0"` Rust SDK by turning
+Translate Gremlin into the published `helix-db = "3.0.0"` Rust SDK by turning
 imperative step chains into explicit anchors, traversals, predicates, and result
 shaping. The builder produces a direct `QueryRequest` for
 `client.query(request)`; do not introduce stored routes, registration, or bundles.

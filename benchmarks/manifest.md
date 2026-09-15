@@ -8,10 +8,10 @@ Current benchmark files:
 4. `benchmarks/cypher/case-04-case-collect-and-multihop.md`
 5. `benchmarks/gremlin/case-01-basic-traversal.md`
 6. `benchmarks/gremlin/case-02-repeat-and-range.md`
+7. `benchmarks/dynamic/case-01-error-envelope.md`
+8. `benchmarks/optimize/case-01-planner-set-count-range.md`
 
 Planned benchmark groups:
 
 1. authoring
-2. dynamic
-3. optimize
-4. sql
+2. sql

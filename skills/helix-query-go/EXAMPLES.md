@@ -1,6 +1,6 @@
 # Helix Query Authoring - Go Examples
 
-All snippets target the forthcoming v3 module and assume:
+All snippets target the published v0.3.1 server module and assume:
 
 ```go
 import helix "github.com/helixdb/helix-db/sdks/go"
@@ -294,13 +294,27 @@ func TestFindUsersRequest(t *testing.T) {
 
 ## 11. Caller-Owned Conflict Retry
 
-`Client.Exec` returns HTTP 409 as a `*helix.HelixError` with `StatusCode` set and `helix.ErrConflict` wrapped. It does not retry automatically; retry only when the operation is safe to replay.
+`Client.Exec` returns HTTP 409 as a `*helix.HelixError` with `Code`, `Details`, and
+`StatusCode` set and `helix.ErrConflict` wrapped. It does not retry automatically.
+Reload authoritative state before rebuilding a conflict and replay only when the
+operation is safe. Use the stable code rather than parsing `Details`.
 
 ```go
-func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func() helix.Request, out any) error {
+import (
+	"errors"
+	"time"
+)
+
+func ExecWithConflictRetry(ctx context.Context, client *helix.Client, reloadAndBuild func(context.Context) (helix.Request, error), out any) error {
 	for attempt := 0; attempt < 3; attempt++ {
-		err := client.Exec(ctx, build(), out)
-		if err == nil || !helix.IsConflict(err) || attempt == 2 {
+		request, err := reloadAndBuild(ctx)
+		if err != nil {
+			return err
+		}
+		err = client.Exec(ctx, request, out)
+		var helixErr *helix.HelixError
+		isTransactionConflict := errors.As(err, &helixErr) && helixErr.Code == helix.QueryErrorCode("transaction_conflict")
+		if err == nil || !helix.IsConflict(err) || !isTransactionConflict || attempt == 2 {
 			return err
 		}
 		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
@@ -308,3 +322,10 @@ func ExecWithConflictRetry(ctx context.Context, client *helix.Client, build func
 	return nil
 }
 ```
+
+In v0.3.1, a generic noncanonical `message`/`code` remote body remains raw
+`Details` and does not populate `Code`; retain `StatusCode`-aware fallback
+handling and do not call that generic shape the gateway contract.
+Reconcile a `query_timeout` write before resubmitting. Go v0.3.1 does not expose
+`Retry-After`; use a custom HTTP transport or direct HTTP when the exact Cloud
+delay is required.

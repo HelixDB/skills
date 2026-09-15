@@ -1,6 +1,6 @@
 # v3 Authoring Patterns
 
-Generic forthcoming `helix-db = "3.0.0"` Rust SDK examples. Each builder produces a
+Generic published `helix-db = "3.0.0"` Rust SDK examples. Each builder produces a
 direct `QueryRequest`; there is no route registration or bundle generation.
 
 ## Read By Indexed Identifier
