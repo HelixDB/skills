@@ -1,13 +1,13 @@
 interface:
   display_name: "Helix MCP"
-  short_description: "Inspect live Helix Cloud observability"
+  short_description: "Inspect Helix Cloud indexes and performance"
   default_prompt: "Use $helix-mcp to inspect my Helix Cloud database active indexes and recent query performance."
 
 dependencies:
   tools:
     - type: "mcp"
       value: "helix-db"
-      description: "Hosted read-only Helix Cloud MCP server"
+      description: "Unified Helix Cloud MCP endpoint; human OAuth inspection tools"
       transport: "streamable_http"
       url: "https://mcp.helix-db.com/mcp"
 

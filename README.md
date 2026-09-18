@@ -14,9 +14,9 @@ These skills are for agents that need to:
 - translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
 - build correct dynamic `POST /v2/query` payloads
-- inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the hosted read-only MCP server
-- execute authorized Helix Cloud queries through the separate Query MCP broker
-- run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
+- inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through read-only tools on the unified MCP endpoint
+- execute authorized Helix Cloud queries through query tools on the unified MCP endpoint
+- run confirmation-gated tenant and database-key mutations through administration tools on the unified MCP endpoint
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 
 ## Status
@@ -50,11 +50,16 @@ npx skills add HelixDB/skills
 
 ## Helix Cloud queries
 
-When the target is Helix Cloud, every query-authoring skill uses
-`helix-mcp` first. The agent resolves the live database and reads relevant
-active indexes, insights, latency, and recommendations before authoring,
-translating, debugging, or optimizing a query. `helix-mcp` remains read-only;
-explicit agent-side Cloud execution uses the separate `helix-query-mcp` broker.
+All MCP skills use `https://mcp.helix-db.com/mcp`. `helix-mcp` handles human OAuth
+inspection, `helix-query-mcp` handles authorized execution, and `helix-admin-mcp`
+handles customer administration. These are task boundaries on one server.
+
+Human OAuth sessions can inspect available live evidence before query authoring.
+Service credentials have query/admin tools according to project grants, but no
+discovery or observability tools; supply an authorized database reference.
+Agent registrations use `helix_get_started` and query only their ready sandbox.
+Missing telemetry does not block static authoring: state what was not verified.
+Never switch credentials or transport to bypass missing permissions.
 
 ## Running queries (prerequisites)
 
@@ -93,7 +98,7 @@ the non-interactive/agent path.
 ### `helix-mcp`
 
 Use this skill when an agent needs to inspect authorized Helix Cloud resources
-and observability data through the hosted read-only MCP server.
+and observability data through read-only tools on the unified MCP endpoint.
 
 It teaches agents to:
 
@@ -250,3 +255,10 @@ Start here when working on the next skills:
 - This repo uses the hosted `skills.sh` layout: `skills/<name>/SKILL.md`.
 - Local OpenCode discovery still uses `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/` after installation.
 - This repo is intentionally written against public Helix behavior and repo-local canonical examples rather than app-specific implementations.
+
+## Validation
+
+Run `python3 scripts/check-mcp.py` for endpoint and workflow regression checks.
+The same command runs in CI. MCP behavioral evaluation prompts and scoring
+checklists are in `benchmarks/mcp/`; passing static checks does not establish
+that an agent passed those cases or that production access was tested.

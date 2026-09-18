@@ -25,6 +25,17 @@ Use this skill when the task is to:
 
 Do **not** use this skill for generic query syntax questions. For builder/method details defer to `helix-query-typescript` (the default DSL), `helix-query-rust`, or `helix-query-json-dynamic`. This skill assumes those and focuses on the memory architecture on top of Helix.
 
+## Cloud execution
+
+For Cloud queries, follow the identity-aware access workflow in the query-authoring
+skill. Human OAuth can inspect available telemetry with `helix-mcp`; service
+credentials use supplied authorized targets; agent registrations obtain only their
+ready sandbox through `helix_get_started` in `helix-query-mcp`. Missing telemetry
+does not block design or query authoring, but do not claim live verification.
+Use `helix-query-mcp` for explicitly requested MCP execution and preserve its
+write confirmations. Do not turn memory maintenance suggestions into mutations
+without user authorization.
+
 ## First Steps
 
 1. Inspect the target repo for existing labels, edges, properties, indexes, and route style. Reuse exact casing if present.
