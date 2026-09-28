@@ -7,7 +7,7 @@ dependencies:
   tools:
     - type: "mcp"
       value: "helix-db"
-      description: "Hosted read-only Helix Cloud MCP server"
+      description: "Unified Helix Cloud MCP endpoint; available tools depend on the identity's permissions"
       transport: "streamable_http"
       url: "https://mcp.helix-db.com/mcp"
 

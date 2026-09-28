@@ -14,9 +14,9 @@ These skills are for agents that need to:
 - translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
 - build correct dynamic `POST /v2/query` payloads
-- inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the hosted read-only MCP server
-- execute authorized Helix Cloud queries through the separate Query MCP broker
-- run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
+- inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the read-only Helix Cloud MCP tools
+- execute authorized Helix Cloud queries through the Helix Cloud MCP query tools
+- run confirmation-gated tenant and database-key mutations through the Helix Cloud MCP customer administration tools
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 
 ## Status
@@ -53,8 +53,13 @@ npx skills add HelixDB/skills
 When the target is Helix Cloud, every query-authoring skill uses
 `helix-mcp` first. The agent resolves the live database and reads relevant
 active indexes, insights, latency, and recommendations before authoring,
-translating, debugging, or optimizing a query. `helix-mcp` remains read-only;
-explicit agent-side Cloud execution uses the separate `helix-query-mcp` broker.
+translating, debugging, or optimizing a query.
+
+Helix Cloud has one MCP endpoint, `https://mcp.helix-db.com/mcp`. The
+`helix-mcp`, `helix-query-mcp`, and `helix-admin-mcp` skills all use it; the
+authenticated identity's permissions decide which tools appear. `helix-mcp`
+uses only the read-only tools; explicit agent-side Cloud execution uses
+`helix-query-mcp`. See the [Helix Cloud MCP guide](https://docs.helix-db.com/database/helix-cloud/connect/mcp).
 
 ## Running queries (prerequisites)
 
@@ -93,7 +98,7 @@ the non-interactive/agent path.
 ### `helix-mcp`
 
 Use this skill when an agent needs to inspect authorized Helix Cloud resources
-and observability data through the hosted read-only MCP server.
+and observability data through the read-only Helix Cloud MCP tools.
 
 It teaches agents to:
 

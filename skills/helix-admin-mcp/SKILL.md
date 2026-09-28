@@ -1,6 +1,6 @@
 ---
 name: helix-admin-mcp
-description: Inspect customer database keys and perform explicitly requested, confirmation-gated Helix Cloud tenant or database-key mutations through the hosted Admin MCP server. Use only for create/delete tenant and create/revoke database-key operations. Never expose operational keys, bypass durable confirmation, or expand into excluded Cloud lifecycle surfaces.
+description: Inspect customer database keys and perform explicitly requested, confirmation-gated Helix Cloud tenant or database-key mutations through the customer administration tools on the unified Helix Cloud MCP endpoint (https://mcp.helix-db.com/mcp). Use only for create/delete tenant and create/revoke database-key operations. Never expose operational keys, bypass durable confirmation, or expand into excluded Cloud lifecycle surfaces.
 license: MIT
 metadata:
   author: HelixDB
@@ -9,9 +9,11 @@ metadata:
 
 # Helix Admin MCP
 
-Use the Admin MCP server only when the user explicitly requests an in-scope resource mutation.
-Interactive principals use WorkOS OAuth. Headless automation may use a project-scoped service
-credential. Application database keys do not authenticate MCP.
+Use the customer administration tools on the unified Helix Cloud MCP endpoint,
+`https://mcp.helix-db.com/mcp`, only when the user explicitly requests an in-scope resource mutation.
+The identity's permissions decide which tools appear. Human users use WorkOS OAuth. Headless
+automation may configure a project-scoped service credential as a bearer token in the client. Agent
+registrations do not receive these tools. Application database keys do not authenticate MCP.
 
 ## Tools and operations
 
@@ -21,19 +23,21 @@ credential. Application database keys do not authenticate MCP.
 
 Supported operation identifiers:
 
-- `create_tenant` (creates a default read-write application key and returns its raw token once)
+- `create_tenant` (returns `tenant_id` and `slug`; no application key. If a direct gateway client
+  needs a key, run a separately authorized `create_database_key`.)
 - `delete_tenant`
 - `create_database_key` (`read_only` or `read_write`; raw token returns once)
 - `revoke_database_key`
 
 Targets use canonical project/database references required by the tool. Resolve names first and never
-guess. Read operations require management read; mutations require management write. Query permissions
-are independent and are not used for these admin operations.
+guess. Read operations require management read; mutations require management write
+(service-credential grants `project-read` / `project-write`). Query permissions are independent and
+are not used for these admin operations.
 
 ## Durable confirmation
 
 Prepare only after reviewing the exact validated target and payload with the user. Execute with the
-same principal, Admin MCP audience, operation, target, payload, confirmation ID, and token. Do not
+same principal and audience, operation, target, payload, confirmation ID, and token. Do not
 retry execution after any response, timeout, transport, gateway, or ambiguous failure. A consumed or
 expired confirmation is final across all replicas.
 

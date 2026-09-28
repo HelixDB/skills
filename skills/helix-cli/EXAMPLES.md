@@ -86,4 +86,6 @@ helix service-credential create --workspace workspace_123 --name agent \
   --grant project_123=query-read
 ```
 
-Capture the token once for the intended MCP audience. Do not use it with `helix auth`.
+Capture the token once in a secrets manager and configure it as a bearer token for
+`https://mcp.helix-db.com/mcp` in the MCP client's secure credential settings. Do not use it with
+`helix auth`.
