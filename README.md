@@ -2,7 +2,7 @@
 
 Hosted `skills.sh` repository for HelixDB agent skills.
 
-The query skills target the published Rust 3.0.0, TypeScript 3.0.4, Python 0.3.4,
+The query skills target the published Rust 3.0.0, TypeScript 3.2.0, Python 0.3.4,
 and Go v0.3.1 SDKs. Installation commands stay unpinned; verify registry
 availability before changing release claims. See [Source Canon](docs/source-canon.md)
 for the distinction between published packages and current source.
@@ -233,7 +233,7 @@ It teaches agents to:
 - run the full write/maintain lifecycle (dedup-on-generate, reinforce-on-access, supersede/correct, soft-delete, decay and expiry sweeps, upsert-and-link categorisation)
 - build hybrid recall that fuses vector + BM25 app-side and expands through the graph
 
-It is TypeScript-first (`@helix-db/helix-db@3.0.4`) with a Rust v3 DSL variant in `EXAMPLES.rust.md`.
+It is TypeScript-first (`@helix-db/helix-db@3.2.0`) with a Rust v3 DSL variant in `EXAMPLES.rust.md`.
 
 ## Shared References
 

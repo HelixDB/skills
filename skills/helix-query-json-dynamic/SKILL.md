@@ -292,13 +292,12 @@ the authoritative writer. Partial backend failure is best-effort success; if
 every target fails, the normal deterministic error is returned. A managed
 cluster with no eligible target returns `503 Service Unavailable`.
 
-The current published Rust 3.0.0, TypeScript 3.0.4, Python 0.3.4, and Go 0.3.1
-SDK transports still classify this Cloud `204` as a remote error because they
-accept only HTTP 200. Use direct HTTP for warming until a newer
-SDK release accepts `204 No Content`.
+TypeScript 3.1.0 and later treat this Cloud `204` as success. The published
+Rust 3.0.0, Python 0.3.4, and Go 0.3.1 SDK transports still classify it as a
+remote error because they accept only HTTP 200; use direct HTTP for warming from
+those SDKs until a newer release accepts `204 No Content`.
 
-The CLI's `--warm` flag is local-only. Current SDK source accepts 204, but the
-published versions above do not include that fix.
+The CLI's `--warm` flag is local-only.
 
 The standalone runtime instead warms its single process and returns
 `200 OK` with the normal query body. Header values `false` and `0` use the

@@ -147,13 +147,13 @@ with `400 Bad Request` before backend execution, and a managed cluster with no
 eligible warming target returns `503 Service Unavailable`. Authentication, read
 rate limits, retries, and normal query timeouts still apply.
 
-The current published Rust 3.0.0, TypeScript 3.0.4, Python 0.3.4, and Go 0.3.1
-SDK transports treat only HTTP 200 as success, so they currently surface this
-Cloud `204` as a remote error. Use direct HTTP for Cloud warming
-until an SDK release accepts `204 No Content`.
+TypeScript 3.1.0 and later treat this Cloud `204` as success; `send()` resolves
+`undefined`. The published Rust 3.0.0, Python 0.3.4, and Go 0.3.1 SDK transports
+treat only HTTP 200 as success, so they surface the Cloud `204` as a remote
+error. Use direct HTTP for Cloud warming from those SDKs until a release accepts
+`204 No Content`.
 
-The CLI's `--warm` flag is local-only and cannot warm a Cloud database. Current
-SDK source accepts 204, but that fix is absent from these published versions.
+The CLI's `--warm` flag is local-only and cannot warm a Cloud database.
 
 ## Query Failures
 
