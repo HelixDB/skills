@@ -4,7 +4,7 @@ description: Translate legacy HelixDB HQL (.hx QUERY/RETURN syntax) into direct 
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.2
+  version: 3.0.3
 ---
 
 # HQL To Helix DSL Queries
