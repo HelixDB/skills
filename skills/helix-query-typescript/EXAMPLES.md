@@ -565,7 +565,7 @@ await client.requestBuilder<void>().warmOnly().query(request).send(); // standal
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writerOnly().warmOnly()` to warm only the authoritative writer.
-The standalone `v0.0.5` runtime warms one process and returns the normal query
+The standalone runtime warms one process and returns the normal query
 body. Warming is strictly read-only; a `WriteBatch` with
 `X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
 

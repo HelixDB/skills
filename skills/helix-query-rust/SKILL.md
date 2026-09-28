@@ -167,7 +167,7 @@ backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writer_only()` to target only the authoritative writer.
 The published Rust 3.0.0 transport accepts only HTTP 200, so it currently
 surfaces the Cloud `204` as `RemoteError`; use direct HTTP for
-Cloud warming. Standalone `v0.0.5` warming returns the normal 200 response.
+Cloud warming. Standalone runtime warming returns the normal 200 response.
 
 Remote and embedded failures keep the code separate from diagnostic details.
 Canonical Helix HTTP failures use `error` as the code and `msg` as the

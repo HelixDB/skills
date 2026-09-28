@@ -5,7 +5,8 @@
 ```text
 helix init local [--name N] [--port P] [--disk | --storage-uri s3://...]
 helix add local --name N [--port P] [--disk | --storage-uri s3://...]
-helix start [INSTANCE] [--foreground] [--port P] [--disk | --storage-uri s3://...] [--persist]
+helix start [INSTANCE] [--foreground] [--port P] [--disk | --storage-uri s3://...]
+            [--image-version TAG|sha256:DIGEST] [--pull always|missing|never] [--persist]
 helix stop|restart|status [INSTANCE]
 helix logs [INSTANCE] [--follow]
 helix prune [INSTANCE] [--all] [--yes]
@@ -18,15 +19,17 @@ Supply `--storage-uri` when selecting S3 storage; `start` can also override the
 options of an existing S3 instance. Credentials come from the standard AWS
 environment variables or the project-root `.env`, not `helix.toml`.
 
-Pin `ghcr.io/helixdb/helixdb:v0.0.5` through the local block below, including
-when using an older CLI with a different default. `start` publishes the configured
-host port to container port 8080 and waits for `GET /healthz`.
+CLI 3.3.0 defaults to `ghcr.io/helixdb/helixdb:v0.0.6`; the saved `tag` in the
+local block below overrides that default. `--image-version` overrides the tag for
+one run, and `--pull` defaults to `always` for `latest` and `missing` otherwise.
+`start` publishes the configured host port to container port 8080 and waits for
+`GET /healthz`.
 
 Storage is memory by default; `stop` and `restart` discard memory data.
 `--disk` starts CLI-managed MinIO and preserves its volume on stop; `prune`
 deletes it. `--storage-uri` uses an externally owned S3-compatible store whose
-data is not deleted by the CLI. `start --persist` saves the resolved port/storage
-settings. Direct Docker native volumes use `HELIX_DATA_DIR`; see `EXAMPLES.md`.
+data is not deleted by the CLI. `start --persist` saves the resolved port, storage,
+and image settings. Direct Docker native volumes use `HELIX_DATA_DIR`; see `EXAMPLES.md`.
 
 ## Query
 
@@ -75,7 +78,7 @@ workspace_id = "workspace-id" # optional stable link
 [local.dev]
 port = 6969
 image = "ghcr.io/helixdb/helixdb"
-tag = "v0.0.5"
+tag = "v0.0.6"
 storage = "memory"
 
 [enterprise.production]

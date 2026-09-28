@@ -71,7 +71,7 @@ Runtime values are ordinary JSON. Add a schema when the SDK/query declares one:
 The full request still needs the normal envelope and query batch.
 
 For raw HTTP JSON, use `bool`, `i64`, `f32`, `f64`, `string`, `date_time`, `value`,
-`object`, and recursive `array` descriptors. The v0.0.5 decoder accepts integer
+`object`, and recursive `array` descriptors. The v0.0.6 decoder accepts integer
 and floating-point JSON numbers for `f32`/`f64` and converts them to the declared
 type. Values must be finite; `f32` values must fit within its finite range.
 Floating-point parameters may also be untyped, but a supplied `parameter_types`
@@ -111,7 +111,7 @@ A write request uses `request_type: "write"` and a `write` batch:
 }
 ```
 
-On a clean `ghcr.io/helixdb/helixdb:v0.0.5` instance, the response is normalized:
+On a clean `ghcr.io/helixdb/helixdb:v0.0.6` instance, the response is normalized:
 
 ```json
 {
@@ -132,7 +132,7 @@ For a direct read request, warming uses the same body plus:
 X-Helix-Warm: true
 ```
 
-On the standalone `ghcr.io/helixdb/helixdb:v0.0.5` runtime, a warm read executes
+On the standalone runtime, a warm read executes
 on the single process and returns `200 OK` with the normal normalized response.
 
 On Helix Cloud, the `/v2/query` gateway fans the same read out to every eligible

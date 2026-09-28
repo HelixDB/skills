@@ -170,7 +170,7 @@ Helix Cloud fans a warm read out to every eligible backend and returns
 `writer_only=True` with `warm_only=True` to target only the authoritative
 writer. The published Python 0.3.4 transport accepts only HTTP 200, so it
 currently raises a remote `HelixError` for the Cloud `204`; use direct HTTP for
-Cloud warming. Standalone `v0.0.5` warming returns the normal
+Cloud warming. Standalone runtime warming returns the normal
 200 response.
 
 Prefer `await_durability=True` with `execute` or

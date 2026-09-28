@@ -72,10 +72,10 @@ them against. To stand one up locally — no Cloud login required:
    ```bash
    helix init local
    ```
-4. Set `tag = "v0.0.5"` in the generated `[local.dev]` block in `helix.toml`, then run `helix start dev` (`helix run` is an alias). The explicit tag also works with CLI versions that default to an older image.
+4. Run `helix start dev` (`helix run` is an alias). CLI 3.3.0 saves `tag = "v0.0.6"` in the generated `[local.dev]` block; for an existing project, set that tag before starting it.
 5. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
 
-The `ghcr.io/helixdb/helixdb:v0.0.5` runtime is in-memory by default; `--disk`
+The `ghcr.io/helixdb/helixdb:v0.0.6` runtime is in-memory by default; `--disk`
 uses a CLI-managed MinIO service for persistence. Direct Docker runs also support
 native-volume storage through `HELIX_DATA_DIR`; see the
 [CLI examples](skills/helix-cli/EXAMPLES.md). The skills

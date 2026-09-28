@@ -241,7 +241,7 @@ Parameters are untagged JSON values in `parameters` and their schemas are
 ```
 
 For raw HTTP JSON, use `bool`, `i64`, `f32`, `f64`, `string`, `date_time`, `value`,
-`object`, and recursive `array` descriptors. The v0.0.5 decoder accepts integer
+`object`, and recursive `array` descriptors. The v0.0.6 decoder accepts integer
 or floating-point JSON numbers for typed floats and converts them to the declared
 type. Values must be finite; `f32` values must fit within its finite range. A
 supplied `parameter_types` map must cover every parameter. Raw bytes cannot be
@@ -300,7 +300,7 @@ SDK release accepts `204 No Content`.
 The CLI's `--warm` flag is local-only. Current SDK source accepts 204, but the
 published versions above do not include that fix.
 
-The standalone `v0.0.5` runtime instead warms its single process and returns
+The standalone runtime instead warms its single process and returns
 `200 OK` with the normal query body. Header values `false` and `0` use the
 ordinary query path; warm writes and any other header value return
 `400 Bad Request`.

@@ -10,13 +10,12 @@ success 204. Current SDK source accepts 204; a main-branch implementation is not
 evidence that the same behavior has shipped in those package versions. Use direct
 HTTP for Cloud warming, since the current CLI's `--warm` flag is local-only.
 
-The published Docker image `ghcr.io/helixdb/helixdb:v0.0.5` supports Linux amd64
-and arm64. Native-volume persistence and typed `f32`/`f64` JSON parameters were
-verified against the released arm64 image, including integer JSON values for
-typed floats. [HelixDB PR #1099](https://github.com/HelixDB/helix-db/pull/1099)
-has merged the CLI default and public Docker/OpenAPI corrections for those behaviors.
-Until a CLI containing that update is installed, pin `tag = "v0.0.5"` explicitly
-in `helix.toml`; existing projects also retain their saved tag.
+The published Docker image `ghcr.io/helixdb/helixdb:v0.0.6` supports Linux amd64
+and arm64 and is the default of the released CLI 3.3.0, which saves it as the
+`tag` of new local blocks in `helix.toml`. Native-volume persistence, typed
+`f32`/`f64` JSON parameters (including integer JSON values), normalized
+responses, and standalone warming were verified against the released arm64
+image. Existing projects retain their saved tag; set `tag = "v0.0.6"` to upgrade.
 
 Planner source links describe the current main-branch model. Verify the deployed
 engine's version and actual plan before promising that a specific optimization

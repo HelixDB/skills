@@ -330,7 +330,7 @@ current element's property.
 The raw HTTP scalar schema names are `bool`, `i64`, `f32`, `f64`, `string`,
 `date_time`, `value`, and `object`. Arrays use recursive `{ "array": <schema> }` descriptors.
 When `parameter_types` is present, its keys must exactly match `parameters`;
-typed and untyped values cannot be mixed. The v0.0.5 decoder accepts integer
+typed and untyped values cannot be mixed. The v0.0.6 decoder accepts integer
 and floating-point JSON numbers for `f32`/`f64` and converts them to the declared
 type. Values must be finite; `f32` values must fit within its finite range.
 Raw bytes cannot be represented on the JSON route.
@@ -412,4 +412,4 @@ parity.
   retain legacy `error`/`code`, generic remote `code`/`message`/`details`,
   raw/plain-text bodies, and unknown future codes without mislabeling the
   generic shape as the gateway contract.
-- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.5`.
+- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.6`.
