@@ -117,7 +117,8 @@ parameterized routes — they accept `PropertyInput.param(...)`,
 For exact vector or BM25 prefiltering, build the candidate node or edge stream
 first, then call `.vectorSearch[With](...)` or `.textSearch[With](...)` on that
 stream. Source-level vector and text search methods rank the whole tenant
-partition; filtering after them can return fewer than `k` eligible hits.
+partition; filtering after them can return fewer than `k` eligible hits. See
+[Prefiltering](https://docs.helix-db.com/database/helix-db/query-guides/prefiltering).
 
 ### 6. Use Traversal Controls Deliberately
 
@@ -158,7 +159,7 @@ The client treats that `204` as success and `send()` resolves `undefined`, so
 build warm requests with `requestBuilder<void>()`. Standalone runtime warming
 returns the normal 200 response.
 
-`isConflict()` and `isRateLimited()` classify HTTP 409 and 429; `isRetryable()` is true only when the server marked the failure `retryable`. Reconcile a `query_timeout` write before resubmitting, honor `Retry-After` through a transport that exposes response headers, and use bounded backoff for retryable 429/503 failures. On a write conflict, reload current state before rebuilding the mutation; never blindly retry a write after a general server failure because its commit outcome may be unknown. See `../../docs/error-handling.md`.
+`isConflict()` and `isRateLimited()` classify HTTP 409 and 429; `isRetryable()` is true only when the server marked the failure `retryable`. Reconcile a `query_timeout` write before resubmitting, honor `Retry-After` through a transport that exposes response headers, and use bounded backoff for retryable 429/503 failures. On a write conflict, reload current state before rebuilding the mutation; never blindly retry a write after a general server failure because its commit outcome may be unknown. See `../../docs/error-handling.md` and the [Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling).
 
 ## Number & DateTime Handling
 

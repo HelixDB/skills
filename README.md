@@ -84,7 +84,10 @@ server URL. Cloud CLI query execution instead uses a WorkOS session and the
 backend broker. Application gateway clients still use explicitly created database keys. There is no
 `helix compile`/`helix check` step — queries are validated server-side when
 sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and
-the non-interactive/agent path.
+the non-interactive/agent path. When a command or query fails, see
+[CLI troubleshooting](https://docs.helix-db.com/cli/troubleshooting),
+[query troubleshooting](https://docs.helix-db.com/database/helix-db/query-guides/troubleshooting),
+and the [Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling).
 
 ## Repository Layout
 

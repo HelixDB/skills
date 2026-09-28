@@ -15,7 +15,8 @@ one direct operation-tree query sent to `POST /v2/query`.
 For query failures, also read `../../docs/error-handling.md`; it defines the
 canonical Helix HTTP envelope, legacy migration, defensive generic-remote
 decoding, open-string codes, preserved metadata, and retry boundaries shared by
-every SDK.
+every SDK. Look up individual codes in the [Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling)
+and symptoms in [query troubleshooting](https://docs.helix-db.com/database/helix-db/query-guides/troubleshooting).
 
 ## Helix Cloud MCP requirement
 
@@ -144,6 +145,8 @@ serializes from the outside inward:
 Do not flatten this into a list. The nested tree is the v3 wire contract.
 
 ### Traversal-scoped vector and Full Text Search prefilter
+
+See [Prefiltering](https://docs.helix-db.com/database/helix-db/query-guides/prefiltering) for the semantics.
 
 Wrap the candidate operation under `vector_search_nodes_within` or
 `vector_search_edges_within`:

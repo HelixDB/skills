@@ -189,7 +189,8 @@ code, so retain status-aware fallback handling. Do not describe that generic
 shape as the gateway contract. Preserve unknown codes and never parse
 `details`. Reconcile a `query_timeout` write before resubmitting. The SDK does
 not expose `Retry-After`; use direct HTTP when the exact Cloud delay is
-required. See `../../docs/error-handling.md`.
+required. See `../../docs/error-handling.md` and the
+[Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling).
 
 ### 6. Shape Responses Deliberately
 
@@ -239,6 +240,7 @@ partition; a later `.where(...)` is a post-filter and can return fewer than
 
 Pass the same tenant partition used to construct candidates. Project
 `$distance` for vector hits or `$score` for text hits before navigating away.
+See [Prefiltering](https://docs.helix-db.com/database/helix-db/query-guides/prefiltering).
 
 ## Validation Checklist
 

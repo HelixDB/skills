@@ -2,7 +2,7 @@
 
 Use the stable error code for control flow and the diagnostic message for logs or user-facing context. Error messages may change; codes are compatibility identifiers.
 
-The canonical local query catalog is [Handle query errors](https://github.com/HelixDB/helix-db/blob/5ec14e5f8cf059aa03f42917d560b3cded09fb26/docs/database/helix-db/query-guides/error-handling.mdx). The separate [Cloud gateway catalog](https://github.com/HelixDB/helix-db/blob/5ec14e5f8cf059aa03f42917d560b3cded09fb26/docs/database/helix-cloud/operate/error-handling.mdx) defines the managed-gateway statuses and codes. Keep exhaustive database error catalogs upstream; this guide records the transport contract and decisions that recur across the skills.
+The canonical database error catalog is the [Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling). The separate [Helix Cloud gateway errors](https://docs.helix-db.com/database/helix-cloud/operate/error-handling) page defines the managed-gateway statuses and codes. For symptom-driven debugging, see [query troubleshooting](https://docs.helix-db.com/database/helix-db/query-guides/troubleshooting). Keep exhaustive database error catalogs upstream; this guide records the transport contract and decisions that recur across the skills.
 
 ## HTTP Contract
 

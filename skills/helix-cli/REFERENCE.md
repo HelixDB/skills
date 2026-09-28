@@ -44,7 +44,7 @@ linked instance; multiple candidates require an explicit instance. Query bundles
 
 Query failures use the stable `error` code and diagnostic `msg` inside the decoded
 query response. Preserve unknown codes and the HTTP status; see
-`../../docs/error-handling.md`. Cloud query execution follows the no-retry boundary
+`../../docs/error-handling.md` and the [Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling). Cloud query execution follows the no-retry boundary
 in `SKILL.md`; direct SDK/HTTP retry guidance does not authorize a CLI replay.
 
 ## Cloud

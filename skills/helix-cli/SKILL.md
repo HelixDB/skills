@@ -96,5 +96,7 @@ Do not use or recommend `push`, `sync`, `auth create-key`, `workspace switch`, q
 dedicated-cluster lifecycle, networking, regions/SKUs, branches/backups, schema introspection,
 execution polling/cancellation, webhooks, or project update.
 
-Open `REFERENCE.md` for exact commands/config and `EXAMPLES.md` for safe sessions. Use a
+Open `REFERENCE.md` for exact commands/config and `EXAMPLES.md` for safe sessions. For auth,
+ambiguous-target, query-permission, and local-connection failures, see
+[CLI troubleshooting](https://docs.helix-db.com/cli/troubleshooting). Use a
 `helix-query-*` skill to author v3 request bodies.

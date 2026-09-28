@@ -207,6 +207,7 @@ Do not:
 - `skills/helix-query-json-dynamic/REFERENCE.md`
 - `https://docs.helix-db.com/openapi.json`
 - `https://docs.helix-db.com/database/helix-db/query-guides/http-api`
+- `https://docs.helix-db.com/database/helix-db/query-guides/error-handling`
 - `https://docs.helix-db.com/database/helix-cloud/operate/error-handling`
 - `https://docs.helix-db.com/database/helix-cloud/operate/limits`
 - `https://docs.helix-db.com/database/helix-db/core-concepts/overview`

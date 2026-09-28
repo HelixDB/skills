@@ -239,3 +239,4 @@ Before finishing:
 - `EXAMPLES.md` — lifecycle scenarios as `@helix-db/helix-db@3.2.0` TypeScript snippets. **Default.**
 - `EXAMPLES.rust.md` — the same scenarios in the Rust DSL.
 - Adjacent skills: `helix-query-typescript`, `helix-query-rust`, `helix-query-json-dynamic`, `helix-query-optimize`.
+- Background docs: [long-term memory for AI agents](https://docs.helix-db.com/learn/ai-memory/long-term-memory-for-ai-agents), [GraphRAG](https://docs.helix-db.com/learn/ai-memory/what-is-graphrag), [filtered vector search](https://docs.helix-db.com/learn/vector-search/filtered-vector-search), and [Prefiltering](https://docs.helix-db.com/database/helix-db/query-guides/prefiltering) for the exact traversal-scoped search contract.

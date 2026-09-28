@@ -1,6 +1,6 @@
 # Source Canon
 
-This repository should use public Helix documentation and repo-local canonical examples as its primary references. The SDK, error-transport, CLI-auth, HTTP/OpenAPI, and planner guidance was last reviewed against `HelixDB/helix-db` main at `5ec14e5f8cf059aa03f42917d560b3cded09fb26`.
+This repository should use public Helix documentation and repo-local canonical examples as its primary references. The SDK, error-transport, CLI-auth, HTTP/OpenAPI, and planner guidance was last reviewed against `HelixDB/helix-db` main at `5ec14e5f8cf059aa03f42917d560b3cded09fb26`. The MCP endpoint, local image default, TypeScript SDK pin, and error/troubleshooting links were re-checked on 2026-09-28 against main at `6ff34eb991170b49fe1c259040fb887a672de0f9` and the released CLI `v3.3.0`.
 
 ## Verified release boundaries
 
@@ -60,17 +60,15 @@ Use these for product semantics and supported behavior:
 - `https://docs.helix-db.com/database/helix-db/query-guides/secondary-indexes`
 - `https://docs.helix-db.com/database/helix-db/query-guides/vector-indexes`
 - `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
+- `https://docs.helix-db.com/database/helix-db/query-guides/prefiltering`
 - `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
 - `https://docs.helix-db.com/database/helix-db/query-guides/parameters`
 - `https://docs.helix-db.com/database/helix-db/query-guides/http-api`
+- `https://docs.helix-db.com/database/helix-db/query-guides/error-handling`
+- `https://docs.helix-db.com/database/helix-db/query-guides/troubleshooting`
 - `https://docs.helix-db.com/database/helix-cloud/operate/error-handling`
 - `https://docs.helix-db.com/database/helix-cloud/operate/limits`
-- `https://docs.helix-db.com/database/helix-db/query-guides/traversals`
-- `https://docs.helix-db.com/database/helix-db/query-guides/filtering`
-- `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
-- `https://docs.helix-db.com/database/helix-db/query-guides/projections`
-- `https://docs.helix-db.com/database/helix-db/query-guides/vector-indexes`
-- `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
+- `https://docs.helix-db.com/cli/troubleshooting`
 
 Use these for skill packaging and discovery behavior:
 
