@@ -4,7 +4,7 @@ description: Inspect customer database keys and perform explicitly requested, co
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.0.0
+  version: 1.0.1
 ---
 
 # Helix Admin MCP

@@ -4,7 +4,7 @@ description: Author and debug direct HelixDB v3 JSON query requests for POST /v2
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.2.2
+  version: 3.2.3
 ---
 
 # HelixDB v3 JSON Requests

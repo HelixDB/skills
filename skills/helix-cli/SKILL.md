@@ -4,7 +4,7 @@ description: Drive the HelixDB v3 `helix` CLI for local Docker/Podman instances 
 license: MIT
 metadata:
   author: HelixDB
-  version: 4.0.1
+  version: 4.0.2
 ---
 
 # Helix CLI

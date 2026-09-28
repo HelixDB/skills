@@ -4,7 +4,7 @@ description: Review and improve HelixDB v3 query performance against the current
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.2.2
+  version: 3.2.3
 ---
 
 # HelixDB v3 Query Optimization

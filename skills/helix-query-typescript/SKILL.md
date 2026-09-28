@@ -4,7 +4,7 @@ description: Write and revise queries with the published HelixDB TypeScript SDK 
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.4
+  version: 3.0.5
 ---
 
 # Helix Query Authoring — TypeScript

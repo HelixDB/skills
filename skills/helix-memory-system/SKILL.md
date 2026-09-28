@@ -4,7 +4,7 @@ description: Design and operate an advanced AI agent memory system with the publ
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.2
+  version: 3.0.3
 ---
 
 # Helix Memory System

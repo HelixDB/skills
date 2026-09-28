@@ -4,7 +4,7 @@ description: Write and revise HelixDB queries with the published Python SDK v0.3
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.5
+  version: 3.0.6
 ---
 
 # Helix Query Authoring - Python

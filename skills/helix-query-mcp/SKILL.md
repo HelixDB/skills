@@ -4,7 +4,7 @@ description: Execute authorized Helix Cloud v3 database reads and confirmation-g
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.0.0
+  version: 1.0.1
 ---
 
 # Helix Query MCP
