@@ -17,6 +17,7 @@ These skills are for agents that need to:
 - inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the hosted read-only MCP server
 - execute authorized Helix Cloud queries through the separate Query MCP broker
 - run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
+- read and ask Helix Foundry ontologies, and run confirmation-gated Foundry syncs, generations and loads, through the hosted Helix MCP server
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 
 ## Status
@@ -27,6 +28,8 @@ Available now:
 - `helix-mcp`
 - `helix-query-mcp`
 - `helix-admin-mcp`
+- `helix-foundry-mcp`
+- `helix-foundry-actions-mcp`
 - `helix-query-from-cypher`
 - `helix-query-from-gremlin`
 - `helix-query-from-hql`
@@ -55,6 +58,25 @@ When the target is Helix Cloud, every query-authoring skill uses
 active indexes, insights, latency, and recommendations before authoring,
 translating, debugging, or optimizing a query. `helix-mcp` remains read-only;
 explicit agent-side Cloud execution uses the separate `helix-query-mcp` broker.
+
+## Helix Foundry
+
+`helix-foundry-mcp` reads a workspace's Foundry ontologies, their versions, loads
+and graph, and asks Foundry's query agent questions with cited answers.
+`helix-foundry-actions-mcp` runs the changes a user asks for (create an ontology,
+sync a connector, generate a draft, make a version or load current, create a
+load), each through a one-time confirmation.
+
+Both use the hosted Helix MCP server. Sign in once and the agent acts as you:
+
+```bash
+claude mcp add --transport http helix https://mcp.helix-db.com/mcp   # then /mcp to sign in
+codex mcp add helix --url https://mcp.helix-db.com/mcp && codex mcp login helix
+```
+
+Without a browser (CI), send a service key instead. A key reaches only the
+ontologies its project grants allow, and can read, ask and run loads, but not
+sync, generate or create ontologies.
 
 ## Running queries (prerequisites)
 

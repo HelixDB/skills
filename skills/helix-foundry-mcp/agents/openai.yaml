@@ -1,0 +1,15 @@
+interface:
+  display_name: "Helix Foundry MCP"
+  short_description: "Read and ask Helix Foundry ontologies"
+  default_prompt: "Use $helix-foundry-mcp to explore my Helix Foundry ontology and answer questions about its data with citations."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "helix-db"
+      description: "Hosted Helix Cloud MCP server"
+      transport: "streamable_http"
+      url: "https://mcp.helix-db.com/mcp"
+
+policy:
+  allow_implicit_invocation: true
