@@ -24,7 +24,7 @@ connector credential, and never put an MCP credential in a query or a report.
 - `helix_foundry_list_ontologies`
 - `helix_foundry_get_ontology`
 - `helix_foundry_get_version`
-- `helix_foundry_list_data` (users only)
+- `helix_foundry_list_connectors` (users only)
 - `helix_foundry_read_guide`
 - `helix_foundry_read_graph`
 - `helix_foundry_ask`
@@ -52,13 +52,20 @@ direct API calls, database keys or raw queries.
 
 ## Resolve the ontology first
 
-1. **Users:** call `helix_list_workspaces` and pick the requested workspace.
-   **Service keys** don't get that tool; use the workspace the user names.
+1. **Users:** call `helix_list_workspaces` and pick the requested workspace; every
+   Foundry read tool needs its `workspace_id`. **Service keys** don't get that tool;
+   leave `workspace_id` empty for the key's own workspace.
 2. Call `helix_foundry_list_ontologies` for the workspace. Each ontology lists its
    current version and current load, and any load, extract or delete that is
    running. A service key sees only the ontologies it can query.
 3. Call `helix_foundry_get_ontology` for the chosen one. It returns the current
-   version's definition and the first page of versions, loads and generations.
+   version, the newest 20 versions and generations, the loads and the document sets,
+   without definitions.
+4. For what the ontology models, call `helix_foundry_get_version` with the current
+   version's id (or another version's). An agent draft comes without the agent's
+   working notes; its `ontology_toml`, `mappings_toml`, `questions` and `summary` are
+   at the top. A definition past 256 KiB is refused (`failed_precondition`): point
+   the user to the Foundry website.
 
 If names are ambiguous, show the matches and ask. Do not guess. A missing
 ontology may not exist or may not be visible to this caller; do not say which.
@@ -67,8 +74,9 @@ ontology may not exist or may not be visible to this caller; do not say which.
 
 | The user wants | Use |
 | --- | --- |
-| What the ontology models: types, links, mappings, rules | `helix_foundry_get_ontology`, or `helix_foundry_get_version` for another version, such as a generation's draft |
-| Which sources feed the workspace, and when they last synced | `helix_foundry_list_data` (connectors, their synced tables and last sync, document sets) |
+| What the ontology models: types, links, mappings, rules | `helix_foundry_get_version`, for the current version or another, such as a generation's draft |
+| Which sources feed the workspace, and when they last synced | `helix_foundry_list_connectors` (connectors, their synced tables and last sync) |
+| An ontology's documents | `helix_foundry_get_ontology` (its document sets) |
 | Exact records, counts, groups or paths | `helix_foundry_read_guide`, then a `query` read |
 | Why a fact holds, or which rules break | an `explain`, `entity` or `violations` read |
 | Where a value came from | an `evidence` read |
@@ -84,8 +92,9 @@ Call `helix_foundry_read_guide` once per session before the first read. It retur
 the read contract with every read kind and its fields. Build reads from it; do not
 invent fields.
 
-`helix_foundry_read_graph` takes 1 to 20 reads of one load (the current one by
-default). The kinds:
+`helix_foundry_read_graph` takes 1 to 20 reads of one load: the current one by
+default, or a named load that is ready, partial or failed. An ontology with no
+current load can't be read (`failed_precondition`). The kinds:
 
 - `query`: a typed question: a start, path steps, filters, then rows, a count,
   grouped counts or aggregates. Use it for an entity's properties too: start from
@@ -102,8 +111,8 @@ Batch related reads in one call. A `query` returns at most 200 rows with no pagi
 compare the rows to its total and say when the result is cut short. Each read can
 fail on its own (`budget`, `hub`, `too_broad`, `unknown_entity`, `invalid`, `store`)
 while the others succeed: narrow that read rather than retrying it as is. A
-`rate_limited` call means too many reads at once or too large a result: send fewer
-or narrower reads.
+`resource_exhausted` call means too many reads running in the workspace or a
+result over 3 MiB: send fewer or narrower reads.
 
 ## Ask
 
@@ -113,11 +122,12 @@ or narrower reads.
   retry with the same token: it returns the same question instead of asking (and
   paying) again. To ask again after a question failed, use a new token; the old one
   returns the failed question.
-- Continue a conversation with the thread id: the id of the thread's first question.
-- To ask about one record, pass a focus: its type and stored id from a read, not
-  its display name.
-- If it returns without a result, call `helix_foundry_get_question` until the
-  question finishes. Each call waits up to 25 seconds. A question can stay queued
+- Continue a conversation by passing a question's `thread_id`; leave it empty to
+  start a new one.
+- To ask about one record, pass a focus: its `type` and `id` exactly as a read
+  returned them, not its display name.
+- If it returns with `done: false`, call `helix_foundry_get_question` with its `id`
+  until `done` is true. Each call waits up to 25 seconds. A question can stay queued
   while the workspace's other questions run; keep polling.
 
 A question ends `answered`, `cannot_answer`, `failed` or `cancelled`:
@@ -133,9 +143,9 @@ A question ends `answered`, `cannot_answer`, `failed` or `cancelled`:
 - `cancelled`: someone cancelled it in the Foundry website.
 
 Ask needs a ready or partial load. A workspace has an hourly question limit and a
-monthly question budget. Past the hourly limit the call fails with `rate_limited`;
-once the month's budget is spent it fails with `failed_precondition`. Either way,
-tell the user and stop asking.
+monthly question budget. Past the hourly limit the call fails with
+`resource_exhausted`; once the month's budget is spent it fails with
+`failed_precondition`. Either way, tell the user and stop asking.
 
 ## Permissions
 
@@ -143,8 +153,8 @@ tell the user and stop asking.
   ontology database's Helix project for graph reads and Ask. The database's name
   and project show only to users who can read that project.
 - **Service keys** reach only ontologies whose project grants the key query read,
-  in the key's own workspace. `helix_foundry_list_data` and `helix_list_workspaces`
-  are for users only.
+  in the key's own workspace. `helix_foundry_list_connectors` and
+  `helix_list_workspaces` are for users only.
 - Every denial looks like `not_found`, so a caller can't tell a hidden resource from
   a missing one.
 
@@ -153,9 +163,9 @@ tell the user and stop asking.
 | Code | Meaning |
 | --- | --- |
 | `not_found` | Missing, or not visible to this caller |
-| `invalid_arguments` | A malformed or out-of-contract argument; fix it from the read guide |
-| `failed_precondition` | The state doesn't allow it: no ready or partial load to ask, or the month's question budget is spent |
-| `rate_limited` | Too many or too large reads at once, or the workspace's hourly question limit |
+| `invalid_arguments` | A malformed or out-of-contract argument; the message says what, so fix it from the read guide |
+| `failed_precondition` | The state doesn't allow it: no current load, a load that can't be read or asked, a definition too large, or the month's question budget is spent |
+| `resource_exhausted` | Too many or too large reads at once, or the workspace's hourly question limit |
 | `backend_unavailable` | Helix couldn't be reached; try again shortly |
 | `internal_error` | An unexpected failure; report it, don't loop |
 
@@ -180,7 +190,7 @@ Do not:
 
 - guess a workspace or ontology when names are ambiguous
 - ask the same question again with a new `client_token` after a timeout
-- loop on Ask after `rate_limited`, a spent budget or a capped question
+- loop on Ask after `resource_exhausted`, a spent budget or a capped question
 - read a load other than the one the user means without saying so
 - treat a current version change as changing what reads or Ask see
 - claim a hidden resource doesn't exist

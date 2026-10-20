@@ -28,15 +28,16 @@ Permissions).
 
 | Operation | Target | Payload | Does |
 | --- | --- | --- | --- |
-| `create_ontology` | `tenant:<id>` | `{"name"}` | Creates an ontology bound to an existing Helix database |
+| `create_ontology` | `tenant:<id>` | `{"name"}`, 1 to 120 characters | Creates an ontology bound to an existing Helix database |
 | `sync_connector` | `connector:<workspace>/<id>` | `{}` | Starts a full sync of one connector |
-| `generate_ontology` | `ontology:<workspace>/<id>` | `{"goal", "connector_ids"?, "document_set_ids"?}` | Asks the agent to draft a new version |
+| `generate_ontology` | `ontology:<workspace>/<id>` | `{"goal"?, "connector_ids"?, "document_set_ids"?}`; no ids means all of them | Asks the agent to draft a new version |
 | `set_current_version` | `ontology:<workspace>/<id>` | `{"version_id", "expected_current_version_id"}` | Makes a version current, or rolls back to an older one |
 | `create_load` | `ontology:<workspace>/<id>` | `{"version_id"}` | Writes a version into the ontology's database |
 | `set_current_load` | `ontology:<workspace>/<id>` | `{"load_id"}` | Makes a ready or partial load the one reads and Ask use |
 
 Payloads are strict: unknown fields are refused. Take every id from a read tool's
-result; never build one by hand or guess between similar names. For
+result; never build one by hand or guess between similar names. The `<workspace>`
+in a target is the `workspace_id` that `helix_foundry_list_ontologies` returns. For
 `create_ontology`, find the database with `helix_list_databases` (helix-mcp); only a
 `tenant:` database can hold an ontology.
 
@@ -49,12 +50,12 @@ result; never build one by hand or guess between similar names. For
 3. Call `helix_prepare_foundry_operation` with the operation, target and payload.
 4. Call `helix_execute_foundry_operation` with the same operation, target and
    payload, plus `confirmation_id` and `confirmation_token`. Change nothing between
-   the two calls. A confirmation expires after a few minutes.
+   the two calls. A confirmation expires after five minutes.
 5. Never retry execute, whatever happens: an error, a timeout or a dropped
    connection. A confirmation runs at most once and can't be reused. Check the
    outcome with the read tools instead, and prepare again only if the action didn't
    happen and the user still wants it.
-6. Follow the job: a sync in `helix_foundry_list_data` (the connector's last sync), a
+6. Follow the job: a sync in `helix_foundry_list_connectors` (the connector's last sync), a
    generation in `helix_foundry_get_ontology` (its generations), and a load in
    `helix_foundry_get_ontology` (its loads). Syncs, generations and loads run in the
    background.
@@ -65,22 +66,23 @@ a changed goal, needs its own.
 ## Per-operation rules
 
 - **`create_ontology`**: refused if the database already has an ontology, including
-  one still being deleted. The new ontology has no version until a generation
-  drafts one.
+  one still being deleted (`already_exists`). The new ontology has no version until
+  a generation drafts one.
 - **`sync_connector`**: every sync is a full copy. One runs at a time per connector
-  (`already_running`). PostgreSQL, MySQL and Amazon S3 need Foundry Pro or Max
+  (`already_exists`). PostgreSQL, MySQL and Amazon S3 need Foundry Pro or Max
   (`foundry_pro_required`).
 - **`generate_ontology`**: it needs synced tables; it reads at most 50 tables, so
   name fewer connectors when the workspace has more; the goal is at most 2,000
-  characters. One runs at a time per ontology (`already_running`), and a workspace
-  may start only a limited number per hour (`rate_limited`). It costs model spend,
+  characters. One runs at a time per ontology (`already_exists`), and a workspace
+  may start only a limited number per hour, whatever became of them
+  (`resource_exhausted`). It costs model spend,
   so run it only when the user asks. The draft becomes a new version; it is not made
   current, and a generation that succeeds can still produce a draft that can't be
   loaded.
 - **`set_current_version`**: read the ontology right before preparing and pass its
   current version as `expected_current_version_id` (empty when it has none). If
-  someone else changed it since, the action is refused; read again and tell the
-  user instead of forcing it. It changes what the website shows and what the next
+  someone else changed it since, the action is refused (`failed_precondition`); read
+  again and tell the user instead of forcing it. It changes what the website shows and what the next
   generation builds on, not what reads or Ask see.
 - **`create_load`**: only an agent draft the agent finished can be loaded: check
   with `helix_foundry_get_version` that its draft is done and all its rules are
@@ -112,11 +114,11 @@ say so instead of trying another route.
 | Code | Meaning | Do |
 | --- | --- | --- |
 | `not_found` | Missing, or not visible to this caller | Re-resolve; don't claim which |
-| `invalid_arguments` | A malformed payload, a goal too long, or too many tables | Fix the payload and prepare again |
-| `failed_precondition` | The state doesn't allow it: nothing synced yet, a version that can't be loaded, a load or extract already running, a load that isn't ready, or the month's load budget spent | Read the state and explain |
+| `invalid_arguments` | A malformed payload, a goal too long, or too many tables; the message says which | Fix the payload and prepare again |
+| `failed_precondition` | The state doesn't allow it: nothing synced yet, a version that can't be loaded, a load or extract already running, a load that isn't ready, a current version someone else moved, an expired confirmation, or the month's load budget spent | Read the state and explain |
 | `foundry_pro_required` | Needs Foundry Pro or Max | Tell the user; an owner or admin upgrades in Settings, Plan & billing |
-| `already_running` | That sync or generation is already running, or the database already has an ontology | Read the state; don't prepare again |
-| `rate_limited` | The workspace's hourly generation limit | Stop and tell the user |
+| `already_exists` | That sync or generation is already running, the database already has an ontology, or the confirmation was already used | Read the state; don't prepare again |
+| `resource_exhausted` | The workspace's hourly generation limit | Stop and tell the user |
 | `backend_unavailable`, `internal_error` | Helix failed | Check the outcome with the read tools; don't execute again |
 
 ## Not available
