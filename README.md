@@ -74,9 +74,10 @@ claude mcp add --transport http helix https://mcp.helix-db.com/mcp   # then /mcp
 codex mcp add helix --url https://mcp.helix-db.com/mcp && codex mcp login helix
 ```
 
-Without a browser (CI), send a service key instead. A key reaches only the
-ontologies its project grants allow, and can read, ask and run loads, but not
-sync, generate or create ontologies.
+Without a browser (CI), send a service key as a header instead: `--header
+"Authorization: Bearer hlxs_..."` for Claude Code, or `bearer_token_env_var` in
+Codex's MCP config. A key reaches only the ontologies its project grants allow, and
+can read, ask and run loads, but not sync, generate or create ontologies.
 
 ## Running queries (prerequisites)
 

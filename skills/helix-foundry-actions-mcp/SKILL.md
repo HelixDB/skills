@@ -10,7 +10,8 @@ metadata:
 # Helix Foundry actions
 
 Use these tools only when the user explicitly asks for one of the actions below.
-Resolve what the action targets with the read tools of helix-foundry-mcp first.
+Resolve what the action targets, and read its current state, with helix-foundry-mcp
+first.
 
 Interactive clients sign in with WorkOS OAuth and act with the user's permissions.
 Headless runs may send a scoped service key, which can run fewer actions (see
@@ -19,7 +20,7 @@ Permissions).
 ## Tools
 
 - `helix_prepare_foundry_operation`: validates one exact action and returns a
-  one-time confirmation.
+  one-time confirmation (`confirmation_id` and `confirmation_token`).
 - `helix_execute_foundry_operation`: consumes the confirmation and runs the action
   once.
 
@@ -35,45 +36,61 @@ Permissions).
 | `set_current_load` | `ontology:<workspace>/<id>` | `{"load_id"}` | Makes a ready or partial load the one reads and Ask use |
 
 Payloads are strict: unknown fields are refused. Take every id from a read tool's
-result; never build one by hand or guess between similar names.
+result; never build one by hand or guess between similar names. For
+`create_ontology`, find the database with `helix_list_databases` (helix-mcp); only a
+`tenant:` database can hold an ontology.
 
 ## The confirmation flow
 
-1. Resolve the target and read its current state with helix-foundry-mcp.
+1. Resolve the target and read its current state.
 2. Tell the user exactly what will run: the operation, the ontology, connector or
-   database by name, and the payload in plain words. For a generation, show the goal
-   and which connectors and document sets it reads.
+   database by name, and the payload in plain words, with the consequences listed
+   below for that operation.
 3. Call `helix_prepare_foundry_operation` with the operation, target and payload.
 4. Call `helix_execute_foundry_operation` with the same operation, target and
-   payload, and the confirmation it returned. Change nothing between the two calls.
+   payload, plus `confirmation_id` and `confirmation_token`. Change nothing between
+   the two calls. A confirmation expires after a few minutes.
 5. Never retry execute, whatever happens: an error, a timeout or a dropped
    connection. A confirmation runs at most once and can't be reused. Check the
-   outcome with the read tools instead, and prepare again only if the action
-   didn't happen and the user still wants it.
-6. Follow the job with helix-foundry-mcp. Syncs, generations and loads run in the
-   background; `helix_foundry_get_ontology` shows their state.
+   outcome with the read tools instead, and prepare again only if the action didn't
+   happen and the user still wants it.
+6. Follow the job: a sync in `helix_foundry_list_data` (the connector's last sync), a
+   generation in `helix_foundry_get_ontology` (its generations), and a load in
+   `helix_foundry_get_ontology` (its loads). Syncs, generations and loads run in the
+   background.
 
 A confirmation binds one action. A second generation, or the same generation with
 a changed goal, needs its own.
 
 ## Per-operation rules
 
-- **`create_ontology`**: the database must not already have an ontology. The new
-  ontology has no version until a generation drafts one.
+- **`create_ontology`**: refused if the database already has an ontology, including
+  one still being deleted. The new ontology has no version until a generation
+  drafts one.
 - **`sync_connector`**: every sync is a full copy. One runs at a time per connector
-  (`already_running`). PostgreSQL and MySQL syncs need Foundry Pro or Max
+  (`already_running`). PostgreSQL, MySQL and Amazon S3 need Foundry Pro or Max
   (`foundry_pro_required`).
-- **`generate_ontology`**: one runs at a time per ontology (`already_running`), and
-  a workspace may start only a limited number per hour (`rate_limited`). It costs
-  model spend, so run it only when the user asks. The draft becomes a new version;
-  it is not made current.
+- **`generate_ontology`**: it needs synced tables; it reads at most 50 tables, so
+  name fewer connectors when the workspace has more; the goal is at most 2,000
+  characters. One runs at a time per ontology (`already_running`), and a workspace
+  may start only a limited number per hour (`rate_limited`). It costs model spend,
+  so run it only when the user asks. The draft becomes a new version; it is not made
+  current, and a generation that succeeds can still produce a draft that can't be
+  loaded.
 - **`set_current_version`**: read the ontology right before preparing and pass its
-  current version as `expected_current_version_id`. If someone else changed it
-  since, the action is refused; read again and tell the user instead of forcing it.
-- **`create_load`**: only a finished agent draft can be loaded. Reading documents
-  costs money, within per-load and monthly workspace caps; one load runs at a time
-  per ontology. A load that finishes ready becomes current by itself.
-- **`set_current_load`**: only a ready or partial load can be made current.
+  current version as `expected_current_version_id` (empty when it has none). If
+  someone else changed it since, the action is refused; read again and tell the
+  user instead of forcing it. It changes what the website shows and what the next
+  generation builds on, not what reads or Ask see.
+- **`create_load`**: only an agent draft the agent finished can be loaded: check
+  with `helix_foundry_get_version` that its draft is done and all its rules are
+  evaluated before proposing it. One load or extract runs at a time per ontology
+  (`failed_precondition`). Reading documents costs money, within a per-load cap and
+  a monthly workspace budget. Tell the user that a load that finishes ready becomes
+  current, and that Foundry then deletes non-current loads beyond the newest five.
+- **`set_current_load`**: only a ready or partial load. If documents arrived since
+  that load, Foundry reads them into it, which spends from the monthly budget and
+  blocks new loads until it finishes.
 
 ## Permissions
 
@@ -95,17 +112,19 @@ say so instead of trying another route.
 | Code | Meaning | Do |
 | --- | --- | --- |
 | `not_found` | Missing, or not visible to this caller | Re-resolve; don't claim which |
-| `failed_precondition` | The state doesn't allow it: a load that isn't ready, a version that can't be loaded, or the month's load budget is spent | Read the state and explain |
+| `invalid_arguments` | A malformed payload, a goal too long, or too many tables | Fix the payload and prepare again |
+| `failed_precondition` | The state doesn't allow it: nothing synced yet, a version that can't be loaded, a load or extract already running, a load that isn't ready, or the month's load budget spent | Read the state and explain |
 | `foundry_pro_required` | Needs Foundry Pro or Max | Tell the user; an owner or admin upgrades in Settings, Plan & billing |
-| `already_running` | That job is already running | Wait and check, don't prepare again |
+| `already_running` | That sync or generation is already running, or the database already has an ontology | Read the state; don't prepare again |
 | `rate_limited` | The workspace's hourly generation limit | Stop and tell the user |
+| `backend_unavailable`, `internal_error` | Helix failed | Check the outcome with the read tools; don't execute again |
 
 ## Not available
 
 Creating, editing or deleting connectors (they hold credentials), uploading
-documents, deleting ontologies, versions, loads or documents, cancelling a job,
-and billing changes all stay in the Foundry website. Do not look for another way
-to do them.
+documents, deleting ontologies, versions, loads or documents, cancelling a job, and
+billing changes all stay in the Foundry website. Do not look for another way to do
+them.
 
 ## Trust boundary
 
