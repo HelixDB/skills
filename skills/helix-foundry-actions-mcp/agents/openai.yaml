@@ -1,0 +1,15 @@
+interface:
+  display_name: "Helix Foundry Actions MCP"
+  short_description: "Run confirmed Helix Foundry actions"
+  default_prompt: "Use $helix-foundry-actions-mcp for the exact Helix Foundry sync, generation, version, load or new ontology I asked for."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "helix-db"
+      description: "Hosted Helix Cloud MCP server"
+      transport: "streamable_http"
+      url: "https://mcp.helix-db.com/mcp"
+
+policy:
+  allow_implicit_invocation: false

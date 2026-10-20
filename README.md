@@ -18,6 +18,7 @@ These skills are for agents that need to:
 - execute authorized Helix Cloud queries through the separate Query MCP broker
 - run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
+- read and ask Helix Foundry ontologies, and run confirmation-gated Foundry syncs, generations and loads
 
 ## Status
 
@@ -27,6 +28,8 @@ Available now:
 - `helix-mcp`
 - `helix-query-mcp`
 - `helix-admin-mcp`
+- `helix-foundry-mcp`
+- `helix-foundry-actions-mcp`
 - `helix-query-from-cypher`
 - `helix-query-from-gremlin`
 - `helix-query-from-hql`
@@ -81,6 +84,27 @@ backend broker. Application gateway clients still use explicitly created databas
 sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and
 the non-interactive/agent path.
 
+## Helix Foundry
+
+`helix-foundry-mcp` reads a workspace's Foundry ontologies, their versions, loads
+and graph, and asks Foundry's query agent questions with cited answers.
+`helix-foundry-actions-mcp` runs the changes a user asks for (create an ontology,
+sync a connector, generate a draft, make a version or load current, create a
+load), each through a one-time confirmation.
+
+Both use the hosted Helix MCP server, `https://mcp.helix-db.com/mcp`. Sign in once
+and the agent acts as you:
+
+```bash
+claude mcp add --transport http helix https://mcp.helix-db.com/mcp   # then /mcp to sign in
+codex mcp add helix --url https://mcp.helix-db.com/mcp && codex mcp login helix
+```
+
+Without a browser (CI), send a service key as a header instead: `--header
+"Authorization: Bearer hlxs_..."` for Claude Code, or `bearer_token_env_var` in
+Codex's MCP config. A key reaches only the ontologies its project grants allow, and
+can read, ask and run loads, but not sync, generate or create ontologies.
+
 ## Repository Layout
 
 - `skills/` contains the published skills
@@ -130,6 +154,20 @@ untrusted-data boundary.
 Use this skill only for explicitly requested tenant create/delete or application database-key
 create/revoke operations. It teaches typed durable confirmations, raw-secret-once handling, and the
 excluded Cloud lifecycle surfaces.
+
+### `helix-foundry-mcp`
+
+Use this skill to explore Helix Foundry ontologies. It teaches agents to resolve
+the workspace and ontology, choose between the definition, the data sources, exact
+graph reads and Ask, build reads from the served read guide, keep Ask's
+`client_token` on retries, and report answers with their citations.
+
+### `helix-foundry-actions-mcp`
+
+Use this skill only for an explicitly requested Foundry change: create an ontology,
+sync a connector, generate a draft, make a version current, create a load, or make
+a load current. It teaches the prepare-then-execute confirmation, no retries, what
+each action costs or replaces, and what stays in the Foundry website.
 
 ### `helix-query-json-dynamic`
 
