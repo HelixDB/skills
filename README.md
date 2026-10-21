@@ -59,6 +59,10 @@ active indexes, insights, latency, and recommendations before authoring,
 translating, debugging, or optimizing a query. `helix-mcp` remains read-only;
 explicit agent-side Cloud execution uses the separate `helix-query-mcp` broker.
 
+Every MCP skill also tells agents to report problems through `helix_feedback`: a
+bug, a missing capability or a confusing result, one call per problem, without the
+user's data. The Helix team reads it to decide what to fix next.
+
 ## Running queries (prerequisites)
 
 The query-authoring skills assume you already have a Helix instance to run

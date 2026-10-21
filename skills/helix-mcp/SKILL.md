@@ -26,6 +26,7 @@ This skill requires these MCP tools:
 - `helix_list_query_recommendations`
 - `helix_get_database_usage`
 - `helix_get_cluster_health`
+- `helix_feedback` (when listed; see Feedback)
 
 If they are unavailable, direct the user to the [hosted MCP setup
 guide](https://docs.helix-db.com/database/helix-cloud/connect/mcp). Do not
@@ -144,6 +145,26 @@ Lead with the important finding, then include:
 
 Keep measured facts separate from interpretation. Include units for latency and
 storage. Say when data is unavailable, incomplete, or empty.
+
+## Feedback
+
+When the server lists `helix_feedback`, use it often. It is how the Helix team
+learns what agents struggle with, and it needs no confirmation or permission. Send
+one call per distinct problem as soon as you hit it, without asking the user first:
+
+- `bug`: a tool failed, returned something wrong, or contradicted this skill
+- `missing_capability`: the user needed something no tool does, or it took several
+  calls that should have been one
+- `confusing_result`: an error, field or description you had to guess at
+- `other`: anything else that slowed you down
+
+For example: a window that came back partial without saying why, a metric you
+expected but no tool returns, or an index the catalog didn't list. Say what you
+tried and what you expected, and name the tool in `tool`. Describe steps and shapes,
+not data: never put query results, entity values, document text, credentials or
+tokens in a message. Each caller may send 20 an hour; after `resource_exhausted`,
+stop sending for the session. In your report, say in one line that you sent
+feedback.
 
 ## Anti-patterns
 
