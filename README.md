@@ -18,7 +18,7 @@ These skills are for agents that need to:
 - execute authorized Helix Cloud queries through the separate Query MCP broker
 - run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
-- read and ask Helix Foundry ontologies, and run confirmation-gated Foundry syncs, generations and loads
+- read and ask Helix Foundry ontologies, and run confirmation-gated Foundry syncs, generations, revisions, document uploads and loads
 
 ## Status
 
@@ -89,8 +89,10 @@ the non-interactive/agent path.
 `helix-foundry-mcp` reads a workspace's Foundry ontologies, their versions, loads
 and graph, and asks Foundry's query agent questions with cited answers.
 `helix-foundry-actions-mcp` runs the changes a user asks for (create an ontology,
-sync a connector, generate a draft, make a version or load current, create a
-load), each through a one-time confirmation.
+sync a connector, generate or revise a draft, upload and organize documents,
+settle a review, make a version or load current, create a load), each through a
+one-time confirmation. Connectors are added on the Foundry website, from a link the
+MCP gives, so their credentials never pass through an agent.
 
 Both use the hosted Helix MCP server, `https://mcp.helix-db.com/mcp`. Sign in once
 and the agent acts as you:
@@ -165,9 +167,11 @@ graph reads and Ask, build reads from the served read guide, keep Ask's
 ### `helix-foundry-actions-mcp`
 
 Use this skill only for an explicitly requested Foundry change: create an ontology,
-sync a connector, generate a draft, make a version current, create a load, or make
-a load current. It teaches the prepare-then-execute confirmation, no retries, what
-each action costs or replaces, and what stays in the Foundry website.
+sync a connector, generate or revise a draft, upload documents and organize their
+sets, settle a review, cancel a question, make a version current, create a load, or
+make a load current. It teaches the prepare-then-execute confirmation, no retries,
+the upload's PUT and completion, what each action costs or replaces, and what stays
+in the Foundry website.
 
 ### `helix-query-json-dynamic`
 
