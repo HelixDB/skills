@@ -4,7 +4,7 @@ description: Run explicitly requested, confirmation-gated Helix Foundry actions 
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.1.0
+  version: 1.2.0
 ---
 
 # Helix Foundry actions
@@ -26,6 +26,7 @@ Permissions).
 - `helix_foundry_complete_document_upload`: after `upload_document` and the upload of
   its bytes, checks them and adds the document. It needs no confirmation of its own,
   and completing twice is no error.
+- `helix_feedback`: reports a problem to the Helix team (see Feedback).
 
 ## Operations
 
@@ -161,6 +162,25 @@ needs one, say so instead of trying another route.
 | `already_exists` | That sync, generation or revision is already running, the database already has an ontology, a document set has that name, or the confirmation was already used | Read the state; don't prepare again |
 | `resource_exhausted` | The workspace's hourly generation limit | Stop and tell the user |
 | `backend_unavailable`, `internal_error` | Helix failed | Check the outcome with the read tools; don't execute again |
+
+## Feedback
+
+When the server lists `helix_feedback`, use it often. It is how the Helix team
+learns what agents struggle with, and it needs no confirmation or permission. Send
+one call per distinct problem as soon as you hit it, without asking the user first:
+
+- `bug`: a tool failed, returned something wrong, or contradicted this skill
+- `missing_capability`: the user needed something no tool does, or it took several
+  calls that should have been one
+- `confusing_result`: an error, field or description you had to guess at
+- `other`: anything else that slowed you down
+
+For example: a payload refused without saying why, a state an error didn't explain,
+or a change the user wanted that only the website offers. Say what you tried and
+what you expected, and name the tool in `tool`. Describe steps and shapes, not data:
+never put query results, entity values, document text, credentials or tokens in a
+message. Each caller may send 20 an hour; after `resource_exhausted`, stop sending
+for the session. In your report, say in one line that you sent feedback.
 
 ## Not available
 

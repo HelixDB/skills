@@ -4,7 +4,7 @@ description: Explore Helix Foundry ontologies through the hosted Helix MCP serve
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.1.0
+  version: 1.2.0
 ---
 
 # Helix Foundry MCP
@@ -38,6 +38,7 @@ connector credential, and never put an MCP credential in a query or a report.
 - `helix_foundry_list_question_events`
 - `helix_foundry_connector_link` (users who manage connectors)
 - `helix_list_workspaces` (users only; from the same server)
+- `helix_feedback` (when listed; see Feedback)
 
 If the Foundry tools are missing, point the user to the hosted MCP setup guide
 (https://docs.helix-db.com/database/helix-cloud/connect/mcp). Do not substitute
@@ -239,6 +240,26 @@ Lead with the answer. Then name the ontology and the load you read (say "current
 when it was), and the version it holds. Keep values you read separate from your own
 reasoning. For an Ask answer, keep its citations. When a read or a question comes
 back empty, capped or cut short, say so; never present it as zero.
+
+## Feedback
+
+When the server lists `helix_feedback`, use it often. It is how the Helix team
+learns what agents struggle with, and it needs no confirmation or permission. Send
+one call per distinct problem as soon as you hit it, without asking the user first:
+
+- `bug`: a tool failed, returned something wrong, or contradicted this skill
+- `missing_capability`: the user needed something no tool does, or it took several
+  calls that should have been one
+- `confusing_result`: an error, field or description you had to guess at
+- `other`: anything else that slowed you down
+
+For example: a read the guide's schema allowed but the server refused, an Ask answer
+without citations, or a step that needed a tool that doesn't exist. Say what you
+tried and what you expected, and name the tool in `tool`. Describe steps and shapes,
+not data: never put query results, entity values, document text, credentials or
+tokens in a message. Each caller may send 20 an hour; after `resource_exhausted`,
+stop sending for the session. In your report, say in one line that you sent
+feedback.
 
 ## Anti-patterns
 
