@@ -33,6 +33,7 @@ connector credential, and never put an MCP credential in a query or a report.
 - `helix_foundry_read_graph`
 - `helix_foundry_ask`
 - `helix_foundry_get_question`
+- `helix_foundry_cancel_question`
 - `helix_foundry_list_questions`
 - `helix_foundry_list_question_events`
 - `helix_foundry_connector_link` (users who manage connectors)
@@ -153,15 +154,19 @@ A question ends `answered`, `cannot_answer`, `failed` or `cancelled`:
 - `failed`: report its error and the failure kind in its result. A question that hit
   its spend, step or time cap fails with an error saying to ask something narrower;
   narrow it rather than repeating it.
-- `cancelled`: someone cancelled it, in the Foundry website or with the
-  `cancel_question` action.
+- `cancelled`: someone cancelled it, in the Foundry website or with
+  `helix_foundry_cancel_question`.
+
+To stop a question that runs up its cost, call `helix_foundry_cancel_question` with
+its id; it needs no confirmation, and a question that already ended is returned as
+it is. Cancel only when the user asks, or when you asked the wrong question.
 
 `helix_foundry_list_questions` lists an ontology's questions, or one thread's, newest
 first and without answers, with the workspace's question budget; get an answer with
-`helix_foundry_get_question`. `helix_foundry_list_question_events` lists the steps a
-question's agent took (its tool calls, their results and its end) after an
-`after_seq`; pass the last call's `last_seq` to follow a running question, and stop
-once `done` is true.
+`helix_foundry_get_question`. `helix_foundry_list_question_events` lists a page of
+the steps a question's agent took (its tool calls, their results and its end) after
+an `after_seq`; call again with the returned `next_after_seq` to read on or follow a
+running question, and stop once `done` is true.
 
 Ask needs a ready or partial load. A workspace has an hourly question limit and a
 monthly question budget. Past the hourly limit the call fails with
@@ -204,8 +209,8 @@ admins Foundry Pro first.
   in the key's own workspace. `helix_foundry_list_connectors`,
   `helix_foundry_list_syncs`, `helix_foundry_connector_link` and
   `helix_list_workspaces` are for users only.
-- Review decisions, past questions and their steps need the same query read as
-  graph reads.
+- Review decisions, past questions and their steps, and cancelling a question need
+  the same query read as graph reads.
 - Every denial looks like `not_found`, so a caller can't tell a hidden resource from
   a missing one.
 
@@ -248,3 +253,4 @@ Do not:
 - ask for or accept a connector credential; hand over a connector link instead
 - start a sync, generation, revision, upload or load from this skill; use
   helix-foundry-actions-mcp
+- cancel a question the user didn't ask you to stop

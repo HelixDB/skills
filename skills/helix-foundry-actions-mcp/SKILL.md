@@ -1,6 +1,6 @@
 ---
 name: helix-foundry-actions-mcp
-description: Run explicitly requested, confirmation-gated Helix Foundry actions through the hosted Helix MCP server - create an ontology on a Helix database, sync a connector, generate an ontology draft, revise a version's items, upload documents and organize them in document sets, settle a review, cancel a question, make a version current, load a version into the ontology's database, and make a load current. Use only when the user asks for one of these changes. Prepare, show the user, execute once, never retry. Connectors are added on the Foundry website (helix-foundry-mcp gives the link); deleting anything is not available.
+description: Run explicitly requested, confirmation-gated Helix Foundry actions through the hosted Helix MCP server - create an ontology on a Helix database, sync a connector, generate an ontology draft, revise a version's items, upload documents and organize them in document sets, settle a review, make a version current, load a version into the ontology's database, and make a load current. Use only when the user asks for one of these changes. Prepare, show the user, execute once, never retry. Connectors are added on the Foundry website (helix-foundry-mcp gives the link); deleting anything is not available.
 license: MIT
 metadata:
   author: HelixDB
@@ -43,7 +43,6 @@ Permissions).
 | `update_document_set` | `ontology:<workspace>/<id>` | `{"set_id", "name"?, "description"?}`, at least one | Renames a set or changes its description; an empty description clears it |
 | `move_document` | `ontology:<workspace>/<id>` | `{"document_id", "set_id"}` | Moves a document to another set |
 | `settle_review` | `ontology:<workspace>/<id>` | `{"review_id", "decision"}` | Settles one review of the current load |
-| `cancel_question` | `ontology:<workspace>/<id>` | `{"question_id"}` | Stops a queued or running question |
 
 Payloads are strict: unknown fields are refused. Take every id from a read tool's
 result; never build one by hand or guess between similar names. The `<workspace>`
@@ -111,7 +110,8 @@ a changed goal, needs its own.
   with findings saying why. A revision stores a new version (none for `dry_run`),
   which is not made current.
 - **`upload_document`**: only `.md`, `.markdown` or `.txt` files (the name sets the
-  type), up to 256 KiB, and a workspace holds up to 200 documents. Measure the exact
+  type), up to 256 KiB (prepare refuses a larger one), and a workspace holds up to
+  200 documents. Measure the exact
   file you will send: `wc -c < file` and `shasum -a 256 file`. Execute returns
   `upload`: send the same bytes with every one of its headers before `expires_at`
   (15 minutes), for example
@@ -132,8 +132,6 @@ a changed goal, needs its own.
   (a string of digits), `number`, `boolean`, or `null: true` to remove the property,
   for a property conflict. It applies from the next load. Only a person settles a
   review.
-- **`cancel_question`**: stops a question that runs up its cost; an answered one is
-  returned as it is.
 
 ## Permissions
 
@@ -145,14 +143,12 @@ Users need the same permissions as in the Foundry website:
 | `generate_ontology`, `set_current_version`, `revise_version` | Ontology management on the workspace |
 | `create_ontology`, `create_load`, `set_current_load` | Ontology management, plus query write on the database's Helix project |
 | completing an upload | Connector management, plus query write on the ontology's Helix project |
-| `cancel_question` | Query read on the ontology's Helix project, as for asking |
 
 Service keys can run `set_current_version`, `create_load`, `set_current_load`,
 `revise_version`, `upload_document` (and complete it), the document set actions and
-`move_document` on ontologies whose project grants the key query write, and
-`cancel_question` with query read. Syncs, generations, new ontologies and settling
-reviews need a user. If a headless run needs one, say so instead of trying another
-route.
+`move_document` on ontologies whose project grants the key query write. Syncs,
+generations, new ontologies and settling reviews need a user. If a headless run
+needs one, say so instead of trying another route.
 
 ## Errors
 

@@ -168,8 +168,8 @@ graph reads and Ask, build reads from the served read guide, keep Ask's
 
 Use this skill only for an explicitly requested Foundry change: create an ontology,
 sync a connector, generate or revise a draft, upload documents and organize their
-sets, settle a review, cancel a question, make a version current, create a load, or
-make a load current. It teaches the prepare-then-execute confirmation, no retries,
+sets, settle a review, make a version current, create a load, or make a load
+current. It teaches the prepare-then-execute confirmation, no retries,
 the upload's PUT and completion, what each action costs or replaces, and what stays
 in the Foundry website.
 
