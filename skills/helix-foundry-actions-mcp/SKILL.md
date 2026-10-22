@@ -34,13 +34,13 @@ Permissions).
 | --- | --- | --- | --- |
 | `create_ontology` | `tenant:<id>` | `{"name"}`, 1 to 120 characters | Creates an ontology bound to an existing Helix database |
 | `sync_connector` | `connector:<workspace>/<id>` | `{}` | Starts a full sync of one connector |
-| `generate_ontology` | `ontology:<workspace>/<id>` | `{"goal"?, "connector_ids"?, "document_set_ids"?}`; no ids means all of them | Asks the agent to draft a new version |
+| `generate_ontology` | `ontology:<workspace>/<id>` | `{"goal"?, "connector_ids"?, "document_set_ids"?}`; no `connector_ids` means every connector, no `document_set_ids` means no documents | Asks the agent to draft a new version |
 | `set_current_version` | `ontology:<workspace>/<id>` | `{"version_id", "expected_current_version_id"}` | Makes a version current, or rolls back to an older one |
 | `create_load` | `ontology:<workspace>/<id>` | `{"version_id"}` | Writes a version into the ontology's database |
 | `set_current_load` | `ontology:<workspace>/<id>` | `{"load_id"}` | Makes a ready or partial load the one reads and Ask use |
 | `revise_version` | `ontology:<workspace>/<id>` | `{"version_id", "edits", "dry_run"?}`; 1 to 100 edits, each `{"put": {"item_id", "toml"}}` or `{"remove": {"item_id"}}` | Asks the engine for a new version with those items changed, or a preview of it |
-| `upload_document` | `ontology:<workspace>/<id>` | `{"set_id", "name", "size_bytes", "sha256"}` | Starts an upload of one Markdown or plain-text file into a document set |
-| `create_document_set` | `ontology:<workspace>/<id>` | `{"name", "description"?}` | Creates a document set |
+| `upload_document` | `ontology:<workspace>/<id>` | `{"set_id", "name", "size_bytes", "sha256"}` | Starts an upload of one file into a workspace document set |
+| `create_document_set` | `ontology:<workspace>/<id>` | `{"name", "description"?}` | Creates a workspace document set |
 | `update_document_set` | `ontology:<workspace>/<id>` | `{"set_id", "name"?, "description"?}`, at least one | Renames a set or changes its description; an empty description clears it |
 | `move_document` | `ontology:<workspace>/<id>` | `{"document_id", "set_id"}` | Moves a document to another set |
 | `settle_review` | `ontology:<workspace>/<id>` | `{"review_id", "decision"}` | Settles one review of the current load |
@@ -110,22 +110,27 @@ a changed goal, needs its own.
   the result with `helix_foundry_get_generation`: refused edits fail the revision
   with findings saying why. A revision stores a new version (none for `dry_run`),
   which is not made current.
-- **`upload_document`**: only `.md`, `.markdown` or `.txt` files (the name sets the
-  type), up to 256 KiB (prepare refuses a larger one), and a workspace holds up to
-  200 documents. Measure the exact
-  file you will send: `wc -c < file` and `shasum -a 256 file`. Execute returns
-  `upload`: send the same bytes with every one of its headers before `expires_at`
-  (15 minutes), for example
+- **`upload_document`**: a file named `.md`, `.markdown`, `.txt`, `.json`, `.csv`,
+  `.tsv`, `.jsonl`, `.ndjson`, `.parquet` or `.pdf` (the name sets the type), up to
+  1 MiB (prepare refuses a larger one); a workspace holds up to 200 documents.
+  Ontologies read only the Markdown and plain-text ones and store the rest. Measure
+  the exact file you will send: `wc -c < file` and `shasum -a 256 file`. Execute
+  returns `upload`: send the same bytes with every one of its headers before
+  `expires_at` (15 minutes), for example
   `curl -X PUT --data-binary @file -H "Content-Type: text/markdown" -H "<name>: <value>" "<url>"`,
   then call `helix_foundry_complete_document_upload` with the document's id. If
-  execute returns no `upload`, the ontology already holds those bytes. `routed:
-  false` means no extraction route of the current version names the set, so no model
-  will read the document. Completing once a load is current queues the document's
-  extraction, which spends from the monthly budget.
+  execute returns no `upload`, the workspace already holds those bytes, as the
+  document returned (its `set_id` says where). `routed: false` means no extraction
+  route of the current version names the set, so no model will read the document.
+  Completing returns `reads`: what each ontology whose current version reads the set
+  did with it (`queued`, `owed` by the job running now, `no_budget`, `held` by its
+  current load, or `skipped` because the caller can't write its database). A queued
+  extraction spends from the monthly budget.
 - **`create_document_set`**, **`update_document_set`**: a name of 1 to 120
-  characters, unique among the ontology's sets ignoring case (`already_exists`); a
+  characters, unique among the workspace's sets ignoring case (`already_exists`); a
   description of at most 1,000.
-- **`move_document`**: applies from the next load; a load keeps what it extracted.
+- **`move_document`**: applies from the next load; a load keeps what it extracted. It
+  returns `reads` as completing an upload does.
 - **`settle_review`**: `review_id` is the `review_key` of a `FoundryReview` the
   current load holds (find it with a `query` read). The decision is
   `{"resolve": {"entity_key"}}` or `{"resolve": {"not_in_data": true}}` for a review
@@ -156,7 +161,7 @@ needs one, say so instead of trying another route.
 | Code | Meaning | Do |
 | --- | --- | --- |
 | `not_found` | Missing, or not visible to this caller | Re-resolve; don't claim which |
-| `invalid_arguments` | A malformed payload, a goal too long, too many tables, or a file Foundry doesn't read; the message says which | Fix the payload and prepare again |
+| `invalid_arguments` | A malformed payload, a goal too long, too many tables, or a file type Foundry doesn't take; the message says which | Fix the payload and prepare again |
 | `failed_precondition` | The state doesn't allow it: nothing synced yet, a version that can't be loaded or revised, a load or extract already running, a load that isn't ready, a current version someone else moved, an upload whose bytes are missing or differ, no current load to settle a review on, a full workspace of documents, an expired confirmation, or the month's load budget spent | Read the state and explain |
 | `foundry_pro_required` | Needs Foundry Pro or Max | Tell the user; an owner or admin upgrades in Settings, Plan & billing |
 | `already_exists` | That sync, generation or revision is already running, the database already has an ontology, a document set has that name, or the confirmation was already used | Read the state; don't prepare again |

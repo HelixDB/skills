@@ -9,9 +9,9 @@ metadata:
 
 # Helix Foundry MCP
 
-Helix Foundry connects a workspace's sources (Stripe, WorkOS, PostHog, PostgreSQL,
-MySQL, Amazon S3 and documents), drafts an ontology over them, and loads it into a
-Helix database. Use these tools to read what Foundry holds and to ask its query
+Helix Foundry connects a workspace's sources (Stripe, WorkOS, PostHog, GitHub,
+Linear, PostgreSQL, MySQL, Amazon S3 and documents), drafts an ontology over them, and
+loads it into a Helix database. Use these tools to read what Foundry holds and to ask its query
 agent questions. They change nothing, except that asking spends from the
 workspace's question budget.
 
@@ -59,6 +59,9 @@ direct API calls, database keys or raw queries.
   Definition v1 (`foundry_v1`).
 - Foundry keeps the current load and the four newest others, and deletes older ones.
   A saved load id can later return `not_found`.
+- **Documents** and **document sets** are the workspace's. A version's loads read the
+  sets in its `document_set_ids`, so every ontology whose current version names a set
+  reads that set's documents.
 
 ## Resolve the ontology first
 
@@ -69,8 +72,8 @@ direct API calls, database keys or raw queries.
    current version and current load, and any load, extract or delete that is
    running. A service key sees only the ontologies it can query.
 3. Call `helix_foundry_get_ontology` for the chosen one. It returns the current
-   version, the newest 20 versions and generations, the loads and the document sets,
-   without definitions.
+   version, the newest 20 versions and generations, the loads, the document sets its
+   current version reads and the workspace's other sets, without definitions.
 4. For what the ontology models, call `helix_foundry_get_version` with the current
    version's id (or another version's). An agent draft comes without the agent's
    working notes; its `ontology_toml`, `mappings_toml`, `questions` and `summary` are
@@ -88,7 +91,7 @@ ontology may not exist or may not be visible to this caller; do not say which.
 | Which sources feed the workspace, and when they last synced | `helix_foundry_list_connectors` (connectors, their synced tables and last sync) |
 | A connector's sync history and why a sync failed | `helix_foundry_list_syncs` |
 | To add a connector | `helix_foundry_connector_link`: give the user the link; they enter the credentials on the Foundry website |
-| An ontology's documents and what loads made of them | `helix_foundry_list_documents` (of one document set or all); `helix_foundry_get_ontology` lists the sets |
+| An ontology's documents and what loads made of them | `helix_foundry_list_documents`; `helix_foundry_get_ontology` lists the sets |
 | How a generation or a revision went, and a revision's findings | `helix_foundry_get_generation` |
 | What reviews were already settled | `helix_foundry_list_review_decisions` |
 | Questions asked before, or the steps a question's agent took | `helix_foundry_list_questions`, `helix_foundry_list_question_events` |
@@ -181,11 +184,12 @@ monthly question budget. Past the hourly limit the call fails with
   ended, the engine's result: its status, findings and cards. A caller who can't
   query the ontology's database sees `result_withheld` instead, because the result
   measures the load.
-- `helix_foundry_list_documents` returns each document's status (`pending_upload`,
-  `uploaded`) and, once the current load read it, its extraction: `extracted`,
-  `duplicate`, `failed` (with an error code and whether a later load may succeed) or
-  `out_of_scope` (no extraction route names its set, so no model read it). Document
-  text is not returned.
+- `helix_foundry_list_documents` returns the documents the ontology reads, each with
+  its status (`pending_upload`, `uploaded`) and, once the current load read it, its
+  extraction: `extracted`, `duplicate`, `failed` (with an error code and whether a
+  later load may succeed) or `out_of_scope` (no extraction route names its set, so no
+  model read it). With a `set_id` it returns every document of that workspace set,
+  without extraction. Document text is not returned.
 - Reviews are `FoundryReview` records in a load; find them with a `query` read.
   `helix_foundry_list_review_decisions` lists the decisions settled so far, which
   every later load applies. A `prop` decision's value has one key: `text`,
@@ -195,7 +199,7 @@ monthly question budget. Past the hourly limit the call fails with
 
 Never ask the user for a connector's credentials, and never take them in chat.
 `helix_foundry_connector_link` takes the workspace and a kind (`stripe`, `workos`,
-`posthog`, `postgres`, `mysql` or `s3`) and returns a link to the Foundry website
+`posthog`, `github`, `linear`, `postgres`, `mysql` or `s3`) and returns a link to the Foundry website
 that opens that kind's form in the right workspace. Give the user the link; once
 they have saved the connector, find it with `helix_foundry_list_connectors`. When
 the plan doesn't include the kind (`available: false`), the page offers owners and
