@@ -10,10 +10,10 @@ metadata:
 # Helix Foundry MCP
 
 Helix Foundry connects a workspace's sources (Stripe, WorkOS, PostHog, GitHub,
-Linear, PostgreSQL, MySQL, Amazon S3 and documents), drafts an ontology over them, and
-loads it into a Helix database. Use these tools to read what Foundry holds and to ask its query
-agent questions. They change nothing, except that asking spends from the
-workspace's question budget.
+Linear, PostgreSQL, MySQL, Amazon S3 and documents), drafts an ontology over them,
+and loads it into a Helix database. Use these tools to read what Foundry holds and
+to ask its query agent questions. They change nothing, except that asking spends
+from the workspace's question budget.
 
 Interactive clients sign in with WorkOS OAuth and act with the user's permissions.
 Headless runs may send a scoped service key. Never ask for a database key or a
