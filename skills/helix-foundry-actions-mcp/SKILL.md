@@ -54,7 +54,8 @@ in a target is the `workspace_id` that `helix_foundry_list_ontologies` returns. 
 `project_id` from `helix_list_projects`, or give a `project_name` to make a project;
 the database's slug is lowercase letters, digits and single dashes, at most 63. A
 create that fails partway names what it made: continue on that `tenant:<id>`, or
-with that `project_id`, never making another.
+with that `project_id`, never making another; one that says they may have been made
+means look with `helix_list_projects` and `helix_list_databases` first.
 
 ## The confirmation flow
 

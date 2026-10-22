@@ -88,7 +88,9 @@ Call `helix_foundry_list_ontologies`.
 If a `workspace:` create fails partway, its error names what it made. After the
 database (`tenant:<id> in project <id>`): continue with target `tenant:<id>` and
 `{"name"}`. After only the project (`project <id>`): retry with that `project_id` in
-place of `project_name`. Never make another database or project.
+place of `project_name`. Never make another database or project. If it fails saying the
+project or database may have been made, look for it with `helix_list_projects` and
+`helix_list_databases` before trying again.
 
 Every later action targets `ontology:<workspace_id>/<ontology_id>`.
 
