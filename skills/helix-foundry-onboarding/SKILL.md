@@ -75,15 +75,20 @@ Call `helix_foundry_list_ontologies`.
 - **A new database** (the default): `create_ontology` with target
   `workspace:<workspace_id>` and
   `{"name", "database": {"name", "slug", "project_id" | "project_name"}}`. Name the
-  database after the ontology. Use a project from `helix_list_projects` if the user
-  has one for this, or a `project_name` for a new one.
+  database after the ontology; its slug is lowercase letters, digits and single
+  dashes, at most 63 (Foundry adds a short suffix if another database has it). Use a
+  project from `helix_list_projects` if the user has one for this, or a
+  `project_name` for a new one. It needs a Helix subscription: a
+  `failed_precondition` saying so goes to the user.
 - **An existing free database**, if the user wants one: list them with
   `helix_list_projects` and `helix_list_databases`. A database is free when its
   `tenant:` reference is not the `database` of any listed ontology. Target
   `tenant:<id>` with `{"name"}`.
 
-If a `workspace:` create fails after it made the database, the error names its
-`tenant:<id>`: continue with that target and `{"name"}`. Never make another database.
+If a `workspace:` create fails partway, its error names what it made. After the
+database (`tenant:<id> in project <id>`): continue with target `tenant:<id>` and
+`{"name"}`. After only the project (`project <id>`): retry with that `project_id` in
+place of `project_name`. Never make another database or project.
 
 Every later action targets `ontology:<workspace_id>/<ontology_id>`.
 

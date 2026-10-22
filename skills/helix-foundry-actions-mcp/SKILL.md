@@ -51,7 +51,10 @@ result; never build one by hand or guess between similar names. The `<workspace>
 in a target is the `workspace_id` that `helix_foundry_list_ontologies` returns. For
 `create_ontology` on an existing database, find it with `helix_list_databases`
 (helix-mcp); only a `tenant:` database can hold an ontology. For a new one, take
-`project_id` from `helix_list_projects`, or give a `project_name` to make a project.
+`project_id` from `helix_list_projects`, or give a `project_name` to make a project;
+the database's slug is lowercase letters, digits and single dashes, at most 63. A
+create that fails partway names what it made: continue on that `tenant:<id>`, or
+with that `project_id`, never making another.
 
 ## The confirmation flow
 
