@@ -19,7 +19,7 @@ These skills are for agents that need to:
 - run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 - read and ask Helix Foundry ontologies, and run confirmation-gated Foundry syncs, generations, revisions, document uploads and loads
-- set up a Helix Foundry ontology end to end: connect data, write its goal, generate, review and load it
+- set up a Helix Foundry ontology end to end: connect data or upload documents, write its goal, generate, review and load it
 
 ## Status
 
@@ -100,9 +100,10 @@ settle a review, make a version or load current, create a load), each through a
 one-time confirmation. Connectors are added on the Foundry website, from a link the
 MCP gives, so their credentials never pass through an agent.
 `helix-foundry-onboarding` takes a workspace from nothing to a loaded ontology: it
-creates the ontology and its database, hands over connector links, writes the goal
-from what the agent knows of your work, then generates, reviews and loads it, waiting
-on each job and asking you before each action.
+creates the ontology and its database, hands over connector links or uploads your
+documents (either is enough, or both), writes the goal from what the agent knows of
+your work, then generates, reviews and loads it, waiting on each job and asking you
+before each action.
 
 All three use the hosted Helix MCP server, `https://mcp.helix-db.com/mcp`. Sign in
 once and the agent acts as you (onboarding needs a workspace owner or admin):
@@ -189,10 +190,10 @@ what stays in the Foundry website.
 
 Use this skill only when a user asks to set up Foundry or build a workspace's
 ontology from scratch. It teaches the end-to-end order (workspace, ontology and
-database, connectors, documents, goal, generation, review, load), how long to wait
-on each job and when to give up, how to write a goal from what the agent knows of
-the user's work, and what to hand the user at each step. It leaves payloads and
-confirmations to the two skills above.
+database, connected data or uploaded documents, goal, generation, review, load),
+how long to wait on each job and when to give up, how to write a goal from what the
+agent knows of the user's work, and what to hand the user at each step. It leaves
+payloads and confirmations to the two skills above.
 
 ### `helix-query-json-dynamic`
 

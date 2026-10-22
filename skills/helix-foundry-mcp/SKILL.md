@@ -56,15 +56,19 @@ direct API calls, database keys or raw queries.
   load. The **current version** is what the Foundry website shows and what the next
   generation builds on; it doesn't change what reads see.
 - A **generation** is a request for Foundry's agent to draft a new version from the
-  workspace's synced tables and documents. A **revision** is a generation that edits
-  one version's items instead, through Foundry's engine rather than the agent.
+  sources it is given: connectors' synced tables, document sets' table files, and
+  sets' text. It needs at least one; connectors aren't required. A **revision** is a
+  generation that edits one version's items instead, through Foundry's engine rather
+  than the agent.
 - Versions never change. A version is an agent draft (`agent_bundle`) or the older
   Definition v1 (`foundry_v1`).
 - Foundry keeps the current load and the four newest others, and deletes older ones.
   A saved load id can later return `not_found`.
 - **Documents** and **document sets** are the workspace's. A version's loads read the
   sets in its `document_set_ids`, so every ontology whose current version names a set
-  reads that set's documents.
+  reads that set's documents. Ontologies read Markdown, MDX and text as text, and
+  each CSV, TSV, JSON, JSONL or Parquet file as a table of its own once Helix has
+  read it. PDFs are stored only, for now.
 
 ## Resolve the ontology first
 
@@ -106,7 +110,7 @@ only the website does, give them the matching link; don't build one.
 | A connector's sync history and why a sync failed | `helix_foundry_list_syncs` |
 | How one sync is going | `helix_foundry_get_sync` |
 | To add a connector | `helix_foundry_connector_link`: give the user the link; they enter the credentials on the Foundry website |
-| An ontology's documents and what loads made of them | `helix_foundry_list_documents`; `helix_foundry_get_ontology` lists the sets |
+| An ontology's documents, whether Helix has read each, and what loads made of them | `helix_foundry_list_documents`; `helix_foundry_get_ontology` lists the sets |
 | How a generation or a revision went, and a revision's findings | `helix_foundry_get_generation` |
 | How a load went, its jobs and why one failed | `helix_foundry_get_load` |
 | To show the user something on the website | the result's `url`, `explore_url` or `ask_url` (see Links) |
@@ -215,10 +219,11 @@ that is `deleting` or `delete_failed` is one Foundry is removing.
 ## Generations, loads, documents and reviews
 
 - `helix_foundry_get_generation` returns one generation with its status, error,
-  attempts and the version it drafted (`result_version_id`). A revision also carries
-  its parent version and, once it ended, the engine's result: its status, findings
-  and cards. A caller who can't query the ontology's database sees
-  `result_withheld` instead, because the result measures the load.
+  attempts, what it drafts from (its synced `tables`, its `document_set_ids`, and
+  those sets' table `files`) and the version it drafted (`result_version_id`). A
+  revision also carries its parent version and, once it ended, the engine's result:
+  its status, findings and cards. A caller who can't query the ontology's database
+  sees `result_withheld` instead, because the result measures the load.
 - `helix_foundry_get_load` returns one load and its newest jobs: each with its
   `kind` (`load`, `extract` or `delete`), `status`, `phase` (`provisioning`,
   `ingest`, `documents` or `finishing`), `progress`, `error`, spend in `usd_micros`,
@@ -231,6 +236,13 @@ that is `deleting` or `delete_failed` is one Foundry is removing.
   later load may succeed) or `out_of_scope` (no extraction route names its set, so no
   model read it). With a `set_id` it returns every document of that workspace set,
   without extraction. Document text is not returned.
+- An uploaded document's `read` is how ontologies read it: `kind` `text`, `table` or
+  `pdf`, and `state` `ready` (a table with its `rows`), `reading`, `failed` (with
+  `error_code` `too_large` or `unsupported`, and `error_message` saying what to fix)
+  or `off` (a PDF this stamp doesn't read yet). `retrying` is a read waiting to run
+  again after a failure that wasn't the file's. A table file is a source for a
+  generation only once its read is `ready`; it has no get tool, so list its set's
+  documents again to follow it.
 - Reviews are `FoundryReview` records in a load; find them with a `query` read.
   `helix_foundry_list_review_decisions` lists the decisions settled so far, which
   every later load applies. A `prop` decision's value has one key: `text`,

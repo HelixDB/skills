@@ -1,7 +1,7 @@
 interface:
   display_name: "Helix Foundry Onboarding"
   short_description: "Set up a Helix Foundry ontology end to end"
-  default_prompt: "Use $helix-foundry-onboarding to set up my Helix Foundry ontology: connect our data, write its goal, then generate, review and load it."
+  default_prompt: "Use $helix-foundry-onboarding to set up my Helix Foundry ontology: connect our data or upload our documents, write its goal, then generate, review and load it."
 
 dependencies:
   tools:

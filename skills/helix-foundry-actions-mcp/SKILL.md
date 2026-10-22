@@ -35,7 +35,7 @@ Permissions).
 | `create_ontology` | `tenant:<id>` | `{"name"}`, 1 to 120 characters | Creates an ontology bound to an existing Helix database |
 | `create_ontology` | `workspace:<workspace_id>` | `{"name", "database": {"name", "slug", "project_id" or "project_name"}}` | Creates a database on the shared cluster (in a new project with `project_name`), then an ontology bound to it |
 | `sync_connector` | `connector:<workspace>/<id>` | `{}` | Starts a full sync of one connector |
-| `generate_ontology` | `ontology:<workspace>/<id>` | `{"goal"?, "connector_ids"?, "document_set_ids"?}`; no `connector_ids` means every connector, no `document_set_ids` means no documents | Asks the agent to draft a new version |
+| `generate_ontology` | `ontology:<workspace>/<id>` | `{"goal"?, "connector_ids"?, "document_set_ids"?, "no_connectors"?}`; no `connector_ids` means every connector unless `no_connectors` is true, no `document_set_ids` means no document set, so list the ones to read | Asks the agent to draft a new version |
 | `set_current_version` | `ontology:<workspace>/<id>` | `{"version_id", "expected_current_version_id"}` | Makes a version current, or rolls back to an older one |
 | `create_load` | `ontology:<workspace>/<id>` | `{"version_id"}` | Writes a version into the ontology's database |
 | `set_current_load` | `ontology:<workspace>/<id>` | `{"load_id"}` | Makes a ready or partial load the one reads and Ask use |
@@ -93,14 +93,18 @@ a changed goal, needs its own.
 - **`sync_connector`**: every sync is a full copy. One runs at a time per connector
   (`already_exists`). PostgreSQL, MySQL and Amazon S3 need Foundry Pro or Max
   (`foundry_pro_required`).
-- **`generate_ontology`**: it needs synced tables; it reads at most 50 tables, so
-  name fewer connectors when the workspace has more; the goal is at most 2,000
-  characters. One runs at a time per ontology (`already_exists`), and a workspace
-  may start only a limited number per hour, whatever became of them
-  (`resource_exhausted`). It costs model spend,
-  so run it only when the user asks. The draft becomes a new version; it is not made
-  current, and a generation that succeeds can still produce a draft that can't be
-  loaded.
+- **`generate_ontology`**: it needs at least one source, of any kind: a synced
+  connector table, a table file (a CSV, TSV, JSON, JSONL or Parquet document in a
+  listed set, once Helix has read it; each is a table of its own), or a listed set
+  holding Markdown, MDX or text. Connectors aren't required: for documents only, send
+  `"no_connectors": true` with the sets and no `connector_ids`. It reads at most 50
+  tables, synced tables and table files together, so name fewer connectors or sets
+  when there are more, and at most 20 sets; a table file still being read is left
+  out. The goal is at most 2,000 characters. One runs at a time per ontology
+  (`already_exists`), and a workspace may start only a limited number per hour,
+  whatever became of them (`resource_exhausted`). It costs model spend, so run it
+  only when the user asks. The draft becomes a new version; it is not made current,
+  and a generation that succeeds can still produce a draft that can't be loaded.
 - **`set_current_version`**: read the ontology right before preparing and pass its
   current version as `expected_current_version_id` (empty when it has none). If
   someone else changed it since, the action is refused (`failed_precondition`); read
@@ -124,18 +128,21 @@ a changed goal, needs its own.
   the result with `helix_foundry_get_generation`: refused edits fail the revision
   with findings saying why. A revision stores a new version (none for `dry_run`),
   which is not made current.
-- **`upload_document`**: a file named `.md`, `.markdown`, `.txt`, `.json`, `.csv`,
-  `.tsv`, `.jsonl`, `.ndjson`, `.parquet` or `.pdf` (the name sets the type), up to
-  1 MiB (prepare refuses a larger one); a workspace holds up to 200 documents.
-  Ontologies read only the Markdown and plain-text ones and store the rest. Measure
-  the exact file you will send: `wc -c < file` and `shasum -a 256 file`. Execute
-  returns `upload`: send the same bytes with every one of its headers before
-  `expires_at` (15 minutes), for example
-  `curl -X PUT --data-binary @file -H "Content-Type: text/markdown" -H "<name>: <value>" "<url>"`,
-  then call `helix_foundry_complete_document_upload` with the document's id. If
-  execute returns no `upload`, the workspace already holds those bytes, as the
-  document returned (its `set_id` says where). `routed: false` means no extraction
-  route of the current version names the set, so no model will read the document.
+- **`upload_document`**: a file named `.md`, `.markdown`, `.mdx`, `.txt`, `.json`,
+  `.csv`, `.tsv`, `.jsonl`, `.ndjson`, `.parquet` or `.pdf` (the name sets the type),
+  at most 1 MiB for Markdown, MDX and text and 3 MiB for the other types, unless the
+  stamp says otherwise (prepare refuses a larger one, and its message gives the
+  stamp's caps); a workspace holds up to 200 documents. Ontologies read Markdown, MDX
+  and text as text, and each CSV, TSV, JSON, JSONL and Parquet file as a table of its
+  own once Helix has read it: the document's `read` says when (`state` `ready`, with
+  its `rows`). PDFs are stored only, for now. Measure the exact file you will send:
+  `wc -c < file` and `shasum -a 256 file`. Execute returns `upload`: send the same
+  bytes with every one of its headers before `expires_at` (15 minutes), for example
+  `curl -X PUT --data-binary @file -H "<name>: <value>" ... "<url>"`, then call
+  `helix_foundry_complete_document_upload` with the document's id. If execute
+  returns no `upload`, the workspace already holds those bytes, as the document
+  returned (its `set_id` says where). `routed: false` means no extraction route of
+  the current version names the set, so no model will extract the document's text.
   Completing returns `reads`: what each ontology whose current version reads the set
   did with it (`queued`, `owed` by the job running now, `no_budget`, `held` by its
   current load, or `skipped` because the caller can't write its database). A queued
@@ -175,8 +182,8 @@ needs one, say so instead of trying another route.
 | Code | Meaning | Do |
 | --- | --- | --- |
 | `not_found` | Missing, or not visible to this caller | Re-resolve; don't claim which |
-| `invalid_arguments` | A malformed payload, a goal too long, too many tables, or a file type Foundry doesn't take; the message says which | Fix the payload and prepare again |
-| `failed_precondition` | The state doesn't allow it: nothing synced yet, a version that can't be loaded or revised, a load or extract already running, a load that isn't ready, a current version someone else moved, an upload whose bytes are missing or differ, no current load to settle a review on, a full workspace of documents, an expired confirmation, or the month's load budget spent | Read the state and explain |
+| `invalid_arguments` | A malformed payload, a goal too long, `connector_ids` with `no_connectors`, too many tables or document sets, or a file type or size Foundry doesn't take; the message says which | Fix the payload and prepare again |
+| `failed_precondition` | The state doesn't allow it: nothing to generate from (no synced table, read table file or set holding text), a version that can't be loaded or revised, a load or extract already running, a load that isn't ready, a current version someone else moved, an upload whose bytes are missing or differ, no current load to settle a review on, a full workspace of documents, an expired confirmation, or the month's load budget spent | Read the state and explain |
 | `foundry_pro_required` | Needs Foundry Pro or Max | Tell the user; an owner or admin upgrades in Settings, Plan & billing |
 | `already_exists` | That sync, generation or revision is already running, the database already has an ontology, a document set has that name, or the confirmation was already used | Read the state; don't prepare again |
 | `resource_exhausted` | The workspace's hourly generation limit | Stop and tell the user |
