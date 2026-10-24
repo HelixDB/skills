@@ -4,7 +4,7 @@ description: Set up a Helix Foundry ontology end to end through the hosted Helix
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.2.0
+  version: 1.3.0
 ---
 
 # Helix Foundry onboarding
@@ -184,7 +184,12 @@ Do only that. If the workspace already holds what the goal will need, go on.
 
    For their apps or agents to send later, give the user `token_url`: they make a
    send token there and put it in the sender's config (helix-foundry-mcp has the
-   `.mcp.json` form). Never ask for the token.
+   `.mcp.json` form). Never ask for the token. When `helix_foundry_list_connectors`
+   or `create_event_source` returns `send_url`, an app without an MCP client gets
+   its token the same way and POSTs pieces to `send_url` from its server, with the
+   token as its bearer and a `client_token` on every send (helix-foundry-mcp's Send
+   over HTTP has the curl and what each status means). Without `send_url`, apps
+   send through the MCP.
 5. It counts once `helix_foundry_list_connectors` shows its `events` table with
    rows, about a minute after the first send; for extraction, once its
    `event_source.extraction.documents` is above 0. Never `sync_connector` an API
@@ -344,8 +349,10 @@ skipped or failed. For each API source, give its `token_url` again if the user's
 apps or agents will send to it, and say when pieces they send later reach the graph:
 through mappings, when the ontology refreshes; by extraction, as they arrive, until
 the source's monthly allowance is spent (then they wait for next month or a load a
-person starts). Then offer to ask a first question, one of the goal's,
-with `helix_foundry_ask` as helix-foundry-mcp describes.
+person starts). When `helix_foundry_list_connectors` or `create_event_source`
+returned the source's `send_url`, give it too, for apps without an MCP client. Then
+offer to ask a first question, one of the goal's, with `helix_foundry_ask` as
+helix-foundry-mcp describes.
 
 When a step is harder than it should be, send `helix_feedback` as helix-foundry-mcp's
 Feedback section says.
