@@ -4,7 +4,7 @@ description: Run explicitly requested, confirmation-gated Helix Foundry actions 
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.4.0
+  version: 1.5.0
 ---
 
 # Helix Foundry actions
@@ -37,7 +37,7 @@ needs no confirmation, and helix-foundry-mcp describes it.
 | --- | --- | --- | --- |
 | `create_ontology` | `tenant:<id>` | `{"name"}`, 1 to 120 characters | Creates an ontology bound to an existing Helix database |
 | `create_ontology` | `workspace:<workspace_id>` | `{"name", "database": {"name", "slug", "project_id" or "project_name"}}` | Creates a database on the shared cluster (in a new project with `project_name`), then an ontology bound to it |
-| `create_event_source` | `workspace:<workspace_id>` | `{"name", "description"?}` | Creates an API source (connector kind `events`) that people and agents send pieces of data to |
+| `create_event_source` | `workspace:<workspace_id>` | `{"name", "description"?, "text_field"?}` | Creates an API source (connector kind `events`) that people and agents send pieces of data to |
 | `sync_connector` | `connector:<workspace>/<id>` | `{}` | Starts a full sync of one connector |
 | `generate_ontology` | `ontology:<workspace>/<id>` | `{"goal"?, "connector_ids"?, "document_set_ids"?, "no_connectors"?, "event_sources"?}`; no `connector_ids` means every connector but API sources unless `no_connectors` is true, no `document_set_ids` means no document set and no `event_sources` no API source, so list the ones to read | Asks the agent to draft a new version |
 | `set_current_version` | `ontology:<workspace>/<id>` | `{"version_id", "expected_current_version_id"}` | Makes a version current, or rolls back to an older one |
@@ -97,42 +97,65 @@ a changed goal, needs its own.
 - **`create_event_source`**: the one connector an agent may create, because an API
   source has no credential. A name of 1 to 120 characters that no other API source
   of the workspace has, and a description of at most 1,000 characters saying what
-  each piece is; agree both with the user. The result is
-  `{"event_source": {"id", "name", "description", "fields"}, "token_url",
-  "send_tool"}`: send to the source with `helix_foundry_send_pieces` (see
-  helix-foundry-mcp), and give the user `token_url` when an app or agent other than
-  you will send, so they make it a send token there (it is `""` on a stamp without
-  the website). A name a live source already has is `already_exists`, and the
-  message names that source's id: use it rather than make another. A workspace has
-  at most 20 API sources (`resource_exhausted`).
+  each piece is; agree both with the user. `text_field`, for a source read by entity
+  extraction, is the top-level field holding each piece's text: 1 to 64 bytes, no
+  control characters or backticks, and not `id`, `received_at` or `occurred_at`
+  (prepare refuses another, its message starting `text_field:`). The source locks it
+  as a string, so every piece must send it as text (or null), and keeps its newest
+  pieces as documents of its own set. Leave it out for a source read only through
+  mappings. No operation changes it later: a person does, on the source's page in
+  Foundry. The result is
+  `{"event_source": {"id", "name", "description", "text_field", "fields"},
+  "token_url", "send_tool"}` (`text_field` absent when none was given): send to the
+  source with `helix_foundry_send_pieces` (see helix-foundry-mcp), and give the user
+  `token_url` when an app or agent other than you will send, so they make it a send
+  token there (it is `""` on a stamp without the website). A name a live source
+  already has is `already_exists`, and the message names that source's id: use it
+  rather than make another. A workspace has at most 20 API sources
+  (`resource_exhausted`).
 - **`sync_connector`**: every sync is a full copy. One runs at a time per connector
   (`already_exists`). PostgreSQL, MySQL and Amazon S3 need Foundry Pro or Max
   (`foundry_pro_required`). Never sync an API source: it syncs by itself about a
   minute after pieces arrive, and before its first piece the sync is refused
   (`failed_precondition`).
 - **`generate_ontology`**: it needs at least one source, of any kind: a synced
-  connector table, an API source whose table has rows, a table file (a CSV, TSV,
-  JSON, JSONL or Parquet document in a listed set, once Helix has read it; each is a
-  table of its own), or a listed set holding Markdown, MDX or text. Connectors
-  aren't required: for documents or API sources only, send `"no_connectors": true`
-  with the sets or `event_sources` and no `connector_ids`. It reads at most 50
-  tables, synced tables, API sources and table files together, so name fewer
-  connectors, sources or sets when there are more, and at most 20 sets; a table file
-  still being read is left out. The goal is at most 2,000 characters. One runs at a
+  connector table, an API source whose table has rows, or one read by extraction
+  whose set has a document, a table file (a CSV, TSV, JSON, JSONL or Parquet
+  document in a listed set, once Helix has read it; each is a table of its own), or
+  a listed set holding Markdown, MDX or text. Connectors aren't required: for
+  documents or API sources only, send `"no_connectors": true` with the sets or
+  `event_sources` and no `connector_ids`. It reads at most 50 tables, synced
+  tables, structured API sources and table files together, so name fewer
+  connectors, sources or sets when there are more, and at most 20 sets, each API
+  source read by extraction counting as one; a table file still being read is left
+  out. The goal is at most 2,000 characters. One runs at a
   time per ontology (`already_exists`), and a workspace may start only a limited
   number per hour, whatever became of them (`resource_exhausted`). It costs model
   spend, so run it only when the user asks. The draft becomes a new version; it is
   not made current, and a generation that succeeds can still produce a draft that
   can't be loaded.
 - **`event_sources`** in `generate_ontology`: the API sources to read, each once, as
-  `{"connector_id": "<API source id>", "mode": "structured"}`. Structured reads the
-  source's `events` table through mappings, and pieces sent later reach the graph
-  when the ontology refreshes. `connector_ids` never names an API source
-  (`invalid_arguments`), and leaving it out reads every connector but them. Mode
-  `extraction` (reading pieces as text) isn't available yet and is refused at
-  prepare. A source whose table has no rows yet is `failed_precondition`: send
-  pieces and wait for its first sync, about a minute. The generation's
+  `{"connector_id": "<API source id>", "mode": "structured"}` or `"mode":
+  "extraction"`. `connector_ids` never names an API source (`invalid_arguments`),
+  and leaving it out reads every connector but them. The generation's
   `event_sources` say which API sources it read, and how.
+  - `structured` reads the source's `events` table through mappings, and pieces sent
+    later reach the graph when the ontology refreshes. A source whose table has no
+    rows yet is `failed_precondition`: send pieces and wait for its first sync, about
+    a minute.
+  - `extraction` reads the source's newest 500 pieces as Markdown documents of its
+    own set (its `pieces_set_id`). Once a version drafted from it is current and
+    loaded, new pieces are extracted as they arrive, about 1 cent a piece for each
+    ontology that reads the source. It needs the source's
+    `text_field` and a piece synced as a document (`extraction.documents` above 0 in
+    `helix_foundry_list_connectors`); without them it is `failed_precondition`,
+    saying the source "has no text field" or "has no pieces as documents yet".
+    `document_set_ids` never names the source's set (`invalid_arguments`, naming the
+    source). Work no person started spends at most `max_month_usd` ($5 by default) a
+    UTC month on a source, within a share for all the workspace's API sources; past
+    that, the source's `extraction.paused` is true and new pieces wait for next month
+    or a load a person starts. Tell the user the cost and the allowance before you
+    prepare it.
 - **`set_current_version`**: read the ontology right before preparing and pass its
   current version as `expected_current_version_id` (empty when it has none). If
   someone else changed it since, the action is refused (`failed_precondition`); read
@@ -143,7 +166,8 @@ a changed goal, needs its own.
   finished, with all its rules evaluated, can be loaded): tell the user instead of
   proposing it. One load or extract runs at a time per ontology
   (`failed_precondition`). Reading documents costs money, within a per-load cap and
-  a monthly workspace budget. Tell the user that a load that finishes ready becomes
+  a monthly workspace budget; an API source's pieces in the version's sets count
+  here, not against the source's allowance. Tell the user that a load that finishes ready becomes
   current, and that Foundry then deletes non-current loads beyond the newest five.
 - **`set_current_load`**: only a ready or partial load. If documents arrived since
   that load, Foundry reads them into it, which spends from the monthly budget and
@@ -210,8 +234,8 @@ headless run needs one, say so instead of trying another route.
 | Code | Meaning | Do |
 | --- | --- | --- |
 | `not_found` | Missing, or not visible to this caller | Re-resolve; don't claim which |
-| `invalid_arguments` | A malformed payload, a goal too long, `connector_ids` with `no_connectors` or naming an API source, `event_sources` naming a source twice or with a mode other than `structured`, too many tables or document sets, or a file type or size Foundry doesn't take; the message says which | Fix the payload and prepare again |
-| `failed_precondition` | The state doesn't allow it: nothing to generate from (no synced table, read table file or set holding text), an API source with no rows yet, a sync of an API source before its first piece, a version that can't be loaded or revised, a load or extract already running, a load that isn't ready, a current version someone else moved, an upload whose bytes are missing or differ, no current load to settle a review on, a full workspace of documents, an expired confirmation, or the month's load budget spent | Read the state and explain |
+| `invalid_arguments` | A malformed payload, a goal too long, `connector_ids` with `no_connectors` or naming an API source, `event_sources` naming a source twice or with a mode other than `structured` or `extraction`, `document_set_ids` naming an API source's set, a `text_field` no piece could carry, too many tables or document sets, or a file type or size Foundry doesn't take; the message says which | Fix the payload and prepare again |
+| `failed_precondition` | The state doesn't allow it: nothing to generate from (no synced table, read table file or set holding text), an API source with no rows yet, or read by extraction with no text field or no piece as a document yet, a sync of an API source before its first piece, a version that can't be loaded or revised, a load or extract already running, a load that isn't ready, a current version someone else moved, an upload whose bytes are missing or differ, no current load to settle a review on, a full workspace of documents, an expired confirmation, or the month's load budget spent | Read the state and explain |
 | `foundry_pro_required` | Needs Foundry Pro or Max | Tell the user; an owner or admin upgrades in Settings, Plan & billing |
 | `already_exists` | That sync, generation or revision is already running, the database already has an ontology, a document set or API source has that name (the message names the source), or the confirmation was already used | Read the state; don't prepare again. For an API source, use the one it names |
 | `resource_exhausted` | The workspace's hourly generation limit, or its most API sources (20) | Stop and tell the user |
@@ -240,8 +264,9 @@ for the session. In your report, say in one line that you sent feedback.
 
 Creating connectors other than API sources (they hold credentials; use
 `helix_foundry_connector_link` from helix-foundry-mcp to send the user to the form),
-editing or deleting any connector, API sources included, making or revoking send
-tokens, deleting ontologies, versions, loads, documents, document sets or review
+editing or deleting any connector, API sources included (their description and text
+field too), making or revoking send tokens, deleting ontologies, versions, loads,
+documents, document sets or review
 decisions, cancelling a sync, generation or load, and billing changes all stay in
 the Foundry website. Do not look for another way to do them.
 
