@@ -18,8 +18,8 @@ These skills are for agents that need to:
 - execute authorized Helix Cloud queries through the separate Query MCP broker
 - run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
-- read and ask Helix Foundry ontologies, and run confirmation-gated Foundry syncs, generations, revisions, document uploads and loads
-- set up a Helix Foundry ontology end to end: connect data or upload documents, write its goal, generate, review and load it
+- read and ask Helix Foundry ontologies, send pieces of JSON to Foundry API sources, and run confirmation-gated Foundry syncs, generations, revisions, document uploads and loads
+- set up a Helix Foundry ontology end to end: connect data, send pieces to an API source or upload documents, write its goal, generate, review and load it
 
 ## Status
 
@@ -93,17 +93,19 @@ the non-interactive/agent path.
 ## Helix Foundry
 
 `helix-foundry-mcp` reads a workspace's Foundry ontologies, their versions, loads
-and graph, and asks Foundry's query agent questions with cited answers.
-`helix-foundry-actions-mcp` runs the changes a user asks for (create an ontology,
-sync a connector, generate or revise a draft, upload and organize documents,
-settle a review, make a version or load current, create a load), each through a
-one-time confirmation. Connectors are added on the Foundry website, from a link the
-MCP gives, so their credentials never pass through an agent.
+and graph, asks Foundry's query agent questions with cited answers, and sends pieces
+of JSON data to an API source. `helix-foundry-actions-mcp` runs the changes a user
+asks for (create an ontology or an API source, sync a connector, generate or revise
+a draft, upload and organize documents, settle a review, make a version or load
+current, create a load), each through a one-time confirmation. Connectors with
+credentials are added on the Foundry website, from a link the MCP gives, so their
+credentials never pass through an agent; an app or agent that sends to an API
+source on its own uses a send token the user makes on the website.
 `helix-foundry-onboarding` takes a workspace from nothing to a loaded ontology: it
-creates the ontology and its database, hands over connector links or uploads your
-documents (either is enough, or both), writes the goal from what the agent knows of
-your work, then generates, reviews and loads it, waiting on each job and asking you
-before each action.
+creates the ontology and its database, hands over connector links, makes API
+sources and sends them pieces, or uploads your documents (any is enough, or a mix),
+writes the goal from what the agent knows of your work, then generates, reviews and
+loads it, waiting on each job and asking you before each action.
 
 All three use the hosted Helix MCP server, `https://mcp.helix-db.com/mcp`. Sign in
 once and the agent acts as you (onboarding needs a workspace owner or admin):
@@ -175,14 +177,15 @@ Use this skill to explore Helix Foundry ontologies. It teaches agents to resolve
 the workspace and ontology, choose between the definition, the data sources, exact
 graph reads and Ask, build reads from the served read guide, keep Ask's
 `client_token` on retries, follow running syncs, generations and loads, hand over
-Foundry links, and report answers with their citations.
+Foundry links, send pieces to an API source with a fresh `client_token` per call,
+and report answers with their citations.
 
 ### `helix-foundry-actions-mcp`
 
 Use this skill only for an explicitly requested Foundry change: create an ontology
-on an existing or new database, sync a connector, generate or revise a draft, upload
-documents and organize their sets, settle a review, make a version current, create a
-load, or make a load current. It teaches the prepare-then-execute confirmation, no
+on an existing or new database, create an API source, sync a connector, generate or
+revise a draft, upload documents and organize their sets, settle a review, make a
+version current, create a load, or make a load current. It teaches the prepare-then-execute confirmation, no
 retries, the upload's PUT and completion, what each action costs or replaces, and
 what stays in the Foundry website.
 
@@ -190,9 +193,10 @@ what stays in the Foundry website.
 
 Use this skill only when a user asks to set up Foundry or build a workspace's
 ontology from scratch. It teaches the end-to-end order (workspace, ontology and
-database, connected data or uploaded documents, goal, generation, review, load),
-how long to wait on each job and when to give up, how to write a goal from what the
-agent knows of the user's work, and what to hand the user at each step. It leaves
+database, connected data, API sources or uploaded documents, goal, generation,
+review, load), how long to wait on each job and when to give up, how to write a goal
+from what the agent knows of the user's work, and what to hand the user at each
+step. It leaves
 payloads and confirmations to the two skills above.
 
 ### `helix-query-json-dynamic`
