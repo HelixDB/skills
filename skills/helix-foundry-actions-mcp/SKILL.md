@@ -4,7 +4,7 @@ description: Run explicitly requested, confirmation-gated Helix Foundry actions 
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.5.0
+  version: 1.6.0
 ---
 
 # Helix Foundry actions
@@ -106,10 +106,13 @@ a changed goal, needs its own.
   mappings. No operation changes it later: a person does, on the source's page in
   Foundry. The result is
   `{"event_source": {"id", "name", "description", "text_field", "fields"},
-  "token_url", "send_tool"}` (`text_field` absent when none was given): send to the
-  source with `helix_foundry_send_pieces` (see helix-foundry-mcp), and give the user
-  `token_url` when an app or agent other than you will send, so they make it a send
-  token there (it is `""` on a stamp without the website). A name a live source
+  "token_url", "send_url", "send_tool"}` (`text_field` absent when none was given):
+  send to the source with `helix_foundry_send_pieces` (see helix-foundry-mcp), and
+  give the user `token_url` when an app or agent other than you will send, so they
+  make it a send token there (it is `""` on a stamp without the website). When it
+  returns `send_url`, an app without an MCP client can POST pieces there with that
+  token as its bearer (helix-foundry-mcp's Send over HTTP); without it, the stamp
+  has no HTTP endpoint, so senders use the MCP. A name a live source
   already has is `already_exists`, and the message names that source's id: use it
   rather than make another. A workspace has at most 20 API sources
   (`resource_exhausted`).
