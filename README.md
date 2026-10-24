@@ -100,9 +100,10 @@ a draft, upload and organize documents, settle a review, make a version or load
 current, create a load), each through a one-time confirmation. Connectors with
 credentials are added on the Foundry website, from a link the MCP gives, so their
 credentials never pass through an agent; an app or agent that sends to an API
-source on its own uses a send token the user makes on the website. An ontology
-reads an API source through structured mappings or, for one with a text field, by
-entity extraction of its newest pieces.
+source on its own uses a send token the user makes on the website, over the MCP or,
+where the MCP returns the source's `send_url`, over HTTP from the app's server. An
+ontology reads an API source through structured mappings or, for one with a text
+field, by entity extraction of its newest pieces.
 `helix-foundry-onboarding` takes a workspace from nothing to a loaded ontology: it
 creates the ontology and its database, hands over connector links, makes API
 sources and sends them pieces, or uploads your documents (any is enough, or a mix),
@@ -180,7 +181,9 @@ the workspace and ontology, choose between the definition, the data sources, exa
 graph reads and Ask, build reads from the served read guide, keep Ask's
 `client_token` on retries, follow running syncs, generations and loads, hand over
 Foundry links, send pieces to an API source with a fresh `client_token` per call,
-and report answers with their citations.
+show an app without an MCP client how to POST them to the source's `send_url` (the
+curl, the body and what each status means) where the MCP returns one, and report
+answers with their citations.
 
 ### `helix-foundry-actions-mcp`
 
