@@ -100,7 +100,9 @@ a draft, upload and organize documents, settle a review, make a version or load
 current, create a load), each through a one-time confirmation. Connectors with
 credentials are added on the Foundry website, from a link the MCP gives, so their
 credentials never pass through an agent; an app or agent that sends to an API
-source on its own uses a send token the user makes on the website.
+source on its own uses a send token the user makes on the website. An ontology
+reads an API source through structured mappings or, for one with a text field, by
+entity extraction of its newest pieces.
 `helix-foundry-onboarding` takes a workspace from nothing to a loaded ontology: it
 creates the ontology and its database, hands over connector links, makes API
 sources and sends them pieces, or uploads your documents (any is enough, or a mix),
@@ -183,21 +185,23 @@ and report answers with their citations.
 ### `helix-foundry-actions-mcp`
 
 Use this skill only for an explicitly requested Foundry change: create an ontology
-on an existing or new database, create an API source, sync a connector, generate or
-revise a draft, upload documents and organize their sets, settle a review, make a
-version current, create a load, or make a load current. It teaches the prepare-then-execute confirmation, no
-retries, the upload's PUT and completion, what each action costs or replaces, and
-what stays in the Foundry website.
+on an existing or new database, create an API source (with a text field for
+extraction), sync a connector, generate or revise a draft (reading API sources
+through mappings or by extraction), upload documents and organize their sets,
+settle a review, make a version current, create a load, or make a load current. It
+teaches the prepare-then-execute confirmation, no retries, the upload's PUT and
+completion, what each action costs or replaces, and what stays in the Foundry
+website.
 
 ### `helix-foundry-onboarding`
 
 Use this skill only when a user asks to set up Foundry or build a workspace's
 ontology from scratch. It teaches the end-to-end order (workspace, ontology and
 database, connected data, API sources or uploaded documents, goal, generation,
-review, load), how long to wait on each job and when to give up, how to write a goal
-from what the agent knows of the user's work, and what to hand the user at each
-step. It leaves
-payloads and confirmations to the two skills above.
+review, load), which mode fits each API source, how long to wait on each job and
+when to give up, how to write a goal from what the agent knows of the user's work,
+and what to hand the user at each step. It leaves payloads and confirmations to the
+two skills above.
 
 ### `helix-query-json-dynamic`
 
