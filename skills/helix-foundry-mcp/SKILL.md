@@ -4,7 +4,7 @@ description: Explore Helix Foundry ontologies through the hosted Helix MCP serve
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.4.0
+  version: 1.5.0
 ---
 
 # Helix Foundry MCP
@@ -74,8 +74,10 @@ direct API calls, database keys or raw queries.
   read it. PDFs are stored only, for now.
 - An **API source** is a connector of kind `events` (the tools call it an event
   source). People and their agents send it pieces of data, JSON objects each with an
-  id, and Foundry merges them by id into the source's one table, `events`. A
-  generation reads it only when it is named in `event_sources`.
+  id, and Foundry merges them by id into the source's one table, `events`. A source
+  with a text field also keeps its newest pieces as Markdown documents in a set of
+  its own. A generation reads it only when it is named in `event_sources`: through
+  mappings (`structured`) or by entity extraction (`extraction`).
 
 ## Resolve the ontology first
 
@@ -117,7 +119,7 @@ only the website does, give them the matching link; don't build one.
 | A connector's sync history and why a sync failed | `helix_foundry_list_syncs` |
 | How one sync is going | `helix_foundry_get_sync` |
 | To add a connector | `helix_foundry_connector_link`: give the user the link; they enter the credentials on the Foundry website |
-| An API source's fields, what waits to sync, and how full it is | `helix_foundry_list_connectors`: its `event_source` |
+| An API source's fields, what waits to sync, how full it is, and its extraction this month | `helix_foundry_list_connectors`: its `event_source` |
 | To send pieces of data to an API source | `helix_foundry_send_pieces` (see API sources) |
 | An ontology's documents, whether Helix has read each, and what loads made of them | `helix_foundry_list_documents`; `helix_foundry_get_ontology` lists the sets |
 | How a generation or a revision went, and a revision's findings | `helix_foundry_get_generation` |
@@ -231,9 +233,10 @@ that is `deleting` or `delete_failed` is one Foundry is removing.
   attempts, what it drafts from (its synced `tables`, its `document_set_ids`, and
   those sets' table `files`) and the version it drafted (`result_version_id`). Its
   `event_sources` (also on `helix_foundry_get_ontology`'s generations) are the API
-  sources among those tables, each `{event_source_id, mode}`; mode `structured`
-  reads the source's table through mappings. It is absent when the generation
-  reads none, and for a service key, which sees no connectors. A
+  sources among those tables and sets, each `{event_source_id, mode}`: mode
+  `structured` reads the source's table through mappings, and `extraction` its own
+  set's documents, which is then among the `document_set_ids`. It is absent when the
+  generation reads none, and for a service key, which sees no connectors. A
   revision also carries its parent version and, once it ended, the engine's result:
   its status, findings and cards. A caller who can't query the ontology's database
   sees `result_withheld` instead, because the result measures the load.
@@ -242,7 +245,8 @@ that is `deleting` or `delete_failed` is one Foundry is removing.
   `ingest`, `documents` or `finishing`), `progress`, `error`, spend in `usd_micros`,
   and when it was created, started and finished. A partial or failed load's jobs say
   why in `error`; a job that ran out of the month's document budget ends
-  `budget_exhausted`.
+  `budget_exhausted`, as does one no person started that reached an API source's
+  monthly allowance (its `error` names the source; see Entity extraction).
 - `helix_foundry_list_documents` returns the documents the ontology reads, each with
   its status (`pending_upload`, `uploaded`) and, once the current load read it, its
   extraction: `extracted`, `duplicate`, `failed` (with an error code and whether a
@@ -294,12 +298,16 @@ the JSON type it first had.
 
 - `description` and `fields` (each `{name, type}`, type `string`, `number`,
   `boolean`, `object`, `array`, or `null` while it has only been null);
+- `text_field`, the field holding each piece's text, absent when the source has
+  none (see Entity extraction);
 - `last_received_at`, absent before any send, and `pending_pieces`, pieces no sync
   has read yet;
 - `capacity`: `rows`, `max_rows`, `bytes`, `max_bytes` (strings of digits) and
   `percent_full`, counting pieces still waiting. Foundry keeps every piece, so a
   full source refuses sends;
-- `token_url`: the source's page in Foundry with its new send token dialog open.
+- `token_url`: the source's page in Foundry with its new send token dialog open;
+- with a text field, once a sync has made a document of a piece, `pieces_set_id`
+  and `extraction` (see Entity extraction); both are absent otherwise.
 
 ### Send pieces
 
@@ -343,6 +351,7 @@ source of its own.
   twice, and never `id`, `received_at` or `occurred_at` (those go beside
   `data_json`). A source has at most 200 fields. A non-null value must have its
   field's type (integers and decimals are both `number`); `null` is always allowed.
+  A source's text field holds `string` from when it is set, so send it as text.
 - Write `data_json` from the original text. If your client parses JSON into doubles
   first, send integers above 2^53 (9007199254740992) as strings.
 
@@ -350,7 +359,9 @@ The answer has the send's `seq` (a string of digits), `pieces`, `received_at`,
 `replayed`, `new_fields` (the fields this send added, with their types),
 `capacity` as above, `warning` from 80% full (tell the user), and `next`: pieces
 reach the source's table at its next sync, about a minute away, and ontologies that
-map it see them at their next refresh.
+map it see them at their next refresh. For a source with a text field, the same
+sync also makes the pieces documents, and ontologies that extract the source
+extract them as they arrive.
 
 An API source syncs by itself when pieces arrive. Never start a sync of one with
 `sync_connector`; follow its `last_sync` with `helix_foundry_get_sync` if you need
@@ -365,6 +376,41 @@ When a send fails:
 | `resource_exhausted` | A send rate or the workspace's daily pieces or bytes: wait as the message says, then retry with the same `client_token` |
 | `backend_unavailable` | Retry with the same `client_token` |
 | `not_found` | A wrong workspace or source, a source this caller can't send to, or not the send token's own: stop and tell the user |
+
+### Entity extraction
+
+A source with a `text_field` keeps its newest pieces, by arrival, as Markdown
+documents of its own set, `<source> / Pieces` (its `connector.stream` is `pieces`
+in `helix_foundry_get_ontology`'s sets). Each document is titled by the text's first
+line (the piece's id when it has no text), lists the piece's id, `occurred_at` and
+other fields, then holds the text. An ontology reads the set only through
+`event_sources` mode `extraction` (helix-foundry-actions-mcp), never
+`document_set_ids`. `helix_foundry_list_documents` with the `pieces_set_id` lists
+the documents, each with the piece's id as `source.external_id`.
+
+The text field is set when the source is made (`create_event_source`'s
+`text_field`), or later by a person on the source's page in Foundry; no tool changes
+it. It holds strings only: a piece that sends it as another type is refused.
+
+`extraction` in the `event_source` block:
+
+- `documents` and `max_documents`: pieces the set holds, and the most it holds (500
+  by default). Each sync keeps only the newest; older pieces leave the set, and the
+  graph drops what they gave at the next refresh. The table keeps every piece.
+- `month_usd` and `max_month_usd`: what work no person started (refreshes, and the
+  extracts new pieces queue) spent extracting the set's documents this UTC month,
+  for every ontology that reads it, and the most it may ($5 by default). All the
+  workspace's API sources also share one monthly total.
+- `paused`: true while its syncs write no documents, because that work can spend no
+  more this month on the source, or on the workspace's API sources or all such work.
+  Sends still work and pieces still reach the table; the graph keeps the pieces it
+  has, and new ones wait for next month or a load a person starts. It is not the
+  paused source a send is refused for.
+
+Extracting costs about 1 cent a piece for each ontology that reads the source. A
+piece sent again unchanged moves up the set without being extracted again; a
+changed one is extracted again. A load a person starts extracts on its own cap and
+the workspace's monthly budget, not the source's allowance.
 
 ### Send tokens
 
@@ -486,6 +532,9 @@ Do not:
 - ask for, accept or print a send token; give the user the source's `token_url`
 - send pieces the user hasn't agreed to, or reuse a `client_token` for other pieces
 - start a sync of an API source with `sync_connector`; it syncs when pieces arrive
+- name an API source's set in `document_set_ids`; pick the source in `event_sources`
+  with mode `extraction`
+- read an API source's `extraction.paused` as a refused send; sends still work
 - build a Foundry website link by hand; give the one a result carries
 - poll a running job without `wait: true`, or report a retrying one as failed
 - start a sync, generation, revision, upload or load from this skill; use
