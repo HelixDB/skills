@@ -527,7 +527,7 @@ send and counts toward the source's 200 for good.
 | --- | --- | --- |
 | 200 | | Stored, or `replayed: true` for a send the source already holds |
 | 400 | `invalid_arguments` | Fix what the message says; `piece` is the refused piece's place in `pieces`, 1 for the first. A missing or bad `client_token` is refused here. If it says the `client_token` was already used with other pieces, send with a new one |
-| 401 | `unauthorized`, `invalid_token` | No bearer, or a token that is malformed, wrong or revoked, or whose source was deleted: don't retry. Give the user `token_url` to make another |
+| 401 | `unauthorized`, `invalid_token` | No bearer (`HELIX_EVENT_TOKEN` unset or empty), or a token that is malformed, wrong or revoked, or whose source was deleted: don't retry. Give the user `token_url` to make another |
 | 404 | `not_found` | The URL's source isn't the token's own, or no longer exists: stop and tell the user. A plain-text 404 is a wrong URL: use `send_url` as returned |
 | 405 | | Only POST is served |
 | 408 | `request_timeout` | The body took over 15 s to arrive: send it again with the same `client_token`, and fewer pieces a send if it keeps happening |
