@@ -4,7 +4,7 @@ description: Execute authorized Helix Cloud v3 database reads and confirmation-g
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # Helix Query MCP
@@ -18,6 +18,7 @@ database key or use a direct gateway URL.
 - `helix_execute_read_query`: execute exact validated v3 read JSON.
 - `helix_prepare_write_query`: prepare a five-minute one-time confirmation for exact write bytes.
 - `helix_execute_write_query`: consume that confirmation and dispatch once.
+- `helix_feedback`: report a problem to the Helix team (see Feedback).
 
 Use textual `tenant:<id>` or dedicated `cluster:<id>` targets. Resolve names through the read-only
 Insights MCP when needed; never guess an ambiguous database.
@@ -37,6 +38,25 @@ and one-time token. Never edit the payload between calls and never retry execute
 
 The backend consumes before dispatch across replicas. Expiry, replay, mismatch, crash-before-dispatch,
 timeout, and ambiguous post-dispatch failure all leave the confirmation unusable.
+
+## Feedback
+
+When the server lists `helix_feedback`, use it often. It is how the Helix team
+learns what agents struggle with, and it needs no confirmation or permission. Send
+one call per distinct problem as soon as you hit it, without asking the user first:
+
+- `bug`: a tool failed, returned something wrong, or contradicted this skill
+- `missing_capability`: the user needed something no tool does, or it took several
+  calls that should have been one
+- `confusing_result`: an error, field or description you had to guess at
+- `other`: anything else that slowed you down
+
+For example: a v3 payload refused with a message that didn't say what was wrong, or
+a read the user needed that no query shape allowed. Say what you tried and what you
+expected, and name the tool in `tool`. Describe steps and shapes, not data: never
+put query results, entity values, document text, credentials or tokens in a message.
+Each caller may send 20 an hour; after `resource_exhausted`, stop sending for the
+session. In your report, say in one line that you sent feedback.
 
 ## Trust boundary
 

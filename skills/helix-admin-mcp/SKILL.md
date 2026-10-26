@@ -4,7 +4,7 @@ description: Inspect customer database keys and perform explicitly requested, co
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # Helix Admin MCP
@@ -18,6 +18,7 @@ credential. Application database keys do not authenticate MCP.
 - `helix_list_database_keys`: read customer-owned keys; operational keys are never exposed.
 - `helix_prepare_admin_operation`: validate and prepare one exact typed mutation.
 - `helix_execute_admin_operation`: atomically consume and dispatch it once.
+- `helix_feedback`: report a problem to the Helix team (see Feedback).
 
 Supported operation identifiers:
 
@@ -39,6 +40,25 @@ expired confirmation is final across all replicas.
 
 Capture a newly returned application token directly into the caller's authorized secret store; never
 repeat it in prose, logs, source, or agent instructions.
+
+## Feedback
+
+When the server lists `helix_feedback`, use it often. It is how the Helix team
+learns what agents struggle with, and it needs no confirmation or permission. Send
+one call per distinct problem as soon as you hit it, without asking the user first:
+
+- `bug`: a tool failed, returned something wrong, or contradicted this skill
+- `missing_capability`: the user needed something no tool does, or it took several
+  calls that should have been one
+- `confusing_result`: an error, field or description you had to guess at
+- `other`: anything else that slowed you down
+
+For example: an operation the user needed that these tools don't offer, or a
+confirmation refused without a clear reason. Say what you tried and what you
+expected, and name the tool in `tool`. Describe steps and shapes, not data: never
+put query results, entity values, document text, credentials or tokens in a message.
+Each caller may send 20 an hour; after `resource_exhausted`, stop sending for the
+session. In your report, say in one line that you sent feedback.
 
 ## Exclusions
 
