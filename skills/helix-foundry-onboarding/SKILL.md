@@ -4,7 +4,7 @@ description: Set up a Helix Foundry ontology end to end through the hosted Helix
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.3.0
+  version: 1.4.0
 ---
 
 # Helix Foundry onboarding
@@ -53,7 +53,7 @@ Stop at the first check that fails:
    sync, generate or create ontologies, and a send token (`hx_ev_`) lists only
    `helix_foundry_send_pieces`: ask the user to sign in instead.
 3. **The user is an owner or admin** of the workspace. Only they can add connectors,
-   sync, make API sources and send them pieces, upload documents and upgrade;
+   sync, make API sources and send them pieces, and upload documents;
    `helix_foundry_connector_link` and `helix_foundry_send_pieces` are listed only
    for users who manage connectors. If they are missing, or an action is refused as
    `not_found`, ask the user to get the role from an owner, or to have an owner run
@@ -108,48 +108,50 @@ Every later action targets `ontology:<workspace_id>/<ontology_id>`, except
 
 A generation drafts from at least one source, and any kind counts:
 
-- **connectors**: the synced tables of the business's systems;
+- **connectors**: the synced tables of the business's systems, and for Granola its
+  meeting notes too, as documents of a set the connection owns;
 - **API sources**: pieces of JSON the user's apps and agents send, each with an id,
   merged by id into one table per source, and with a text field also kept as
   documents an ontology can extract;
 - **documents**: table files (CSV, TSV, JSON, JSONL or Parquet, each read as a table
-  of its own) and text (Markdown, MDX or plain text) the user uploads into a document
-  set.
+  of its own) and text (Markdown, MDX, plain text, or PDFs, read to their text) the
+  user uploads into a document set.
 
 None is required on its own. Call `helix_foundry_list_connectors`,
 `helix_foundry_list_connector_kinds` and `helix_foundry_get_ontology` (its
 `document_sets` and `other_document_sets`) to see what the workspace has. From what
 you know of the user's business, work out with them whether to connect sources, send
 pieces to an API source, upload documents, or a mix: the systems it runs on
-(payments, sign-in, product analytics, code, issues, its own database, file
-storage), data its own apps or agents produce that no connector reaches (orders,
-agent runs, events of its product), and files that hold or explain its data
-(exports, a glossary, policies, runbooks, specs). Match the systems to the kinds
-Foundry offers, note what is already there, and ask the user to confirm the plan.
-Do only that. If the workspace already holds what the goal will need, go on.
+(payments, sign-in, product analytics, code, issues, meetings and bookings, its own
+database, file storage), data its own apps or agents produce that no connector
+reaches (orders, agent runs, events of its product), and files that hold or explain
+its data (exports, a glossary, policies, runbooks, specs). Match the systems to the
+kinds Foundry offers, note what is already there, and ask the user to confirm the
+plan. Do only that. If the workspace already holds what the goal will need, go on.
 
 ### Connectors
 
-1. A kind with `available: false` needs Foundry Pro. Send the user to the billing
-   page: the origin of any Foundry `url` a tool returned, then
-   `/settings/billing?workspace=<workspace_id>`. Go on once they say they upgraded
-   (list the kinds again), or skip that kind.
-2. Call `helix_foundry_connector_link` for each kind and give the user the `url`s
+Every plan includes every connector kind, so no kind waits on an upgrade; a paid
+plan syncs more often (Free daily, Pro hourly, Max every 15 minutes).
+
+1. Call `helix_foundry_connector_link` for each kind and give the user the `url`s
    together. They enter the credentials there, in their browser, never in chat.
-3. Wait for the user to say they saved them.
-4. Call `helix_foundry_list_connectors` and find each: the connector of that kind
+2. Wait for the user to say they saved them.
+3. Call `helix_foundry_list_connectors` and find each: the connector of that kind
    whose `id` wasn't listed before. If one isn't there, ask them to check its form
    saved.
-5. The website starts each one's first sync, and they run side by side. Follow each
+4. The website starts each one's first sync, and they run side by side. Follow each
    `last_sync` with `helix_foundry_get_sync` and `wait: true` until it ends. Only for
    a connector with no `last_sync` that isn't an API source, start one with
    `sync_connector`.
-6. A `failed` sync: report its `error`, give the connector's `url` (credentials and
+5. A `failed` sync: report its `error`, give the connector's `url` (credentials and
    access are fixed there), and ask whether to go on without it.
-   `foundry_pro_required` means the workspace isn't on Foundry Pro: billing page, as
-   above.
-7. If a sync still runs after about 30 minutes, tell the user, go on to the
+6. If a sync still runs after about 30 minutes, tell the user, go on to the
    documents and the goal, and check it again before generating.
+7. A Granola connection's sync also writes each meeting note as a document of a set
+   it owns, `<connection> / Notes` (and `/ Transcripts`, if the user turned those on
+   in its settings). Find it among `helix_foundry_get_ontology`'s sets: the one
+   whose `connector.connector_id` is the connection's.
 
 ### API sources
 
@@ -200,21 +202,22 @@ Do only that. If the workspace already holds what the goal will need, go on.
 
 Take only files the user points to. Markdown, MDX and text are at most 1 MiB each,
 and CSV, TSV, JSON, JSONL, Parquet and PDF 3 MiB, unless the stamp says otherwise
-(prepare's error gives its caps); a workspace holds 200. PDFs are stored only, for
-now: no ontology reads them, so say so before uploading one.
+(prepare's error gives its caps); a workspace holds 200. Helix reads a PDF to its
+text, up to 150 pages; a scan with no text layer, or an encrypted or damaged PDF,
+can't be read, so say so before uploading one.
 
 1. `create_document_set`, named for what it holds, or use a set
    `helix_foundry_get_ontology` lists.
 2. For each file: `upload_document`, the PUT, then
    `helix_foundry_complete_document_upload`, as helix-foundry-actions-mcp describes.
    One confirmation per file.
-3. Helix reads each table file once its upload completes: its `read.state` in
-   `helix_foundry_list_documents` (with the set's `set_id`) is `reading` until it is
-   `ready` (with its `rows`) or `failed`. Go on to the goal meanwhile, and check
-   again before generating: a generation leaves out a file still `reading`. If one
-   still reads after about 15 minutes, tell the user and ask whether to go on
-   without it. A `failed` read's `error_message` says what to fix: tell the user,
-   and go on without the file or upload a fixed one.
+3. Helix reads each table file and PDF once its upload completes: its `read.state`
+   in `helix_foundry_list_documents` (with the set's `set_id`) is `reading` until it
+   is `ready` (a table with its `rows`, a PDF with its `pages`) or `failed`. Go on to
+   the goal meanwhile, and check again before generating: a generation leaves out a
+   file still `reading`. If one still reads after about 15 minutes, tell the user
+   and ask whether to go on without it. A `failed` read's `error_message` says what
+   to fix: tell the user, and go on without the file or upload a fixed one.
 
 If the user has no data to connect, no pieces to send and no documents to upload,
 and the workspace holds none, stop: a generation has nothing to draft from.
@@ -274,9 +277,10 @@ all, synced tables, API sources and table files together:
   chosen in step 3. Left out, the generation reads none.
 - `no_connectors: true`: when the user chose documents or API sources only, or no
   connector serves the goal. Send no `connector_ids` with it.
-- `document_set_ids`: the sets from step 3 the goal needs, at most 20 with the API
-  sources read by extraction. Left out, the generation reads no documents, so list
-  every set to read. Never an API source's own set (its `pieces_set_id`, named
+- `document_set_ids`: the sets from step 3 the goal needs, a Granola connection's
+  `<connection> / Notes` among them, at most 20 with the API sources read by
+  extraction. Left out, the generation reads no documents, so list every set to
+  read. Never an API source's own set (its `pieces_set_id`, named
   `<source> / Pieces`): `event_sources` reads it.
 
 ## 5. Generate
@@ -289,8 +293,8 @@ sources (and each one's mode) and sets it reads.
 Follow the generation it returns with `helix_foundry_get_generation` and
 `wait: true`, calling again until it is `succeeded` or `failed`. Tell the user it
 usually takes 10 to 20 minutes, then give a line every five minutes or so, not
-every call. A queued generation with `attempts` above 0 is retrying, up to three
-times, at `next_attempt_at`: keep following.
+every call. A queued generation with `attempts` above 0 is retrying at
+`next_attempt_at` (it gets three attempts in all): keep following.
 
 - **Still running after about 30 minutes**: stop following. Tell the user, give the
   generation's `url`, and offer to check back.
@@ -347,12 +351,13 @@ Read the ontology again and give the user its `url` (Foundry's page),
 connected, API sources made and documents uploaded, the version loaded, and anything
 skipped or failed. For each API source, give its `token_url` again if the user's
 apps or agents will send to it, and say when pieces they send later reach the graph:
-through mappings, when the ontology refreshes; by extraction, as they arrive, until
-the source's monthly allowance is spent (then they wait for next month or a load a
-person starts). When `helix_foundry_list_connectors` or `create_event_source`
-returned the source's `send_url`, give it too, for apps without an MCP client. Then
-offer to ask a first question, one of the goal's, with `helix_foundry_ask` as
-helix-foundry-mcp describes.
+through mappings, when the ontology refreshes (at most daily on Free, hourly on Pro,
+every 15 minutes on Max); by extraction, as they arrive, until the source's monthly
+allowance is spent (then they wait for next month or a load a person starts). When
+`helix_foundry_list_connectors` or `create_event_source` returned the source's
+`send_url`, give it too, for apps without an MCP client. Then offer to ask a first
+question, one of the goal's, with `helix_foundry_ask` as helix-foundry-mcp
+describes.
 
 When a step is harder than it should be, send `helix_feedback` as helix-foundry-mcp's
 Feedback section says.
