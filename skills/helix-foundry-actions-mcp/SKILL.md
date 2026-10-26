@@ -4,7 +4,7 @@ description: Run explicitly requested, confirmation-gated Helix Foundry actions 
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.6.0
+  version: 1.7.0
 ---
 
 # Helix Foundry actions
@@ -116,22 +116,26 @@ a changed goal, needs its own.
   already has is `already_exists`, and the message names that source's id: use it
   rather than make another. A workspace has at most 20 API sources
   (`resource_exhausted`).
-- **`sync_connector`**: every sync is a full copy. One runs at a time per connector
-  (`already_exists`). PostgreSQL, MySQL and Amazon S3 need Foundry Pro or Max
-  (`foundry_pro_required`). Never sync an API source: it syncs by itself about a
-  minute after pieces arrive, and before its first piece the sync is refused
-  (`failed_precondition`).
+- **`sync_connector`**: reads only what changed where the connector and the
+  workspace's plan allow it, and every table in full otherwise. One runs at a time
+  per connector (`already_exists`). Every plan includes every connector kind; plans
+  differ in how often connectors sync by themselves. A Granola connection's sync
+  also writes its notes into the set it owns. Never sync an API source: it syncs by
+  itself about a minute after pieces arrive, and before its first piece the sync is
+  refused (`failed_precondition`).
 - **`generate_ontology`**: it needs at least one source, of any kind: a synced
   connector table, an API source whose table has rows, or one read by extraction
   whose set has a document, a table file (a CSV, TSV, JSON, JSONL or Parquet
   document in a listed set, once Helix has read it; each is a table of its own), or
-  a listed set holding Markdown, MDX or text. Connectors aren't required: for
-  documents or API sources only, send `"no_connectors": true` with the sets or
-  `event_sources` and no `connector_ids`. It reads at most 50 tables, synced
-  tables, structured API sources and table files together, so name fewer
-  connectors, sources or sets when there are more, and at most 20 sets, each API
-  source read by extraction counting as one; a table file still being read is left
-  out. The goal is at most 2,000 characters. One runs at a
+  a listed set holding text: Markdown, MDX, plain text, or PDFs whose text Helix has
+  read. A connector's own set, such as a Granola connection's notes, is listed in
+  `document_set_ids` like any other. Connectors aren't required: for documents or
+  API sources only, send `"no_connectors": true` with the sets or `event_sources`
+  and no `connector_ids`. It reads at most 50 tables, synced tables, structured API
+  sources and table files together, so name fewer connectors, sources or sets when
+  there are more, and at most 20 sets, each API source read by extraction counting
+  as one; a table file or PDF still being read is left out, and a scanned PDF has no
+  text. The goal is at most 2,000 characters. One runs at a
   time per ontology (`already_exists`), and a workspace may start only a limited
   number per hour, whatever became of them (`resource_exhausted`). It costs model
   spend, so run it only when the user asks. The draft becomes a new version; it is
@@ -143,9 +147,10 @@ a changed goal, needs its own.
   and leaving it out reads every connector but them. The generation's
   `event_sources` say which API sources it read, and how.
   - `structured` reads the source's `events` table through mappings, and pieces sent
-    later reach the graph when the ontology refreshes. A source whose table has no
-    rows yet is `failed_precondition`: send pieces and wait for its first sync, about
-    a minute.
+    later reach the graph when the ontology refreshes, at most once per the plan's
+    interval (Free daily, Pro hourly, Max every 15 minutes). A source whose table
+    has no rows yet is `failed_precondition`: send pieces and wait for its first
+    sync, about a minute.
   - `extraction` reads the source's newest 500 pieces as Markdown documents of its
     own set (its `pieces_set_id`). Once a version drafted from it is current and
     loaded, new pieces are extracted as they arrive, about 1 cent a piece for each
@@ -171,7 +176,8 @@ a changed goal, needs its own.
   (`failed_precondition`). Reading documents costs money, within a per-load cap and
   a monthly workspace budget; an API source's pieces in the version's sets count
   here, not against the source's allowance. Tell the user that a load that finishes ready becomes
-  current, and that Foundry then deletes non-current loads beyond the newest five.
+  current, and that Foundry keeps the current load and the four newest others and
+  deletes older ones.
 - **`set_current_load`**: only a ready or partial load. If documents arrived since
   that load, Foundry reads them into it, which spends from the monthly budget and
   blocks new loads until it finishes.
@@ -188,9 +194,13 @@ a changed goal, needs its own.
   at most 1 MiB for Markdown, MDX and text and 3 MiB for the other types, unless the
   stamp says otherwise (prepare refuses a larger one, and its message gives the
   stamp's caps); a workspace holds up to 200 documents. Ontologies read Markdown, MDX
-  and text as text, and each CSV, TSV, JSON, JSONL and Parquet file as a table of its
-  own once Helix has read it: the document's `read` says when (`state` `ready`, with
-  its `rows`). PDFs are stored only, for now. Measure the exact file you will send:
+  and text as text, each PDF as its text, and each CSV, TSV, JSON, JSONL and Parquet
+  file as a table of its own, once Helix has read the file: the document's `read`
+  says when (`state` `ready`, with a table's `rows` or a PDF's `pages`). A PDF of
+  more than 150 pages, or an encrypted, damaged or scanned one with no text layer,
+  can't be read (`state` `failed`) and stays stored. A connector's set, such as a
+  Granola connection's notes, takes no uploads (`failed_precondition`, saying the set
+  belongs to that connection). Measure the exact file you will send:
   `wc -c < file` and `shasum -a 256 file`. Execute returns `upload`: send the same
   bytes with every one of its headers before `expires_at` (15 minutes), for example
   `curl -X PUT --data-binary @file -H "<name>: <value>" ... "<url>"`, then call
@@ -200,13 +210,17 @@ a changed goal, needs its own.
   the current version names the set, so no model will extract the document's text.
   Completing returns `reads`: what each ontology whose current version reads the set
   did with it (`queued`, `owed` by the job running now, `no_budget`, `held` by its
-  current load, or `skipped` because the caller can't write its database). A queued
-  extraction spends from the monthly budget.
+  current load, `reading`, a PDF whose text is still being read, which the load reads
+  once the read ends, or `skipped` because the caller can't write its database). A
+  queued extraction spends from the monthly budget.
 - **`create_document_set`**, **`update_document_set`**: a name of 1 to 120
   characters, unique among the workspace's sets ignoring case (`already_exists`); a
-  description of at most 1,000.
+  description of at most 1,000. A connector's set (one with `connector`) can't be
+  changed (`failed_precondition`).
 - **`move_document`**: applies from the next load; a load keeps what it extracted. It
-  returns `reads` as completing an upload does.
+  returns `reads` as completing an upload does. A connector's document (one with
+  `source`) never moves, and nothing moves into a connector's set
+  (`failed_precondition`).
 - **`settle_review`**: `review_id` is the `review_key` of a `FoundryReview` the
   current load holds (find it with a `query` read). The decision is
   `{"resolve": {"entity_key"}}` or `{"resolve": {"not_in_data": true}}` for a review
@@ -224,7 +238,7 @@ Users need the same permissions as in the Foundry website:
 | `create_event_source`, `sync_connector`, `upload_document`, the document set actions, `move_document`, `settle_review` | Connector management on the workspace (owners and admins) |
 | `generate_ontology`, `set_current_version`, `revise_version` | Ontology management on the workspace |
 | `create_ontology`, `create_load`, `set_current_load` | Ontology management, plus query write on the database's Helix project; a `workspace:` `create_ontology` also needs the right to create that database (and project) |
-| completing an upload | Connector management, plus query write on the ontology's Helix project |
+| completing an upload | Connector management; an ontology whose database the caller can't write reports `skipped` in `reads` |
 
 Service keys can run `set_current_version`, `create_load`, `set_current_load`,
 `revise_version`, `upload_document` (and complete it), the document set actions and
@@ -238,8 +252,8 @@ headless run needs one, say so instead of trying another route.
 | --- | --- | --- |
 | `not_found` | Missing, or not visible to this caller | Re-resolve; don't claim which |
 | `invalid_arguments` | A malformed payload, a goal too long, `connector_ids` with `no_connectors` or naming an API source, `event_sources` naming a source twice or with a mode other than `structured` or `extraction`, `document_set_ids` naming an API source's set, a `text_field` no piece could carry, too many tables or document sets, or a file type or size Foundry doesn't take; the message says which | Fix the payload and prepare again |
-| `failed_precondition` | The state doesn't allow it: nothing to generate from (no synced table, read table file or set holding text), an API source with no rows yet, or read by extraction with no text field or no piece as a document yet, a sync of an API source before its first piece, a version that can't be loaded or revised, a load or extract already running, a load that isn't ready, a current version someone else moved, an upload whose bytes are missing or differ, no current load to settle a review on, a full workspace of documents, an expired confirmation, or the month's load budget spent | Read the state and explain |
-| `foundry_pro_required` | Needs Foundry Pro or Max | Tell the user; an owner or admin upgrades in Settings, Plan & billing |
+| `failed_precondition` | The state doesn't allow it: nothing to generate from (no synced table, read table file or set holding text), an API source with no rows yet, or read by extraction with no text field or no piece as a document yet, a sync of an API source before its first piece, a version that can't be loaded or revised, a load or extract already running, a load that isn't ready, a current version someone else moved, an upload whose bytes are missing or differ, an upload into, a change to or a move involving a connector's set or document, no current load to settle a review on, a full workspace of documents, an expired confirmation, or the month's load budget spent | Read the state and explain |
+| `foundry_pro_required` | The workspace's plan doesn't include it. Every plan includes every connector kind, so expect this rarely | Tell the user what it says; an owner or admin changes plan in Settings, Plan & billing |
 | `already_exists` | That sync, generation or revision is already running, the database already has an ontology, a document set or API source has that name (the message names the source), or the confirmation was already used | Read the state; don't prepare again. For an API source, use the one it names |
 | `resource_exhausted` | The workspace's hourly generation limit, or its most API sources (20) | Stop and tell the user |
 | `backend_unavailable`, `internal_error` | Helix failed | Check the outcome with the read tools; don't execute again |
@@ -268,10 +282,12 @@ for the session. In your report, say in one line that you sent feedback.
 Creating connectors other than API sources (they hold credentials; use
 `helix_foundry_connector_link` from helix-foundry-mcp to send the user to the form),
 editing or deleting any connector, API sources included (their description and text
-field too), making or revoking send tokens, deleting ontologies, versions, loads,
-documents, document sets or review
-decisions, cancelling a sync, generation or load, and billing changes all stay in
-the Foundry website. Do not look for another way to do them.
+field too), a connector's settings such as Granola's transcripts, making or revoking
+send tokens, turning an ontology's refresh on or off, deleting ontologies, versions,
+loads, documents, document sets or review decisions, cancelling a sync, generation
+or load, and billing changes all stay in the Foundry website. A connector's own
+documents and sets change only through its syncs. Do not look for another way to do
+them.
 
 ## Trust boundary
 
