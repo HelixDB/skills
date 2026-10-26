@@ -4,7 +4,7 @@ description: Set up a Helix Foundry ontology end to end through the hosted Helix
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.1.0
+  version: 1.2.0
 ---
 
 # Helix Foundry onboarding
@@ -110,7 +110,8 @@ A generation drafts from at least one source, and any kind counts:
 
 - **connectors**: the synced tables of the business's systems;
 - **API sources**: pieces of JSON the user's apps and agents send, each with an id,
-  merged by id into one table per source;
+  merged by id into one table per source, and with a text field also kept as
+  documents an ontology can extract;
 - **documents**: table files (CSV, TSV, JSON, JSONL or Parquet, each read as a table
   of its own) and text (Markdown, MDX or plain text) the user uploads into a document
   set.
@@ -155,11 +156,24 @@ Do only that. If the workspace already holds what the goal will need, go on.
 1. Work out with the user what a piece is, what its id is (the same thing sent again
    keeps its id, and replaces the earlier piece), and that it is strictly structured
    JSON: one object whose top-level keys keep their types.
-2. `create_event_source`, target `workspace:<workspace_id>`, payload
-   `{"name": "<name>", "description": "<what each piece is>"}`. Its result has the
-   source's `event_source.id` and a `token_url`. If it says `already_exists`, the
-   source is there: use the id it names.
-3. To give it data now, send a few real pieces the user agrees to with
+2. Choose how the ontology will read it, and agree it with the user:
+   - **Structured mappings** (`structured`) suit structured JSON: amounts, statuses,
+     dates and ids that link to other sources, which map to properties and links.
+   - **Entity extraction** (`extraction`) suits pieces whose value is a text body
+     (notes, messages, transcripts, tickets): the model reads the text of each. It
+     needs a `text_field`, the top-level field holding that text, sent as a string.
+   - Extraction suits a few hundred pieces a month: it costs about 1 cent a piece
+     for each ontology that reads the source, keeps only the newest 500, and work no
+     person started spends at most $5 a month on a source by default. For more,
+     use structured mappings.
+3. `create_event_source`, target `workspace:<workspace_id>`, payload
+   `{"name": "<name>", "description": "<what each piece is>"}`, adding
+   `"text_field": "<field>"` for extraction (only here: later, only a person can set
+   it, on the source's page in Foundry). Its result has the source's
+   `event_source.id` and a `token_url`. If it says `already_exists`, the source is
+   there: use the id it names, and check its `text_field` in
+   `helix_foundry_list_connectors`.
+4. To give it data now, send a few real pieces the user agrees to with
    `helix_foundry_send_pieces`, as helix-foundry-mcp describes; you send as the
    user:
 
@@ -171,10 +185,11 @@ Do only that. If the workspace already holds what the goal will need, go on.
    For their apps or agents to send later, give the user `token_url`: they make a
    send token there and put it in the sender's config (helix-foundry-mcp has the
    `.mcp.json` form). Never ask for the token.
-4. It counts once `helix_foundry_list_connectors` shows its `events` table with
-   rows, about a minute after the first send. Never `sync_connector` an API source:
-   it syncs when pieces arrive. If a send says the source is full or paused, tell the
-   user what it says.
+5. It counts once `helix_foundry_list_connectors` shows its `events` table with
+   rows, about a minute after the first send; for extraction, once its
+   `event_source.extraction.documents` is above 0. Never `sync_connector` an API
+   source: it syncs when pieces arrive. If a send says the source is full or paused,
+   tell the user what it says.
 
 ### Documents
 
@@ -249,20 +264,22 @@ all, synced tables, API sources and table files together:
 - `connector_ids`: leave it out and every connector but the API sources goes in,
   when that stays within 50 tables. Otherwise list the connectors the goal needs.
   It never names an API source.
-- `event_sources`: `[{"connector_id": "<API source id>", "mode": "structured"}]`
-  for each API source that serves the goal, read through mappings. Left out, the
-  generation reads none.
+- `event_sources`: `{"connector_id": "<API source id>", "mode": "structured"}` or
+  `"mode": "extraction"` for each API source that serves the goal, in the mode
+  chosen in step 3. Left out, the generation reads none.
 - `no_connectors: true`: when the user chose documents or API sources only, or no
   connector serves the goal. Send no `connector_ids` with it.
-- `document_set_ids`: the sets from step 3 the goal needs, at most 20. Left out, the
-  generation reads no documents, so list every set to read.
+- `document_set_ids`: the sets from step 3 the goal needs, at most 20 with the API
+  sources read by extraction. Left out, the generation reads no documents, so list
+  every set to read. Never an API source's own set (its `pieces_set_id`, named
+  `<source> / Pieces`): `event_sources` reads it.
 
 ## 5. Generate
 
 Run `generate_ontology` with
 `{"goal", "connector_ids"?, "event_sources"?, "document_set_ids"?, "no_connectors"?}`.
 It spends on models; say so in the confirmation message, with the connectors, API
-sources and sets it reads.
+sources (and each one's mode) and sets it reads.
 
 Follow the generation it returns with `helix_foundry_get_generation` and
 `wait: true`, calling again until it is `succeeded` or `failed`. Tell the user it
@@ -279,10 +296,14 @@ times, at `next_attempt_at`: keep following.
 - **`resource_exhausted`**: the workspace hit its hourly cap on generations (10 by
   default). Stop, and tell the user to try again within the hour.
 - **`failed_precondition`**: the inputs hold no source (no synced table, read table
-  file or set holding text), or an API source has no rows yet. Go back to step 3.
+  file or set holding text), an API source has no rows yet, or one read by
+  extraction has no text field or no piece as a document yet. Go back to step 3. A
+  source made without a text field gets one only from a person, on its page in
+  Foundry: give the user its `url`, or read it through mappings.
 - **`invalid_arguments`** naming too many tables or sets: list fewer connectors,
   API sources or sets. Naming an API source in `connector_ids`: move it to
-  `event_sources`.
+  `event_sources`. Naming an API source's set in `document_set_ids`: drop it and
+  pick the source in `event_sources` with mode `extraction`.
 
 ## 6. Review
 
@@ -320,8 +341,10 @@ Read the ontology again and give the user its `url` (Foundry's page),
 `explore_url` (its graph) and `ask_url` (Ask). Recap in a few lines: the data
 connected, API sources made and documents uploaded, the version loaded, and anything
 skipped or failed. For each API source, give its `token_url` again if the user's
-apps or agents will send to it, and say that pieces they send later reach the graph
-when the ontology refreshes. Then offer to ask a first question, one of the goal's,
+apps or agents will send to it, and say when pieces they send later reach the graph:
+through mappings, when the ontology refreshes; by extraction, as they arrive, until
+the source's monthly allowance is spent (then they wait for next month or a load a
+person starts). Then offer to ask a first question, one of the goal's,
 with `helix_foundry_ask` as helix-foundry-mcp describes.
 
 When a step is harder than it should be, send `helix_feedback` as helix-foundry-mcp's
