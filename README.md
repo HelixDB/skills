@@ -2,7 +2,7 @@
 
 Hosted `skills.sh` repository for HelixDB agent skills.
 
-The query skills target the published Rust 3.0.0, TypeScript 3.0.4, Python 0.3.4,
+The query skills target the published Rust 3.0.0, TypeScript 3.2.0, Python 0.3.4,
 and Go v0.3.1 SDKs. Installation commands stay unpinned; verify registry
 availability before changing release claims. See [Source Canon](docs/source-canon.md)
 for the distinction between published packages and current source.
@@ -14,9 +14,9 @@ These skills are for agents that need to:
 - translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
 - build correct dynamic `POST /v2/query` payloads
-- inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the hosted read-only MCP server
-- execute authorized Helix Cloud queries through the separate Query MCP broker
-- run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
+- inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the read-only Helix Cloud MCP tools
+- execute authorized Helix Cloud queries through the Helix Cloud MCP query tools
+- run confirmation-gated tenant and database-key mutations through the Helix Cloud MCP customer administration tools
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 - read and ask Helix Foundry ontologies, and run confirmation-gated Foundry syncs, generations and loads
 
@@ -56,8 +56,13 @@ npx skills add HelixDB/skills
 When the target is Helix Cloud, every query-authoring skill uses
 `helix-mcp` first. The agent resolves the live database and reads relevant
 active indexes, insights, latency, and recommendations before authoring,
-translating, debugging, or optimizing a query. `helix-mcp` remains read-only;
-explicit agent-side Cloud execution uses the separate `helix-query-mcp` broker.
+translating, debugging, or optimizing a query.
+
+Helix Cloud has one MCP endpoint, `https://mcp.helix-db.com/mcp`. The
+`helix-mcp`, `helix-query-mcp`, and `helix-admin-mcp` skills all use it; the
+authenticated identity's permissions decide which tools appear. `helix-mcp`
+uses only the read-only tools; explicit agent-side Cloud execution uses
+`helix-query-mcp`. See the [Helix Cloud MCP guide](https://docs.helix-db.com/database/helix-cloud/connect/mcp).
 
 ## Running queries (prerequisites)
 
@@ -70,10 +75,10 @@ them against. To stand one up locally — no Cloud login required:
    ```bash
    helix init local
    ```
-4. Set `tag = "v0.0.5"` in the generated `[local.dev]` block in `helix.toml`, then run `helix start dev` (`helix run` is an alias). The explicit tag also works with CLI versions that default to an older image.
+4. Run `helix start dev` (`helix run` is an alias). CLI 3.3.0 saves `tag = "v0.0.6"` in the generated `[local.dev]` block; for an existing project, set that tag before starting it.
 5. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
 
-The `ghcr.io/helixdb/helixdb:v0.0.5` runtime is in-memory by default; `--disk`
+The `ghcr.io/helixdb/helixdb:v0.0.6` runtime is in-memory by default; `--disk`
 uses a CLI-managed MinIO service for persistence. Direct Docker runs also support
 native-volume storage through `HELIX_DATA_DIR`; see the
 [CLI examples](skills/helix-cli/EXAMPLES.md). The skills
@@ -82,7 +87,10 @@ server URL. Cloud CLI query execution instead uses a WorkOS session and the
 backend broker. Application gateway clients still use explicitly created database keys. There is no
 `helix compile`/`helix check` step — queries are validated server-side when
 sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and
-the non-interactive/agent path.
+the non-interactive/agent path. When a command or query fails, see
+[CLI troubleshooting](https://docs.helix-db.com/cli/troubleshooting),
+[query troubleshooting](https://docs.helix-db.com/database/helix-db/query-guides/troubleshooting),
+and the [Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling).
 
 ## Helix Foundry
 
@@ -117,7 +125,7 @@ can read, ask and run loads, but not sync, generate or create ontologies.
 ### `helix-mcp`
 
 Use this skill when an agent needs to inspect authorized Helix Cloud resources
-and observability data through the hosted read-only MCP server.
+and observability data through the read-only Helix Cloud MCP tools.
 
 It teaches agents to:
 
@@ -266,7 +274,7 @@ It teaches agents to:
 - run the full write/maintain lifecycle (dedup-on-generate, reinforce-on-access, supersede/correct, soft-delete, decay and expiry sweeps, upsert-and-link categorisation)
 - build hybrid recall that fuses vector + BM25 app-side and expands through the graph
 
-It is TypeScript-first (`@helix-db/helix-db@3.0.4`) with a Rust v3 DSL variant in `EXAMPLES.rust.md`.
+It is TypeScript-first (`@helix-db/helix-db@3.2.0`) with a Rust v3 DSL variant in `EXAMPLES.rust.md`.
 
 ## Shared References
 

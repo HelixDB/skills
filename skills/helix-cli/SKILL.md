@@ -4,7 +4,7 @@ description: Drive the HelixDB v3 `helix` CLI for local Docker/Podman instances 
 license: MIT
 metadata:
   author: HelixDB
-  version: 4.0.1
+  version: 4.0.2
 ---
 
 # Helix CLI
@@ -21,10 +21,12 @@ bundles, push source, or sync gateway metadata.
 
 ## Local image and storage
 
-Use `ghcr.io/helixdb/helixdb:v0.0.5`. Set `tag = "v0.0.5"` in the relevant
-`[local.<name>]` block before starting an existing project or using a CLI with an
-older default. The server exposes `/healthz`, `/readyz`, and `/v2/query` on port
-8080; the CLI defaults to host port 6969 and waits for `/healthz`.
+CLI 3.3.0 defaults to `ghcr.io/helixdb/helixdb:v0.0.6` and `helix init local`
+saves that tag in `helix.toml`. A saved tag overrides the CLI default, so for an
+existing project set `tag = "v0.0.6"` in its `[local.<name>]` block (or run
+`helix start <name> --image-version v0.0.6 --persist`) before starting it. The
+server exposes `/healthz`, `/readyz`, and `/v2/query` on port 8080; the CLI
+defaults to host port 6969 and waits for `/healthz`.
 
 Memory is the default and loses data on stop/restart. The CLI's `--disk` uses
 MinIO; `--storage-uri` selects an existing S3-compatible store. Direct Docker
@@ -94,5 +96,7 @@ Do not use or recommend `push`, `sync`, `auth create-key`, `workspace switch`, q
 dedicated-cluster lifecycle, networking, regions/SKUs, branches/backups, schema introspection,
 execution polling/cancellation, webhooks, or project update.
 
-Open `REFERENCE.md` for exact commands/config and `EXAMPLES.md` for safe sessions. Use a
+Open `REFERENCE.md` for exact commands/config and `EXAMPLES.md` for safe sessions. For auth,
+ambiguous-target, query-permission, and local-connection failures, see
+[CLI troubleshooting](https://docs.helix-db.com/cli/troubleshooting). Use a
 `helix-query-*` skill to author v3 request bodies.

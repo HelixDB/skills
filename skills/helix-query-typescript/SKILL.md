@@ -1,17 +1,17 @@
 ---
 name: helix-query-typescript
-description: Write and revise queries with the published HelixDB TypeScript SDK (`@helix-db/helix-db@3.0.4`, Node.js 20+). Use for `readBatch`, `writeBatch`, traversal builders, direct `toQueryRequest`/`toQueryJson` payloads, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, structured remote errors, and `Client.query`. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
+description: Write and revise queries with the published HelixDB TypeScript SDK (`@helix-db/helix-db@3.2.0`, Node.js 20+). Use for `readBatch`, `writeBatch`, traversal builders, direct `toQueryRequest`/`toQueryJson` payloads, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, structured remote errors, and `Client.query`. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.4
+  version: 3.0.5
 ---
 
 # Helix Query Authoring — TypeScript
 
 Write Helix TypeScript DSL queries in a way that is schema-aware, explicit,
 and easy for agents to reason about. The published package is
-`@helix-db/helix-db@3.0.4`, is ESM-only, and requires Node.js 20 or newer.
+`@helix-db/helix-db@3.2.0`, is ESM-only, and requires Node.js 20 or newer.
 
 This is the preferred way to author Helix queries in a TypeScript codebase — type-checked, and it emits the dynamic-request JSON for you. Drop to raw dynamic JSON (`helix-query-json-dynamic`) only for debugging or dynamically-shaped requests.
 
@@ -117,7 +117,8 @@ parameterized routes — they accept `PropertyInput.param(...)`,
 For exact vector or BM25 prefiltering, build the candidate node or edge stream
 first, then call `.vectorSearch[With](...)` or `.textSearch[With](...)` on that
 stream. Source-level vector and text search methods rank the whole tenant
-partition; filtering after them can return fewer than `k` eligible hits.
+partition; filtering after them can return fewer than `k` eligible hits. See
+[Prefiltering](https://docs.helix-db.com/database/helix-db/query-guides/prefiltering).
 
 ### 6. Use Traversal Controls Deliberately
 
@@ -149,23 +150,22 @@ function findUsers(p = params) {
 
 - **Request:** `findUsers().toQueryJson(params, { tenantId: "acme", limit: 25n }, { queryName: "find_users" })` produces JSON for `POST /v2/query`. Use `toQueryRequest(...)` for the object or `toQueryBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toQueryJson({ queryName: "count_users" })`. Unnamed requests serialize `query_name: null`.
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
-- **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v2/query`. A remote `HelixError` exposes `statusCode`, open-string `code`, `serverMessage`, structured `serverDetails`, `rawBody`, compatibility `details`, and `kind`. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
+- **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v2/query`. A remote `HelixError` exposes `statusCode`, open-string `code`, `serverMessage`, `retryable`, structured `serverDetails`, `rawBody`, compatibility `details`, and `kind`. `withDatabaseId(id)` sends `X-Helix-Database-Id` on every server request. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
 
 `warmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writerOnly()` to target only the authoritative writer.
-The published TypeScript 3.0.4 transport accepts only HTTP 200, so it currently
-throws a remote `HelixError` for the Cloud `204`; use direct
-HTTP for Cloud warming. Standalone `v0.0.5` warming returns the normal 200
-response.
+The client treats that `204` as success and `send()` resolves `undefined`, so
+build warm requests with `requestBuilder<void>()`. Standalone runtime warming
+returns the normal 200 response.
 
-`isConflict()` and `isRateLimited()` classify HTTP 409 and 429. Reconcile a `query_timeout` write before resubmitting, honor `Retry-After` through a transport that exposes response headers, and use bounded backoff for retryable 429/503 failures. On a write conflict, reload current state before rebuilding the mutation; never blindly retry a write after a general server failure because its commit outcome may be unknown. See `../../docs/error-handling.md`.
+`isConflict()` and `isRateLimited()` classify HTTP 409 and 429; `isRetryable()` is true only when the server marked the failure `retryable`. Reconcile a `query_timeout` write before resubmitting, honor `Retry-After` through a transport that exposes response headers, and use bounded backoff for retryable 429/503 failures. On a write conflict, reload current state before rebuilding the mutation; never blindly retry a write after a general server failure because its commit outcome may be unknown. See `../../docs/error-handling.md` and the [Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling).
 
 ## Number & DateTime Handling
 
 - Use `bigint` (`25n`) or `i64(...)` for full `i64` range; plain `number` is accepted only for safe integers when an integer is required.
 - Serialize bigint-bearing payloads with `toJsonString()` or `stringifyJson()`, **never** raw `JSON.stringify`.
-- `DateTime` stores epoch milliseconds (negative allowed): `DateTime.fromMillis(ms)`, `DateTime.parseRfc3339(s)`, `.toRfc3339()`. Declare the parameter as `param.dateTime()`; dynamic request values render as UTC RFC3339 with millisecond precision.
+- `DateTime` stores epoch milliseconds (negative allowed): `DateTime.fromMillis(ms)`, `DateTime.parseRfc3339(s)` (throws `TypeError` on invalid or non-RFC3339 input), `.toRfc3339()`. Declare the parameter as `param.dateTime()`; dynamic request values render as UTC RFC3339 with millisecond precision.
 - Nested object/array property values are supported through normal object and array inputs or `PropertyValue.object/array`. Read nested object fields with dotted property strings such as `metadata.externalID`; lookup is exact-first and scan-only in the current runtime.
 
 ## Builder Surface At A Glance

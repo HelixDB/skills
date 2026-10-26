@@ -4,7 +4,7 @@ description: Write and revise queries with the published HelixDB Rust SDK (`heli
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.4
+  version: 3.0.5
 ---
 
 # Helix Query Authoring — Rust
@@ -123,7 +123,8 @@ For BM25 and vector search:
 For exact vector or BM25 prefiltering, build the candidate node or edge stream
 first, then call `.vector_search[_with](...)` or `.text_search[_with](...)` on
 that stream. Source-level vector and text search methods rank the whole tenant
-partition; filtering after them can return fewer than `k` eligible hits.
+partition; filtering after them can return fewer than `k` eligible hits. See
+[Prefiltering](https://docs.helix-db.com/database/helix-db/query-guides/prefiltering).
 
 ### 7. Use Traversal Controls Deliberately
 
@@ -167,7 +168,7 @@ backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writer_only()` to target only the authoritative writer.
 The published Rust 3.0.0 transport accepts only HTTP 200, so it currently
 surfaces the Cloud `204` as `RemoteError`; use direct HTTP for
-Cloud warming. Standalone `v0.0.5` warming returns the normal 200 response.
+Cloud warming. Standalone runtime warming returns the normal 200 response.
 
 Remote and embedded failures keep the code separate from diagnostic details.
 Canonical Helix HTTP failures use `error` as the code and `msg` as the
@@ -180,7 +181,8 @@ resubmitting, honor `Retry-After` through a transport that exposes response
 headers, and use bounded backoff for retryable 429/503 failures. On a write
 conflict, reload current state before rebuilding the mutation; never blindly
 retry a write after a general server failure because its commit outcome may be
-unknown. See `../../docs/error-handling.md`.
+unknown. See `../../docs/error-handling.md` and the
+[Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling).
 
 See `REFERENCE.md` for signatures and typestate constraints.
 

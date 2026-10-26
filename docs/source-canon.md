@@ -1,22 +1,24 @@
 # Source Canon
 
-This repository should use public Helix documentation and repo-local canonical examples as its primary references. The SDK, error-transport, CLI-auth, HTTP/OpenAPI, and planner guidance was last reviewed against `HelixDB/helix-db` main at `5ec14e5f8cf059aa03f42917d560b3cded09fb26`.
+This repository should use public Helix documentation and repo-local canonical examples as its primary references. The SDK, error-transport, CLI-auth, HTTP/OpenAPI, and planner guidance was last reviewed against `HelixDB/helix-db` main at `5ec14e5f8cf059aa03f42917d560b3cded09fb26`. The MCP endpoint, local image default, TypeScript SDK pin, and error/troubleshooting links were re-checked on 2026-09-28 against main at `6ff34eb991170b49fe1c259040fb887a672de0f9` and the released CLI `v3.3.0`.
 
 ## Verified release boundaries
 
-On 2026-09-15, the published package artifacts were Rust 3.0.0, TypeScript 3.0.4,
-Python 0.3.4, and Go v0.3.1. All four accept HTTP 200 but still reject Cloud warm
-success 204. Current SDK source accepts 204; a main-branch implementation is not
-evidence that the same behavior has shipped in those package versions. Use direct
-HTTP for Cloud warming, since the current CLI's `--warm` flag is local-only.
+On 2026-09-28, the published package artifacts were Rust 3.0.0, TypeScript 3.2.0,
+Python 0.3.4, and Go v0.3.1. TypeScript 3.1.0 and later expose structured remote
+errors (`HelixError.code`, `statusCode`, `serverMessage`, `retryable`) and accept
+Cloud warm success 204; 3.2.0 adds `withDatabaseId`. The published Rust, Python,
+and Go packages accept HTTP 200 but still reject Cloud warm success 204. A
+main-branch implementation is not evidence that the same behavior has shipped in
+a package version. Use direct HTTP for Cloud warming from those SDKs, since the
+released CLI's `--warm` flag is local-only.
 
-The published Docker image `ghcr.io/helixdb/helixdb:v0.0.5` supports Linux amd64
-and arm64. Native-volume persistence and typed `f32`/`f64` JSON parameters were
-verified against the released arm64 image, including integer JSON values for
-typed floats. [HelixDB PR #1099](https://github.com/HelixDB/helix-db/pull/1099)
-has merged the CLI default and public Docker/OpenAPI corrections for those behaviors.
-Until a CLI containing that update is installed, pin `tag = "v0.0.5"` explicitly
-in `helix.toml`; existing projects also retain their saved tag.
+The published Docker image `ghcr.io/helixdb/helixdb:v0.0.6` supports Linux amd64
+and arm64 and is the default of the released CLI 3.3.0, which saves it as the
+`tag` of new local blocks in `helix.toml`. Native-volume persistence, typed
+`f32`/`f64` JSON parameters (including integer JSON values), normalized
+responses, and standalone warming were verified against the released arm64
+image. Existing projects retain their saved tag; set `tag = "v0.0.6"` to upgrade.
 
 Planner source links describe the current main-branch model. Verify the deployed
 engine's version and actual plan before promising that a specific optimization
@@ -34,7 +36,7 @@ When an agent is writing or reviewing Helix query code, it should use sources in
 6. public skill-format docs for packaging and discovery behavior
 
 This ordering is intentional. The skills track the published Rust 3.0.0,
-TypeScript 3.0.4, Python 0.3.4, and Go 0.3.1 SDK lines. Public documentation is
+TypeScript 3.2.0, Python 0.3.4, and Go 0.3.1 SDK lines. Public documentation is
 the behavior contract; use the SDK source to confirm exact identifiers rather
 than guessing from an older release.
 
@@ -58,17 +60,15 @@ Use these for product semantics and supported behavior:
 - `https://docs.helix-db.com/database/helix-db/query-guides/secondary-indexes`
 - `https://docs.helix-db.com/database/helix-db/query-guides/vector-indexes`
 - `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
+- `https://docs.helix-db.com/database/helix-db/query-guides/prefiltering`
 - `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
 - `https://docs.helix-db.com/database/helix-db/query-guides/parameters`
 - `https://docs.helix-db.com/database/helix-db/query-guides/http-api`
+- `https://docs.helix-db.com/database/helix-db/query-guides/error-handling`
+- `https://docs.helix-db.com/database/helix-db/query-guides/troubleshooting`
 - `https://docs.helix-db.com/database/helix-cloud/operate/error-handling`
 - `https://docs.helix-db.com/database/helix-cloud/operate/limits`
-- `https://docs.helix-db.com/database/helix-db/query-guides/traversals`
-- `https://docs.helix-db.com/database/helix-db/query-guides/filtering`
-- `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
-- `https://docs.helix-db.com/database/helix-db/query-guides/projections`
-- `https://docs.helix-db.com/database/helix-db/query-guides/vector-indexes`
-- `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
+- `https://docs.helix-db.com/cli/troubleshooting`
 
 Use these for skill packaging and discovery behavior:
 

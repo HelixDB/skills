@@ -1,7 +1,7 @@
 # Helix Query Authoring — TypeScript DSL Reference
 
 Exhaustive builder catalog for the published
-`@helix-db/helix-db@3.0.4` TypeScript DSL. Use when `SKILL.md` points
+`@helix-db/helix-db@3.2.0` TypeScript DSL. Use when `SKILL.md` points
 you at a category or when you need a signature confirmed.
 
 The public surface is defined under
@@ -139,7 +139,7 @@ PropertyInput.from(input)                   // smart constructor
 ### `DateTime`
 
 ```text
-DateTime.fromMillis(ms: number | bigint)   DateTime.parseRfc3339(s: string)
+DateTime.fromMillis(ms: number | bigint)   DateTime.parseRfc3339(s: string)   // TypeError on invalid/non-RFC3339 input
 .millis(): bigint   .toRfc3339(): string   // UTC, millisecond precision; negative epochs supported
 ```
 
@@ -547,9 +547,14 @@ Node-state mutations (→ `Traversal<"nodes", "write">`):
 .addE(label, to: NodeRef | NodeId | ..., properties)
 .setProperty(name, value: PropertyInput | PropertyValueInput)
 .removeProperty(name)
-.drop()
+.drop()                    // → Traversal<S, "write">; returns an empty stream
 .dropEdge(to)              .dropEdgeLabeled(to, label)        .dropEdgeById(edges)
 ```
+
+`.drop()` on a node stream deletes the nodes and their incident edges. 3.2.0
+also types `.drop()` after edge steps, but the `v0.0.6` runtime leaves those
+edges in place; delete edges with `dropEdge`, `dropEdgeLabeled`, or
+`dropEdgeById`.
 
 `addN`/`addE` properties accept an object (`{ name: "Alice" }`) or an array of
 tuples (`[["name", "Bob"]]`); values may be raw literals, nested
@@ -671,6 +676,7 @@ Built-in HTTP client for running a request against a Helix instance. Uses the gl
 new Client(url?: string | null)           // defaults to http://localhost:6969
 Client.server(url?: string | null)
   .withApiKey(key?: string | null)        // Authorization: Bearer <key> (null/undefined clears it)
+  .withDatabaseId(id?: string | null)     // X-Helix-Database-Id on every server request (null/undefined clears it)
   .query<R = unknown>(request)             // direct POST /v2/query
 
 // Advanced server-only request headers:
@@ -680,12 +686,12 @@ client.requestBuilder<R>()
   .shouldAwaitDurability(b: boolean)       // X-Helix-Await-Durable: true|false
   .query(request)
 
-await request.send(): Promise<R>           // published 3.0.4: 200 -> parsed JSON; every other status, including Cloud warm 204, -> HelixError
+await request.send(): Promise<R>           // 200 -> parsed JSON; Cloud warm 204 -> undefined; any other status -> HelixError
 ```
 
-The Cloud service returns `204 No Content` after a successful warm fanout, but
-the published TypeScript 3.0.4 client accepts only 200. Use direct HTTP for Cloud warming until a newer SDK release accepts 204. Partial
-target failure is still a service-level success when at least one backend warms.
+The Cloud service returns `204 No Content` after a successful warm fanout; the
+client treats it as success and `send()` resolves `undefined`. Partial target
+failure is still a service-level success when at least one backend warms.
 
 Prefer `.shouldAwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 
@@ -733,12 +739,13 @@ registration, and query bundles are not supported.
 - `HelixError` — raised by `Client`/`send()`. `kind` distinguishes network,
   remote, serialization, URL, invalid-request, embedded-unavailable, and
   embedded failures. Remote errors expose `statusCode`, optional open-string
-  `code`, `serverMessage`, structured `serverDetails`, and `rawBody` while
+  `code`, `serverMessage`, optional `retryable`, structured `serverDetails`, and `rawBody` while
   retaining `details` as the diagnostic compatibility field. Canonical Helix
   `error`/`msg` (`error` is the code), legacy Helix `error`/`code`, defensive
   generic-remote `code`/`message`/`details`, and embedded `error`/`msg` pairs are
   preserved. Generic-remote decoding is not the Cloud gateway contract.
-  `isConflict()` classifies HTTP 409 and `isRateLimited()` classifies HTTP 429.
+  `isConflict()` classifies HTTP 409 and `isRateLimited()` classifies HTTP 429;
+  `isRetryable()` is true only when the server marked the failure `retryable`.
   The client does not expose `Retry-After`; use direct HTTP when the exact Cloud
   delay is required. Reconcile a `query_timeout` write before resubmitting.
   Preserve unknown codes and never parse diagnostic text for control flow; see

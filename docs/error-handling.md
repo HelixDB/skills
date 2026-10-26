@@ -2,7 +2,7 @@
 
 Use the stable error code for control flow and the diagnostic message for logs or user-facing context. Error messages may change; codes are compatibility identifiers.
 
-The canonical local query catalog is [Handle query errors](https://github.com/HelixDB/helix-db/blob/5ec14e5f8cf059aa03f42917d560b3cded09fb26/docs/database/helix-db/query-guides/error-handling.mdx). The separate [Cloud gateway catalog](https://github.com/HelixDB/helix-db/blob/5ec14e5f8cf059aa03f42917d560b3cded09fb26/docs/database/helix-cloud/operate/error-handling.mdx) defines the managed-gateway statuses and codes. Keep exhaustive database error catalogs upstream; this guide records the transport contract and decisions that recur across the skills.
+The canonical database error catalog is the [Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling). The separate [Helix Cloud gateway errors](https://docs.helix-db.com/database/helix-cloud/operate/error-handling) page defines the managed-gateway statuses and codes. For symptom-driven debugging, see [query troubleshooting](https://docs.helix-db.com/database/helix-db/query-guides/troubleshooting). Keep exhaustive database error catalogs upstream; this guide records the transport contract and decisions that recur across the skills.
 
 ## HTTP Contract
 
@@ -59,7 +59,7 @@ Codes are open strings. Preserve an unknown future code, log it, and fall back t
 | SDK | Stable-code access | Diagnostic/status access |
 | --- | --- | --- |
 | Rust | `QueryErrorCode`; `HelixError::error_code()`; `remote_code()` | `status_code()`, `remote_message()`, `remote_details()`, `raw_response_body()`, `is_conflict()`, `is_rate_limited()` |
-| TypeScript | `HelixError.code` | `statusCode`, `serverMessage`, `serverDetails`, `rawBody`, `details`, `kind`, `isConflict()`, `isRateLimited()` |
+| TypeScript (3.1.0+) | `HelixError.code` | `statusCode`, `serverMessage`, `retryable`, `serverDetails`, `rawBody`, `details`, `kind`, `isConflict()`, `isRateLimited()`, `isRetryable()`. npm 3.0.4 lacks these structured fields. |
 | Go | `QueryErrorCode`; `HelixError.Code` for current/legacy Helix envelopes | `HelixError.Details`; `HelixError.StatusCode`; `IsConflict` / `ErrConflict`. A generic `message`/`code` remote body remains raw `Details` in v0.3.1. |
 | Python | `HelixError.code` for current/legacy Helix envelopes | `HelixError.details`; `HelixError.status_code`; `HelixError.kind`. A generic `message`/`code` remote body remains raw `details` in v0.3.4. |
 

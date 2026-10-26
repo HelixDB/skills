@@ -4,7 +4,7 @@ description: Write and revise queries with the published HelixDB Go SDK v0.3.1. 
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.4
+  version: 3.0.5
 ---
 
 # Helix Query Authoring - Go
@@ -147,7 +147,7 @@ err = client.Exec(ctx, CreateUser("Alice", "acme"), &created,
 )
 ```
 
-Prefer `helix.AwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them. Leaving it off is fine for low-concurrency or read paths. Either way, `Client.Exec` does not retry HTTP 409 conflicts. Application code owns retry policy and idempotency: reload authoritative state before rebuilding a conflict, and replay only when safe. Remote failures use `*helix.HelixError`: `Code` is an open-string `helix.QueryErrorCode`, `Details` is diagnostic text, and `StatusCode` is the HTTP status. `helix.IsConflict(err)` or `errors.Is(err, helix.ErrConflict)` retains the HTTP 409 helper; use `Code == helix.QueryErrorCode("transaction_conflict")` when the database classification matters. Never parse `Details`; see `../../docs/error-handling.md`.
+Prefer `helix.AwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them. Leaving it off is fine for low-concurrency or read paths. Either way, `Client.Exec` does not retry HTTP 409 conflicts. Application code owns retry policy and idempotency: reload authoritative state before rebuilding a conflict, and replay only when safe. Remote failures use `*helix.HelixError`: `Code` is an open-string `helix.QueryErrorCode`, `Details` is diagnostic text, and `StatusCode` is the HTTP status. `helix.IsConflict(err)` or `errors.Is(err, helix.ErrConflict)` retains the HTTP 409 helper; use `Code == helix.QueryErrorCode("transaction_conflict")` when the database classification matters. Never parse `Details`; see `../../docs/error-handling.md` and the [Query error reference](https://docs.helix-db.com/database/helix-db/query-guides/error-handling).
 
 ### 6. Respect The Published Release Boundary
 
@@ -181,6 +181,7 @@ post-filter and can return fewer than `k` eligible hits.
 
 Pass the same tenant partition used to construct candidates. Project
 `$distance` for vector hits or `$score` for text hits before navigating away.
+See [Prefiltering](https://docs.helix-db.com/database/helix-db/query-guides/prefiltering).
 
 ### 10. Avoid Unsupported Workflows
 

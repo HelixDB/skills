@@ -4,7 +4,7 @@ description: Review and improve HelixDB v3 query performance against the current
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.2.2
+  version: 3.2.3
 ---
 
 # HelixDB v3 Query Optimization
@@ -192,6 +192,7 @@ When a graph traversal defines eligible vector or BM25 candidates, build that
 node or edge stream first and call the traversal-scoped search method. This
 enforces exact candidate membership. Source search followed by a filter can
 underfill top-k; BM25 prefiltering refills to `k` when enough candidates match.
+See [Prefiltering](https://docs.helix-db.com/database/helix-db/query-guides/prefiltering).
 
 Project `$distance` for vector results or `$score` for text results before traversing
 away from the ranked hit stream.

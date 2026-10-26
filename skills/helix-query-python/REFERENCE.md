@@ -404,7 +404,7 @@ Never parse `details`; see
 with no query payload after fanout, but the published Python 0.3.4 transport
 accepts only 200 and surfaces that response as a remote `HelixError`. Use
 direct HTTP for Cloud warming until a newer SDK release accepts
-204. Standalone `v0.0.5` warming returns the normal 200 response. Combine
+204. Standalone runtime warming returns the normal 200 response. Combine
 `warm_only=True` with `writer_only=True` to target only the authoritative
 writer.
 

@@ -8,7 +8,7 @@ Initialize a local instance with a CLI-managed MinIO volume:
 helix init local --name dev --disk
 ```
 
-Set `tag = "v0.0.5"` in the generated `[local.dev]` block in `helix.toml`, then:
+CLI 3.3.0 saves `tag = "v0.0.6"` in the generated `[local.dev]` block. Then:
 
 ```bash
 helix start dev
@@ -41,7 +41,7 @@ docker run --rm --name helixdb \
   -p 6969:8080 \
   -e HELIX_DATA_DIR=/var/lib/helix \
   --mount type=volume,source=helixdb-data,target=/var/lib/helix \
-  ghcr.io/helixdb/helixdb:v0.0.5
+  ghcr.io/helixdb/helixdb:v0.0.6
 ```
 
 Stop with `docker stop helixdb`. Start another container with the same volume to
@@ -86,4 +86,6 @@ helix service-credential create --workspace workspace_123 --name agent \
   --grant project_123=query-read
 ```
 
-Capture the token once for the intended MCP audience. Do not use it with `helix auth`.
+Capture the token once in a secrets manager and configure it as a bearer token for
+`https://mcp.helix-db.com/mcp` in the MCP client's secure credential settings. Do not use it with
+`helix auth`.
