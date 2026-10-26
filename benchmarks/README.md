@@ -9,6 +9,7 @@ Current benchmark groups with prompt coverage:
 - `dynamic`
 - `gremlin`
 - `optimize`
+- `mcp` (human OAuth, service credentials, agent sandbox, missing tools, tenant creation, confirmation failures)
 
 Planned next benchmark groups:
 
