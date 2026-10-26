@@ -19,6 +19,7 @@ These skills are for agents that need to:
 - run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 - read and ask Helix Foundry ontologies, and run confirmation-gated Foundry syncs, generations, revisions, document uploads and loads
+- set up a Helix Foundry ontology end to end: connect data or upload documents, write its goal, generate, review and load it
 
 ## Status
 
@@ -30,6 +31,7 @@ Available now:
 - `helix-admin-mcp`
 - `helix-foundry-mcp`
 - `helix-foundry-actions-mcp`
+- `helix-foundry-onboarding`
 - `helix-query-from-cypher`
 - `helix-query-from-gremlin`
 - `helix-query-from-hql`
@@ -97,9 +99,14 @@ sync a connector, generate or revise a draft, upload and organize documents,
 settle a review, make a version or load current, create a load), each through a
 one-time confirmation. Connectors are added on the Foundry website, from a link the
 MCP gives, so their credentials never pass through an agent.
+`helix-foundry-onboarding` takes a workspace from nothing to a loaded ontology: it
+creates the ontology and its database, hands over connector links or uploads your
+documents (either is enough, or both), writes the goal from what the agent knows of
+your work, then generates, reviews and loads it, waiting on each job and asking you
+before each action.
 
-Both use the hosted Helix MCP server, `https://mcp.helix-db.com/mcp`. Sign in once
-and the agent acts as you:
+All three use the hosted Helix MCP server, `https://mcp.helix-db.com/mcp`. Sign in
+once and the agent acts as you (onboarding needs a workspace owner or admin):
 
 ```bash
 claude mcp add --transport http helix https://mcp.helix-db.com/mcp   # then /mcp to sign in
@@ -109,7 +116,8 @@ codex mcp add helix --url https://mcp.helix-db.com/mcp && codex mcp login helix
 Without a browser (CI), send a service key as a header instead: `--header
 "Authorization: Bearer hlxs_..."` for Claude Code, or `bearer_token_env_var` in
 Codex's MCP config. A key reaches only the ontologies its project grants allow, and
-can read, ask and run loads, but not sync, generate or create ontologies.
+can read, ask and run loads, but not sync, generate or create ontologies, so
+onboarding needs you signed in.
 
 ## Repository Layout
 
@@ -166,16 +174,26 @@ excluded Cloud lifecycle surfaces.
 Use this skill to explore Helix Foundry ontologies. It teaches agents to resolve
 the workspace and ontology, choose between the definition, the data sources, exact
 graph reads and Ask, build reads from the served read guide, keep Ask's
-`client_token` on retries, and report answers with their citations.
+`client_token` on retries, follow running syncs, generations and loads, hand over
+Foundry links, and report answers with their citations.
 
 ### `helix-foundry-actions-mcp`
 
-Use this skill only for an explicitly requested Foundry change: create an ontology,
-sync a connector, generate or revise a draft, upload documents and organize their
-sets, settle a review, make a version current, create a load, or make a load
-current. It teaches the prepare-then-execute confirmation, no retries,
-the upload's PUT and completion, what each action costs or replaces, and what stays
-in the Foundry website.
+Use this skill only for an explicitly requested Foundry change: create an ontology
+on an existing or new database, sync a connector, generate or revise a draft, upload
+documents and organize their sets, settle a review, make a version current, create a
+load, or make a load current. It teaches the prepare-then-execute confirmation, no
+retries, the upload's PUT and completion, what each action costs or replaces, and
+what stays in the Foundry website.
+
+### `helix-foundry-onboarding`
+
+Use this skill only when a user asks to set up Foundry or build a workspace's
+ontology from scratch. It teaches the end-to-end order (workspace, ontology and
+database, connected data or uploaded documents, goal, generation, review, load),
+how long to wait on each job and when to give up, how to write a goal from what the
+agent knows of the user's work, and what to hand the user at each step. It leaves
+payloads and confirmations to the two skills above.
 
 ### `helix-query-json-dynamic`
 
