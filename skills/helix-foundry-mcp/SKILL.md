@@ -143,6 +143,10 @@ Prefer a graph read when you can state the question as one: it is exact, it cost
 nothing from the question budget, and you control the shape. Use Ask for open
 questions, or when the user asks for Foundry's answer.
 
+A list that returns `next_page_token` (ontologies, documents, questions and review
+decisions) has more: pass it back as `page_token` before saying what isn't there.
+`helix_foundry_list_syncs` returns the newest 20 syncs, or up to 100 with `limit`.
+
 ## Read the graph
 
 Call `helix_foundry_read_guide` once per session before the first read. It returns
