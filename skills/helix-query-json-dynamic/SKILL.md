@@ -4,7 +4,7 @@ description: Author and debug direct HelixDB v3 JSON query requests for POST /v2
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.2.2
+  version: 3.2.3
 ---
 
 # HelixDB v3 JSON Requests
@@ -275,10 +275,11 @@ curl -sS "${HELIX_URL%/}/v2/query" \
 either header: cluster endpoints reject both with `tenant_id_not_allowed`.
 Omitting both in GA mode returns HTTP 400 with `tenant_id_required`.
 
-The published SDK request builders do not expose an arbitrary GA database-ID
-header. Use the hosted MCP or direct HTTP for a GA shared gateway; SDK clients
-can use a database-specific cluster gateway, where both database/tenant headers
-must be absent.
+The TypeScript SDK (3.2.0) sends the GA header after
+`client.withDatabaseId("<database-id>")`. The published Rust, Python, and Go
+request builders do not expose it: from those, use the hosted MCP or direct HTTP
+for a GA shared gateway, or a database-specific cluster gateway, where both
+database/tenant headers must be absent.
 
 Local encoded request bodies may be at most 16 MiB; the Cloud gateway limit is
 2 MiB. Keep portable requests at or below 2 MiB.
@@ -292,13 +293,13 @@ the authoritative writer. Partial backend failure is best-effort success; if
 every target fails, the normal deterministic error is returned. A managed
 cluster with no eligible target returns `503 Service Unavailable`.
 
-The current published Rust 3.0.0, TypeScript 3.0.4, Python 0.3.4, and Go 0.3.1
-SDK transports still classify this Cloud `204` as a remote error because they
-accept only HTTP 200. Use direct HTTP for warming until a newer
-SDK release accepts `204 No Content`.
+TypeScript 3.2.0 accepts this `204`; its `send()` resolves `undefined`. The
+current published Rust 3.0.0, Python 0.3.4, and Go 0.3.1 SDK transports still
+classify it as a remote error because they accept only HTTP 200. From those,
+use direct HTTP for warming until a newer release accepts `204 No Content`.
 
 The CLI's `--warm` flag is local-only. Current SDK source accepts 204, but the
-published versions above do not include that fix.
+published Rust, Python, and Go versions above do not include that fix.
 
 The standalone `v0.0.5` runtime instead warms its single process and returns
 `200 OK` with the normal query body. Header values `false` and `0` use the
