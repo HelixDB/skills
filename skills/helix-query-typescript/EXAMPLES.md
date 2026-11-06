@@ -557,10 +557,9 @@ import { Client } from "@helix-db/helix-db";
 const client = new Client("http://localhost:6969");
 const request = userById().toQueryRequest(userByIdParams, { userId: "u-42" });
 
-// The Cloud service returns 204 after a successful warm. Published TypeScript
-// 3.0.4 treats that non-200 response as HelixError, so use direct
-// HTTP for Cloud warming until an SDK release accepts 204.
-await client.requestBuilder<void>().warmOnly().query(request).send(); // standalone 200
+// Helix Cloud returns 204 after a successful warm and send() resolves
+// undefined; the standalone runtime returns the normal 200 body.
+await client.requestBuilder<void>().warmOnly().query(request).send();
 ```
 
 Helix Cloud fans the read out to every eligible backend and discards the result
@@ -587,7 +586,9 @@ try {
 }
 ```
 
-`isRateLimited()` and retryable 503 codes can drive bounded backoff. The
+`isRateLimited()` and retryable 503 codes can drive bounded backoff.
+`isRetryable()` is true only when the body carries `"retryable": true`; a
+missing flag means unknown, not safe to replay. The
 published client does not expose `Retry-After`, so use direct HTTP when the
 exact Cloud delay is required. Reconcile a `query_timeout` write before
 resubmitting it. Use `serverMessage`, `serverDetails`, and `rawBody` for structured remote
