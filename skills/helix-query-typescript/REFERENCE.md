@@ -1,7 +1,7 @@
 # Helix Query Authoring — TypeScript DSL Reference
 
 Exhaustive builder catalog for the published
-`@helix-db/helix-db@3.0.4` TypeScript DSL. Use when `SKILL.md` points
+`@helix-db/helix-db@3.2.0` TypeScript DSL. Use when `SKILL.md` points
 you at a category or when you need a signature confirmed.
 
 The public surface is defined under
@@ -671,6 +671,7 @@ Built-in HTTP client for running a request against a Helix instance. Uses the gl
 new Client(url?: string | null)           // defaults to http://localhost:6969
 Client.server(url?: string | null)
   .withApiKey(key?: string | null)        // Authorization: Bearer <key> (null/undefined clears it)
+  .withDatabaseId(id?: string | null)     // x-helix-database-id: <id> on every request (null/undefined clears it)
   .query<R = unknown>(request)             // direct POST /v2/query
 
 // Advanced server-only request headers:
@@ -680,12 +681,24 @@ client.requestBuilder<R>()
   .shouldAwaitDurability(b: boolean)       // X-Helix-Await-Durable: true|false
   .query(request)
 
-await request.send(): Promise<R>           // published 3.0.4: 200 -> parsed JSON; every other status, including Cloud warm 204, -> HelixError
+await request.send(): Promise<R>           // 200 -> parsed JSON; Cloud warm 204 -> undefined; any other status -> HelixError
 ```
 
-The Cloud service returns `204 No Content` after a successful warm fanout, but
-the published TypeScript 3.0.4 client accepts only 200. Use direct HTTP for Cloud warming until a newer SDK release accepts 204. Partial
-target failure is still a service-level success when at least one backend warms.
+The Cloud service returns `204 No Content` after a successful warm fanout, and
+`send()` resolves `undefined` for it. Partial target failure is still a
+service-level success when at least one backend warms.
+
+A Helix Cloud GA shared gateway requires the database on every request. Set it
+with `.withDatabaseId("<database-id>")`; omitting it returns HTTP 400
+`tenant_id_required`. A database-specific cluster gateway rejects the header
+with `tenant_id_not_allowed`, so leave it unset there. Embedded clients ignore
+it.
+
+```text
+const client = new Client(process.env.HELIX_URL)
+  .withApiKey(process.env.HELIX_API_KEY)
+  .withDatabaseId(process.env.HELIX_DATABASE_ID);
+```
 
 Prefer `.shouldAwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
 
@@ -739,6 +752,8 @@ registration, and query bundles are not supported.
   generic-remote `code`/`message`/`details`, and embedded `error`/`msg` pairs are
   preserved. Generic-remote decoding is not the Cloud gateway contract.
   `isConflict()` classifies HTTP 409 and `isRateLimited()` classifies HTTP 429.
+  `retryable` and `isRetryable()` report the body's `retryable` flag when the
+  server sends one; a missing flag means unknown.
   The client does not expose `Retry-After`; use direct HTTP when the exact Cloud
   delay is required. Reconcile a `query_timeout` write before resubmitting.
   Preserve unknown codes and never parse diagnostic text for control flow; see

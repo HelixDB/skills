@@ -1,6 +1,6 @@
 # Helix Memory System — TypeScript Examples
 
-Complete published `@helix-db/helix-db@3.0.4` snippets for a tenant-safe
+Complete published `@helix-db/helix-db@3.2.0` snippets for a tenant-safe
 memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`.
 
 Each query function is plain; call

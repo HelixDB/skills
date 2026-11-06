@@ -1,17 +1,17 @@
 ---
 name: helix-query-typescript
-description: Write and revise queries with the published HelixDB TypeScript SDK (`@helix-db/helix-db@3.0.4`, Node.js 20+). Use for `readBatch`, `writeBatch`, traversal builders, direct `toQueryRequest`/`toQueryJson` payloads, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, structured remote errors, and `Client.query`. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
+description: Write and revise queries with the published HelixDB TypeScript SDK (`@helix-db/helix-db@3.2.0`, Node.js 20+). Use for `readBatch`, `writeBatch`, traversal builders, direct `toQueryRequest`/`toQueryJson` payloads, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, structured remote errors, and `Client.query`, including Helix Cloud GA database routing with `withDatabaseId`. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.4
+  version: 3.1.0
 ---
 
 # Helix Query Authoring — TypeScript
 
 Write Helix TypeScript DSL queries in a way that is schema-aware, explicit,
 and easy for agents to reason about. The published package is
-`@helix-db/helix-db@3.0.4`, is ESM-only, and requires Node.js 20 or newer.
+`@helix-db/helix-db@3.2.0`, is ESM-only, and requires Node.js 20 or newer.
 
 This is the preferred way to author Helix queries in a TypeScript codebase — type-checked, and it emits the dynamic-request JSON for you. Drop to raw dynamic JSON (`helix-query-json-dynamic`) only for debugging or dynamically-shaped requests.
 
@@ -149,17 +149,21 @@ function findUsers(p = params) {
 
 - **Request:** `findUsers().toQueryJson(params, { tenantId: "acme", limit: 25n }, { queryName: "find_users" })` produces JSON for `POST /v2/query`. Use `toQueryRequest(...)` for the object or `toQueryBytes(...)` for bytes. No-parameter queries take no schema argument: `countUsers().toQueryJson({ queryName: "count_users" })`. Unnamed requests serialize `query_name: null`.
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
-- **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v2/query`. A remote `HelixError` exposes `statusCode`, open-string `code`, `serverMessage`, structured `serverDetails`, `rawBody`, compatibility `details`, and `kind`. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
+- **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v2/query`. A remote `HelixError` exposes `statusCode`, open-string `code`, `serverMessage`, structured `serverDetails`, `rawBody`, compatibility `details`, `retryable`, and `kind`. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
 
 `warmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writerOnly()` to target only the authoritative writer.
-The published TypeScript 3.0.4 transport accepts only HTTP 200, so it currently
-throws a remote `HelixError` for the Cloud `204`; use direct
-HTTP for Cloud warming. Standalone `v0.0.5` warming returns the normal 200
-response.
+TypeScript 3.2.0 accepts that `204`, and `send()` resolves `undefined`.
+Standalone `v0.0.5` warming returns the normal 200 response.
 
-`isConflict()` and `isRateLimited()` classify HTTP 409 and 429. Reconcile a `query_timeout` write before resubmitting, honor `Retry-After` through a transport that exposes response headers, and use bounded backoff for retryable 429/503 failures. On a write conflict, reload current state before rebuilding the mutation; never blindly retry a write after a general server failure because its commit outcome may be unknown. See `../../docs/error-handling.md`.
+A Helix Cloud GA shared gateway needs the database on every request: set it
+once with `client.withDatabaseId("<database-id>")`, which sends
+`x-helix-database-id`. Omitting it returns HTTP 400 `tenant_id_required`. A
+database-specific cluster gateway rejects the header with
+`tenant_id_not_allowed`, so leave it unset there.
+
+`isConflict()` and `isRateLimited()` classify HTTP 409 and 429; `isRetryable()` is true only when the body says `"retryable": true`. Reconcile a `query_timeout` write before resubmitting, honor `Retry-After` through a transport that exposes response headers, and use bounded backoff for retryable 429/503 failures. On a write conflict, reload current state before rebuilding the mutation; never blindly retry a write after a general server failure because its commit outcome may be unknown. See `../../docs/error-handling.md`.
 
 ## Number & DateTime Handling
 
@@ -187,7 +191,7 @@ response.
 | Mutations | `addN`, `addE`, `setProperty`, `removeProperty`, `drop`, `dropEdge`, `dropEdgeLabeled`, `dropEdgeById` | `dropEdgeById` is multigraph-safe. |
 | Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/nodeRangeDesc/nodeRangeWithDirection/edgeEquality/edgeRange/edgeRangeDesc/edgeRangeWithDirection/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. `RangeIndexDirection.Desc` sets descending physical order. |
 | Output | `toJsonString`, `toQueryJson`, `toQueryRequest`, `toQueryBytes` | Dynamic forms take `(params, values, options)` unless the query has no parameters; pass `{ queryName }` to set top-level `query_name`. |
-| Client / transport | `new Client(url)`, `Client.server(url)`, `.withApiKey`, `.query<R>(request)`, `.requestBuilder<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.send()` | Direct requests use `POST /v2/query`; remote failures preserve HTTP status, code, message, structured details, and raw text; stored routes are not supported. |
+| Client / transport | `new Client(url)`, `Client.server(url)`, `.withApiKey`, `.withDatabaseId`, `.query<R>(request)`, `.requestBuilder<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.send()` | Direct requests use `POST /v2/query`; remote failures preserve HTTP status, code, message, structured details, and raw text; stored routes are not supported. |
 
 See `REFERENCE.md` for full signatures and typestate constraints.
 

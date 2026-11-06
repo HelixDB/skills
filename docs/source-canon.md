@@ -4,11 +4,14 @@ This repository should use public Helix documentation and repo-local canonical e
 
 ## Verified release boundaries
 
-On 2026-09-15, the published package artifacts were Rust 3.0.0, TypeScript 3.0.4,
-Python 0.3.4, and Go v0.3.1. All four accept HTTP 200 but still reject Cloud warm
-success 204. Current SDK source accepts 204; a main-branch implementation is not
-evidence that the same behavior has shipped in those package versions. Use direct
-HTTP for Cloud warming, since the current CLI's `--warm` flag is local-only.
+On 2026-11-06, the published package artifacts were Rust 3.0.0, TypeScript 3.2.0,
+Python 0.3.4, and Go v0.3.1. TypeScript 3.2.0 accepts Cloud warm success 204 and
+sends the GA `x-helix-database-id` header through `withDatabaseId`. Rust, Python,
+and Go accept only HTTP 200, so they reject Cloud warm success 204, and expose no
+GA database selection. Current SDK source has both; a main-branch implementation
+is not evidence that the same behavior has shipped in a package version. From
+those three SDKs, use direct HTTP for Cloud warming and GA shared-gateway
+requests, since the current CLI's `--warm` flag is local-only.
 
 The published Docker image `ghcr.io/helixdb/helixdb:v0.0.5` supports Linux amd64
 and arm64. Native-volume persistence and typed `f32`/`f64` JSON parameters were
@@ -34,7 +37,7 @@ When an agent is writing or reviewing Helix query code, it should use sources in
 6. public skill-format docs for packaging and discovery behavior
 
 This ordering is intentional. The skills track the published Rust 3.0.0,
-TypeScript 3.0.4, Python 0.3.4, and Go 0.3.1 SDK lines. Public documentation is
+TypeScript 3.2.0, Python 0.3.4, and Go 0.3.1 SDK lines. Public documentation is
 the behavior contract; use the SDK source to confirm exact identifiers rather
 than guessing from an older release.
 
