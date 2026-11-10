@@ -4,7 +4,7 @@ description: Explore Helix Foundry ontologies through the hosted Helix MCP serve
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.7.0
+  version: 1.8.0
 ---
 
 # Helix Foundry MCP
@@ -67,9 +67,11 @@ direct API calls, database keys or raw queries.
   Definition v1 (`foundry_v1`).
 - Foundry keeps the current load and the four newest others, and deletes older ones.
   A saved load id can later return `not_found`.
-- **Documents** and **document sets** are the workspace's. A version's loads read the
-  sets in its `document_set_ids`, so every ontology whose current version names a set
-  reads that set's documents. Ontologies read Markdown, MDX and text as text, each
+- **Documents** and **document sets** are the workspace's. A version's
+  `document_set_ids` are the sets it was given: its loads hold their documents, but
+  read for facts only the sets its extraction routes name
+  (`document_reads.read_set_ids`). The rest (`unread_set_ids`) are stored and
+  searchable, and add nothing to the graph. Ontologies read Markdown, MDX and text as text, each
   PDF as its text, and each CSV, TSV, JSON, JSONL or Parquet file as a table of its
   own, once Helix has read the file.
 - A connector can write documents too. A Granola connection keeps each meeting note
@@ -95,13 +97,36 @@ direct API calls, database keys or raw queries.
    running. A service key sees only the ontologies it can query.
 3. Call `helix_foundry_get_ontology` for the chosen one. It returns the current
    version, the newest 20 versions and generations, the loads, the document sets its
-   current version reads and the workspace's other sets, without definitions.
+   current version was given and the workspace's other sets, without definitions.
 4. For what the ontology models, call `helix_foundry_get_version` with the current
    version's id (or another version's). An agent draft comes without the agent's
-   working notes; its `ontology_toml`, `mappings_toml`, `questions` and `summary` are
-   at the top. A definition past 256 KiB is refused (`failed_precondition`): point
-   the user to the version's `url`. Its `load_refusal`, when present, says why
-   `create_load` would refuse the version; it is omitted when a load would be taken.
+   working notes; its `ontology_toml`, `mappings_toml`, `questions`, `summary` and
+   `left_out` are at the top. A definition past 256 KiB is refused
+   (`failed_precondition`): point the user to the version's `url`. Its
+   `load_refusal`, when present, says why `create_load` would refuse the version; it
+   is omitted when a load would be taken.
+
+   Read three things before you say what a version covers:
+   - `definition.questions` are the draft's open questions. A question's `default`
+     is the agent's suggestion, not a decision: don't report it as done. To act on
+     an answer, a new generation needs it in its goal.
+   - `definition.left_out` is what the draft left out of its sources, each
+     `{what, reason}`; `what` starts with a source's id, then the field when it
+     names one. It is absent when the draft left nothing out. A synced table's id
+     is `src_` and 16 hex digits, a hash no tool lists: its entry also has the
+     table's `connector_id` and `table`. A table file's id is its document id
+     (`helix_foundry_list_documents`), and a document set's is the set's id
+     (`helix_foundry_get_ontology`'s `document_sets` and `other_document_sets`).
+   - `tables` gives every synced table the version's generation drafted from by
+     that id: `{source_id, connector_id, table}`. Use it to read `mappings_toml`,
+     which names tables by `source_id` too. Only `helix_foundry_get_version`
+     returns it; it is absent for a caller who can't read the generation.
+   - `document_reads` splits the version's `document_set_ids` into `read_set_ids`
+     (an extraction route reads them) and `unread_set_ids` (a load stores their
+     documents and extracts nothing). Only a version read whole has it
+     (`helix_foundry_get_version`, and `helix_foundry_get_ontology`'s
+     `current_version`); a listed version has none whatever it reads, and neither
+     has a version whose routes Foundry couldn't read.
 
 If names are ambiguous, show the matches and ask. Do not guess. A missing
 ontology may not exist or may not be visible to this caller; do not say which.
@@ -131,6 +156,9 @@ only the website does, give them the matching link; don't build one.
 | An ontology's documents, whether Helix has read each, and what loads made of them | `helix_foundry_list_documents`; `helix_foundry_get_ontology` lists the sets |
 | How a generation or a revision went, and a revision's findings | `helix_foundry_get_generation` |
 | How a load went, its jobs and why one failed | `helix_foundry_get_load` |
+| What a load read of the documents, what it left unread, and the reviews and unmatched names they left | `helix_foundry_get_load`: its `documents` |
+| Which document sets a version reads, and what its draft left out or still asks | `helix_foundry_get_version`: `document_reads`, `definition.left_out`, `definition.questions` |
+| Which table a `src_…` id in a draft is | `helix_foundry_get_version`: `tables` |
 | To show the user something on the website | the result's `url`, `explore_url` or `ask_url` (see Links) |
 | What reviews were already settled | `helix_foundry_list_review_decisions` |
 | Questions asked before, or the steps a question's agent took | `helix_foundry_list_questions`, `helix_foundry_list_question_events` |
@@ -260,6 +288,36 @@ that is `deleting` or `delete_failed` is one Foundry is removing.
   why in `error`; a job that ran out of the month's document budget ends
   `budget_exhausted`, as does one no person started that reached an API source's
   monthly allowance (its `error` names the source; see Entity extraction).
+  Its `documents` counts what the load made of the documents it holds, in all and
+  per set (`sets`, each with `set_id`, `read_by_version` and the same counts,
+  its total under `documents` in place of `total`):
+  - `total`; `read`, those a model read for names and facts;
+    `not_read_by_version`, those in sets no route of the load's version reads
+    (stored and searchable, nothing in the graph); `duplicate`, `failed` and
+    `waiting`. They add up to `total`.
+  - `facts_written`: fact writes. A fact counts once for each document that
+    created it or added evidence to it, so it is not the number of distinct facts
+    in the graph.
+  - `left_for_review`: every review the documents left when the load last wrote
+    each one: statements held back instead of written (scored under the bar,
+    unverified, conflicting or breaking a rule), names matched to no one record,
+    property values held back or in conflict, statements that fit no link, and
+    links the load did write that a person can undo. It is not the number of open
+    reviews: one a person settles stays counted until the load writes the
+    decision, which a later load does, and the current load where Foundry applies
+    an approval to it. `helix_foundry_list_review_decisions` lists what was
+    settled.
+  - `names_unresolved`: names matched to no one record (none matched, several did,
+    or its identifiers disagree). A statement about one is held. Nearly every such
+    name left a review, so it overlaps `left_for_review`: don't add the two.
+
+  A job's `progress` counts a document as done whether or not it was read, so
+  report `documents`, not `progress`, when you say what a load read. While a job
+  runs, the counts can be a few seconds old. `documents` is absent in four cases
+  this result doesn't tell apart: the load holds no documents; you read the load
+  through source grants; the load was made before Foundry recorded which
+  documents a load holds; the server predates the counts. So when the load's
+  version has `document_set_ids`, absence doesn't mean nothing was left unread.
 - `helix_foundry_list_documents` returns the documents the ontology reads, each with
   its status (`pending_upload`, `uploaded`) and, once the current load read it, its
   extraction: `extracted`, `duplicate`, `failed` (with an error code and whether a
@@ -270,8 +328,9 @@ that is `deleting` or `delete_failed` is one Foundry is removing.
   `version` of its text, the item's `url` at the source, and `at`, its own time
   there (a connector's set lists newest first by it). New text at the source
   replaces the document with a new one.
-- `helix_foundry_get_ontology`'s sets each have `id`, `name`, `description` and a
-  count of `documents`; a connector's set adds `connector`: `connector_id`, `stream`
+- `helix_foundry_get_ontology`'s `document_sets` are the sets its current version
+  was given, not only those it reads: `current_version.document_reads` says which.
+  Its sets each have `id`, `name`, `description` and a count of `documents`; a connector's set adds `connector`: `connector_id`, `stream`
   (such as `notes`) and `max_documents`, the most it keeps.
 - An uploaded document's `read` is how ontologies read it: `kind` `text`, `table`
   (read once, at upload, as a table of its own that mappings name by the document's

@@ -4,7 +4,7 @@ description: Set up a Helix Foundry ontology end to end through the hosted Helix
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.4.0
+  version: 1.5.0
 ---
 
 # Helix Foundry onboarding
@@ -320,10 +320,61 @@ Call `helix_foundry_get_version` on the generation's `result_version_id`. Summar
 it in a few lines: its main types, the links between them, its rules, and which of
 the goal's questions it covers. Give the user its `url`.
 
+Then say what the draft leaves open and what it doesn't read. A draft can finish
+with questions nobody answered and with most of the documents unread, and nothing
+else tells the user:
+
+- **Its questions**: `definition.questions`. They are open. A question's `default`
+  is the agent's suggestion, not a decision the user made: never report it as done.
+  What the draft does is what its definition and `document_reads` show. Put each
+  question to the user with its suggestion, and note the answers.
+- **What it left out**: `definition.left_out`, each `{what, reason}`. It is absent
+  when the draft left nothing out. `what` starts with a source's id, then names the
+  field when it is one. Name the source, never the id:
+  - a synced table's id is `src_` and 16 hex digits, which no tool lists. The entry
+    has the table's `connector_id` and `table` beside `what`, and the version's
+    `tables` gives every synced table by that id (`source_id`).
+    `helix_foundry_list_connectors` names the connection;
+  - a table file's id is its document id: `helix_foundry_list_documents` names it;
+  - a document set's id is the set's id, named as below.
+
+  An entry whose id you can't name (no `table` on it, no document or set with that
+  id): quote it as it is and say you couldn't name it. Tell the user what was left
+  out and why, in their words.
+- **The sets it doesn't read**: `document_reads.unread_set_ids`, against
+  `read_set_ids`. `document_set_ids` is every set it was given, not what it reads.
+  A load stores an unread set's documents, and they stay searchable, but nothing
+  from them reaches the graph, so answers drawn from the graph don't know what they
+  say. Name those sets and say how many documents each holds. Their names are in
+  `helix_foundry_get_ontology`, which splits the workspace's sets by the current
+  version: `document_sets` are those the current version was given, and
+  `other_document_sets` the rest. Until this draft is current its sets can be in
+  either (all of them in `other_document_sets` for a first draft), so look in
+  both.
+
+If the result has no `document_reads`, the server predates it or couldn't read the
+draft's routes: say you can't tell which sets the draft reads, and check after the
+load (step 7). A missing `left_out` alone means only that the draft left nothing
+out.
+
+Next:
+
 - **It has a `load_refusal`**: it can't be loaded. Report why and stop; offer to
   generate again with a changed goal.
-- **Otherwise**, ask whether to make it current and load it. Read the ontology with
-  `helix_foundry_get_ontology`, then run `set_current_version` with
+- **The user answered a question, or wants something it left out or doesn't read**:
+  generate again. Write the new goal with them: the old goal plus each answer and
+  each thing to read, in plain words ("Read the board minutes for decisions and who
+  made them", not a question id). Run step 5 with the same inputs the generation
+  read (its `tables` and `document_set_ids`), and review the new draft the same
+  way. A revision (`revise_version`) changes the items you write into it; it
+  doesn't have the agent act on an answer. Generate again for the same unread
+  sets once: if the new draft still doesn't read a set the goal asked it to,
+  stop. Tell the user which sets, quote the draft's reason for each from
+  `definition.left_out` when it gives one, and let them decide. Don't generate a
+  third time on your own.
+- **Otherwise**, ask whether to make it current and load it. If sets stay unread,
+  say so once more in that question, so the user chooses it knowingly. Read the
+  ontology with `helix_foundry_get_ontology`, then run `set_current_version` with
   `{"version_id", "expected_current_version_id"}`: the current version you just read,
   or `""` when there is none. Skip it when the version is already current.
 
@@ -344,12 +395,60 @@ Run `create_load` with `{"version_id"}`. Follow the load it returns with
 - **`failed_precondition`** on create: another load or extract runs. Follow it with
   `helix_foundry_get_load`, using the `load_id` of the ontology's `active_job`.
 
+When it ends, report what it made of the documents, from the load's `documents`.
+A job's `progress` counts a document as done whether a model read it or the load
+only stored it, so never report `progress` as what was read. Say, in one short
+paragraph:
+
+- documents read: `read` of `total`;
+- not read by this version: `not_read_by_version`, and which sets (those of `sets`
+  with `read_by_version` false, by name). Each set has the same counts as the
+  whole, its total under `documents` in place of `total`, so you can say how
+  each one's documents ended;
+- fact writes: `facts_written`. A fact counts once for each document that states
+  it, so call it "fact writes from documents", not the number of facts in the
+  graph;
+- reviews left: `left_for_review`, every review the documents left when the load
+  wrote them. Most are statements the load held back instead of writing (scored
+  under the bar, unverified, conflicting), names it matched to no one record, and
+  property values it held back; a held statement or value is not in the graph. It
+  is not the number of reviews still open: a review someone settled stays counted
+  until the load writes the decision. So say "left N reviews", never "N reviews
+  are waiting", and don't promise that settling one puts it in the graph at once:
+  a later load writes it, and so does the current load where Foundry applies an
+  approval to it;
+- names not matched: `names_unresolved`, names in the documents matched to no one
+  record (none matched, several did, or its identifiers disagree). A statement
+  about one is held, not written. These names are among the reviews above: don't
+  add the two numbers;
+- and `failed`, `duplicate` or `waiting` when they are above 0.
+
+Say it plainly when the numbers are poor: most documents unread, or few fact
+writes against many reviews left. Then the graph is mostly the tables, and
+questions the documents decide will be answered without them. Offer what fits: to
+generate again with a goal that covers the unread sets (step 6), or to point the
+user at the ontology's reviews on its `url`.
+
+Step 6's limit holds here too: generate again for the same unread sets once, and
+stop if the second draft leaves them unread.
+
+`documents` can be absent though the load holds documents: when you read the load
+through source grants, for a load made before Foundry recorded which documents a
+load holds, and on a server that predates the counts. It is also
+absent when the load holds none. So when the version has `document_set_ids`, don't
+say nothing was left unread: say the counts aren't available, and count a sample
+instead with `helix_foundry_list_documents`: at most 5 pages. From each
+document's extraction, count by `status` (`out_of_scope` is not read by this
+version) and add up `facts` and `reviews`. If the list goes on past 5 pages, say
+the counts cover only the documents you read, and how many that was.
+
 ## 8. Hand back
 
 Read the ontology again and give the user its `url` (Foundry's page),
 `explore_url` (its graph) and `ask_url` (Ask). Recap in a few lines: the data
-connected, API sources made and documents uploaded, the version loaded, and anything
-skipped or failed. For each API source, give its `token_url` again if the user's
+connected, API sources made and documents uploaded, the version loaded, what the
+load read of the documents (step 7's counts, with the sets left unread), and
+anything skipped or failed. For each API source, give its `token_url` again if the user's
 apps or agents will send to it, and say when pieces they send later reach the graph:
 through mappings, when the ontology refreshes (at most daily on Free, hourly on Pro,
 every 15 minutes on Max); by extraction, as they arrive, until the source's monthly
