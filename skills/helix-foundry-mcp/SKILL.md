@@ -313,9 +313,9 @@ that is `deleting` or `delete_failed` is one Foundry is removing.
   A job's `progress` counts a document as done whether or not it was read, so
   report `documents`, not `progress`, when you say what a load read. While a job
   runs, the counts can be a few seconds old. `documents` is absent in four cases
-  this result doesn't tell apart: the load holds no documents; you read only part
-  of the load through source grants; the load was made before Foundry recorded
-  which documents a load holds; the server predates the counts. So when the load's
+  this result doesn't tell apart: the load holds no documents; you read the load
+  through source grants; the load was made before Foundry recorded which
+  documents a load holds; the server predates the counts. So when the load's
   version has `document_set_ids`, absence doesn't mean nothing was left unread.
 - `helix_foundry_list_documents` returns the documents the ontology reads, each with
   its status (`pending_upload`, `uploaded`) and, once the current load read it, its

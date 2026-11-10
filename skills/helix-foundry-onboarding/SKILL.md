@@ -429,9 +429,9 @@ user at the ontology's reviews on its `url`.
 Step 6's limit holds here too: generate again for the same unread sets once, and
 stop if the second draft leaves them unread.
 
-`documents` can be absent though the load holds documents: when you read only part
-of the load through source grants, for a load made before Foundry recorded which
-documents a load holds, and on a server that predates the counts. It is also
+`documents` can be absent though the load holds documents: when you read the load
+through source grants, for a load made before Foundry recorded which documents a
+load holds, and on a server that predates the counts. It is also
 absent when the load holds none. So when the version has `document_set_ids`, don't
 say nothing was left unread: say the counts aren't available, and count a sample
 instead with `helix_foundry_list_documents`: at most 5 pages. From each
