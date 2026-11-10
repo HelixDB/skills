@@ -203,8 +203,10 @@ ontology from scratch. It teaches the end-to-end order (workspace, ontology and
 database, connected data, API sources or uploaded documents, goal, generation,
 review, load), which mode fits each API source, how long to wait on each job and
 when to give up, how to write a goal from what the agent knows of the user's work,
-and what to hand the user at each step. It leaves payloads and confirmations to the
-two skills above.
+and what to hand the user at each step: a draft's open questions, what it left out
+and the document sets it doesn't read, then what a load read of the documents and
+what it left unread, held for review or couldn't match. It leaves payloads and
+confirmations to the two skills above.
 
 ### `helix-query-json-dynamic`
 
