@@ -403,7 +403,8 @@ paragraph:
 - documents read: `read` of `total`;
 - not read by this version: `not_read_by_version`, and which sets (those of `sets`
   with `read_by_version` false, by name). Each set has the same counts as the
-  whole, so you can say how each one's documents ended;
+  whole, its total under `documents` in place of `total`, so you can say how
+  each one's documents ended;
 - fact writes: `facts_written`. A fact counts once for each document that states
   it, so call it "fact writes from documents", not the number of facts in the
   graph;

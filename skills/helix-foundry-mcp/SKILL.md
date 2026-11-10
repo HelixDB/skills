@@ -289,7 +289,8 @@ that is `deleting` or `delete_failed` is one Foundry is removing.
   `budget_exhausted`, as does one no person started that reached an API source's
   monthly allowance (its `error` names the source; see Entity extraction).
   Its `documents` counts what the load made of the documents it holds, in all and
-  per set (`sets`, each with `set_id`, `read_by_version` and the same counts):
+  per set (`sets`, each with `set_id`, `read_by_version` and the same counts,
+  its total under `documents` in place of `total`):
   - `total`; `read`, those a model read for names and facts;
     `not_read_by_version`, those in sets no route of the load's version reads
     (stored and searchable, nothing in the graph); `duplicate`, `failed` and
