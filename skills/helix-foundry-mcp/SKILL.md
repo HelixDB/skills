@@ -111,13 +111,22 @@ direct API calls, database keys or raw queries.
      is the agent's suggestion, not a decision: don't report it as done. To act on
      an answer, a new generation needs it in its goal.
    - `definition.left_out` is what the draft left out of its sources, each
-     `{what, reason}`; `what` starts with the id of a table, a file or a document
-     set. It is absent when the draft left nothing out.
+     `{what, reason}`; `what` starts with a source's id, then the field when it
+     names one. It is absent when the draft left nothing out. A synced table's id
+     is `src_` and 16 hex digits, a hash no tool lists: its entry also has the
+     table's `connector_id` and `table`. A table file's id is its document id
+     (`helix_foundry_list_documents`), and a document set's is the set's id
+     (`helix_foundry_get_ontology`'s `document_sets` and `other_document_sets`).
+   - `tables` gives every synced table the version's generation drafted from by
+     that id: `{source_id, connector_id, table}`. Use it to read `mappings_toml`,
+     which names tables by `source_id` too. Only `helix_foundry_get_version`
+     returns it; it is absent for a caller who can't read the generation.
    - `document_reads` splits the version's `document_set_ids` into `read_set_ids`
      (an extraction route reads them) and `unread_set_ids` (a load stores their
      documents and extracts nothing). Only a version read whole has it
      (`helix_foundry_get_version`, and `helix_foundry_get_ontology`'s
-     `current_version`); a listed version has none whatever it reads.
+     `current_version`); a listed version has none whatever it reads, and neither
+     has a version whose routes Foundry couldn't read.
 
 If names are ambiguous, show the matches and ask. Do not guess. A missing
 ontology may not exist or may not be visible to this caller; do not say which.
@@ -147,8 +156,9 @@ only the website does, give them the matching link; don't build one.
 | An ontology's documents, whether Helix has read each, and what loads made of them | `helix_foundry_list_documents`; `helix_foundry_get_ontology` lists the sets |
 | How a generation or a revision went, and a revision's findings | `helix_foundry_get_generation` |
 | How a load went, its jobs and why one failed | `helix_foundry_get_load` |
-| What a load read of the documents, and what it left unread, held or unmatched | `helix_foundry_get_load`: its `documents` |
+| What a load read of the documents, what it left unread, and the reviews and unmatched names they left | `helix_foundry_get_load`: its `documents` |
 | Which document sets a version reads, and what its draft left out or still asks | `helix_foundry_get_version`: `document_reads`, `definition.left_out`, `definition.questions` |
+| Which table a `src_…` id in a draft is | `helix_foundry_get_version`: `tables` |
 | To show the user something on the website | the result's `url`, `explore_url` or `ask_url` (see Links) |
 | What reviews were already settled | `helix_foundry_list_review_decisions` |
 | Questions asked before, or the steps a question's agent took | `helix_foundry_list_questions`, `helix_foundry_list_question_events` |
@@ -279,16 +289,34 @@ that is `deleting` or `delete_failed` is one Foundry is removing.
   `budget_exhausted`, as does one no person started that reached an API source's
   monthly allowance (its `error` names the source; see Entity extraction).
   Its `documents` counts what the load made of the documents it holds, in all and
-  per set (`sets`, each with `set_id` and `read_by_version`): `total`; `read`, those
-  a model read for names and facts; `not_read_by_version`, those in sets no route of
-  the load's version reads (stored and searchable, nothing in the graph);
-  `duplicate`, `failed` and `waiting`; `facts_written`; `held_for_review`, the items
-  the documents stated that the load kept for a person's review instead of writing;
-  and `names_unmatched`, the names that matched no record, whose facts are not
-  written. A job's `progress` counts a document as done whether or not it was read,
-  so report `documents`, not `progress`, when you say what a load read. `documents`
-  is absent for a load that holds no documents and for a caller who reads only part
-  of the load.
+  per set (`sets`, each with `set_id`, `read_by_version` and the same counts):
+  - `total`; `read`, those a model read for names and facts;
+    `not_read_by_version`, those in sets no route of the load's version reads
+    (stored and searchable, nothing in the graph); `duplicate`, `failed` and
+    `waiting`. They add up to `total`.
+  - `facts_written`: fact writes. A fact counts once for each document that
+    created it or added evidence to it, so it is not the number of distinct facts
+    in the graph.
+  - `left_for_review`: every review the documents left when the load last wrote
+    each one: statements held back instead of written (scored under the bar,
+    unverified, conflicting or breaking a rule), names matched to no one record,
+    property values held back or in conflict, statements that fit no link, and
+    links the load did write that a person can undo. It is not the number of open
+    reviews: one a person settles stays counted until the load writes the
+    decision, which a later load does, and the current load where Foundry applies
+    an approval to it. `helix_foundry_list_review_decisions` lists what was
+    settled.
+  - `names_unresolved`: names matched to no one record (none matched, several did,
+    or its identifiers disagree). A statement about one is held. Nearly every such
+    name left a review, so it overlaps `left_for_review`: don't add the two.
+
+  A job's `progress` counts a document as done whether or not it was read, so
+  report `documents`, not `progress`, when you say what a load read. While a job
+  runs, the counts can be a few seconds old. `documents` is absent in four cases
+  this result doesn't tell apart: the load holds no documents; you read only part
+  of the load through source grants; the load was made before Foundry recorded
+  which documents a load holds; the server predates the counts. So when the load's
+  version has `document_set_ids`, absence doesn't mean nothing was left unread.
 - `helix_foundry_list_documents` returns the documents the ontology reads, each with
   its status (`pending_upload`, `uploaded`) and, once the current load read it, its
   extraction: `extracted`, `duplicate`, `failed` (with an error code and whether a
