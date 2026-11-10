@@ -325,8 +325,9 @@ with questions nobody answered and with most of the documents unread, and nothin
 else tells the user:
 
 - **Its questions**: `definition.questions`. They are open. A question's `default`
-  is the agent's suggestion; the draft does not act on it, whatever its wording.
-  Put each question to the user with its suggestion, and note the answers.
+  is the agent's suggestion, not a decision the user made: never report it as done.
+  What the draft does is what its definition and `document_reads` show. Put each
+  question to the user with its suggestion, and note the answers.
 - **What it left out**: `definition.left_out`, each `{what, reason}`. `what` starts
   with the id of a synced table, a table file or a document set
   (`helix_foundry_get_generation` and `helix_foundry_get_ontology` name them). Tell

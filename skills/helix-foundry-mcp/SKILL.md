@@ -108,8 +108,8 @@ direct API calls, database keys or raw queries.
 
    Read three things before you say what a version covers:
    - `definition.questions` are the draft's open questions. A question's `default`
-     is the agent's suggestion: nothing applies it. To act on an answer, a new
-     generation needs it in its goal.
+     is the agent's suggestion, not a decision: don't report it as done. To act on
+     an answer, a new generation needs it in its goal.
    - `definition.left_out` is what the draft left out of its sources, each
      `{what, reason}`; `what` starts with the id of a table, a file or a document
      set. It is absent when the draft left nothing out.
