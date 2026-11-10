@@ -346,9 +346,11 @@ else tells the user:
   A load stores an unread set's documents, and they stay searchable, but nothing
   from them reaches the graph, so answers drawn from the graph don't know what they
   say. Name those sets and say how many documents each holds. Their names are in
-  `helix_foundry_get_ontology`: in `document_sets` once this version is current,
-  and in `other_document_sets` until then, as for a first draft, where
-  `document_sets` is empty. Look in both.
+  `helix_foundry_get_ontology`, which splits the workspace's sets by the current
+  version: `document_sets` are those the current version was given, and
+  `other_document_sets` the rest. Until this draft is current its sets can be in
+  either (all of them in `other_document_sets` for a first draft), so look in
+  both.
 
 If the result has no `document_reads`, the server predates it or couldn't read the
 draft's routes: say you can't tell which sets the draft reads, and check after the
