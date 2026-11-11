@@ -53,6 +53,20 @@ Planned next:
 npx skills add HelixDB/skills
 ```
 
+As a Claude Code plugin, with the Helix MCP (https://mcp.helix-db.com/mcp) added
+for you:
+
+```bash
+claude plugin marketplace add HelixDB/skills
+claude plugin install helixdb@helixdb
+```
+
+As a Gemini CLI extension, which adds the Helix MCP:
+
+```bash
+gemini extensions install https://github.com/HelixDB/skills
+```
+
 ## Helix Cloud queries
 
 When the target is Helix Cloud, every query-authoring skill uses
