@@ -1,0 +1,10 @@
+{
+  "name": "helixdb",
+  "version": "1.0.0",
+  "description": "Company context and memory for agents with Helix Foundry, and HelixDB queries, through the Helix MCP",
+  "mcpServers": {
+    "helix": {
+      "httpUrl": "https://mcp.helix-db.com/mcp"
+    }
+  }
+}

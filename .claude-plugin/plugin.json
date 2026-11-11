@@ -1,0 +1,28 @@
+{
+  "name": "helixdb",
+  "displayName": "HelixDB & Helix Foundry",
+  "version": "1.0.0",
+  "description": "Company context and memory for agents: ask and read a business's Helix Foundry ontology, a typed knowledge graph whose every fact cites its source, and write HelixDB queries. Adds the Helix MCP and every HelixDB skill.",
+  "author": {
+    "name": "HelixDB",
+    "url": "https://www.helix-db.com"
+  },
+  "homepage": "https://foundry.helix-db.com",
+  "repository": "https://github.com/HelixDB/skills",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "agent-memory",
+    "knowledge-graph",
+    "ontology",
+    "company-context",
+    "graphrag",
+    "helixdb",
+    "mcp"
+  ],
+  "icon": "./assets/helix.png",
+  "documentationUrl": "https://docs.helix-db.com/foundry/agents/helix-mcp",
+  "supportUrl": "https://discord.gg/2stgMPr5BD",
+  "privacyPolicyUrl": "https://www.helix-db.com/privacy",
+  "termsOfServiceUrl": "https://www.helix-db.com/terms"
+}

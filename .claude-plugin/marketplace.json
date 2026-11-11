@@ -1,0 +1,14 @@
+{
+  "name": "helixdb",
+  "description": "HelixDB and Helix Foundry for agents: the Helix MCP and the skills to use it",
+  "owner": {
+    "name": "HelixDB"
+  },
+  "plugins": [
+    {
+      "name": "helixdb",
+      "source": "./",
+      "description": "Company context and memory for agents with Helix Foundry, and HelixDB queries, through the Helix MCP"
+    }
+  ]
+}

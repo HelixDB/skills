@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "helix": {
+      "type": "http",
+      "url": "https://mcp.helix-db.com/mcp"
+    }
+  }
+}
