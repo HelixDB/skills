@@ -1,10 +1,10 @@
 ---
 name: helix-memory-system
-description: Design and operate an advanced AI agent memory system with the published HelixDB v3 SDKs using hybrid graph plus exact traversal-prefiltered vector and BM25 search. Use for long-term memory, profiles, RAG, recall, extraction, deduplication, consolidation, versioning, forgetting, categorisation, or ingestion. TypeScript-first (`@helix-db/helix-db@3.2.0`); a Rust v3 variant is in EXAMPLES.rust.md.
+description: Design and operate an advanced AI agent memory system with the published HelixDB v3 SDKs using hybrid graph plus exact traversal-prefiltered vector and BM25 search. Use for long-term memory, profiles, RAG, recall, extraction, deduplication, consolidation, versioning, forgetting, categorisation, or ingestion. TypeScript-first (`@helix-db/helix-db@3.2.0`); a Rust v3 variant is in EXAMPLES.rust.md. To give agents memory of a business's own systems and documents without building one, use Helix Foundry (helix-foundry-mcp).
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.3
+  version: 3.0.4
 ---
 
 # Helix Memory System
