@@ -1,7 +1,10 @@
 # Helix Query Authoring — Rust DSL Reference
 
-Exhaustive builder catalog for the published `helix-db = "3.0.0"` Rust crate,
-imported as `helix_db`. These names follow `HelixDB/helix-db` `main`.
+Exhaustive builder catalog for the `helix-db` Rust crate (`cargo add helix-db`),
+imported as `helix_db`. Names and signatures follow `HelixDB/helix-db` `main`
+(checked at `5be60bdaa`); the verified release set is crates.io `helix-db`
+3.0.0 with Docker `ghcr.io/helixdb/helixdb:v0.0.16`. Items marked **main only**
+are not in 3.0.0 yet.
 
 Import: `use helix_db::dsl::prelude::*;`. The SDK re-exports the shared AST and
 builders from
@@ -12,29 +15,38 @@ client and macro surfaces live under
 ## Typestate Cheat Sheet
 
 ```text
-Empty  -- n,n_where,n_with_label[_where],inject,add_n,create_*_index_*,create_index_if_not_exists,drop_index
-        └─> OnNodes
-Empty  -- e,e_where,e_with_label[_where]                                └─> OnEdges
+Empty  -- n, n_where, n_with_label[_where], inject                      └─> OnNodes
+Empty  -- add_n, drop_edge_by_id                                        └─> OnNodes (WriteEnabled)
+Empty  -- e, e_where, e_with_label[_where]                              └─> OnEdges
 Empty  -- vector_search_nodes[_with], text_search_nodes[_with]          └─> OnNodes
 Empty  -- vector_search_edges[_with], text_search_edges[_with]          └─> OnEdges
+Empty  -- shortest_path[_with], get_index_operation                     └─> Terminal
+Empty  -- create_index_if_not_exists, drop_index, create_*_index_*,
+          retry_index_operation, abort_index_operation                  └─> Terminal (WriteEnabled)
 OnNodes -- out, in_, both, has, has_label, has_key, where_, dedup,
            within, without, limit, skip, range, as_, store, select,
            inject, bind, order_by[_multiple], repeat, union, choose,
-           coalesce, optional, path, simple_path, fold, unfold, sack_*,
-           text_search[_with]                                          ↻ OnNodes
+           coalesce, optional, path, simple_path, fold, unfold, with_sack,
+           sack_set, sack_add, sack_get, vector_search[_with],
+           text_search[_with]                                           ↻ OnNodes
 OnNodes -- out_e, in_e, both_e                                          └─> OnEdges
 OnNodes -- count, exists, id, label, values, value_map, project,
            project_bindings, project_distinct_bindings,
            group, group_count, aggregate_by                             └─> Terminal
-OnNodes(WriteEnabled) -- add_e, set_property, remove_property,
+OnNodes(WriteEnabled) -- add_n, add_e, set_property, remove_property,
            drop, drop_edge, drop_edge_labeled, drop_edge_by_id          ↻ OnNodes
 OnEdges -- out_n, in_n, other_n                                         └─> OnNodes
 OnEdges -- has, has_label, has_key, where_, edge_has, edge_has_label,
-           dedup, within, without, limit, skip, range, as_, store,
-           select, order_by[_multiple], text_search[_with]              ↻ OnEdges
-OnEdges -- count, exists, id, label, edge_properties                    └─> Terminal
-OnEdges(WriteEnabled) -- drop_edge_by_id                                ↻ OnEdges
+           dedup, limit, skip, range, as_, store, bind, order_by,
+           vector_search[_with], text_search[_with]                     ↻ OnEdges
+OnEdges -- count, exists, id, label, values, value_map, project,
+           project_bindings, project_distinct_bindings, edge_properties └─> Terminal
+OnEdges(WriteEnabled) -- drop, set_property, remove_property            ↻ OnEdges
 ```
+
+Edge streams have no `within`, `without`, `select`, `inject`, `order_by_multiple`,
+`repeat`, branching, or `drop_edge_by_id`. Delete the edges in a stream with
+`.drop()`; delete edges by ID with the source form `g().drop_edge_by_id(...)`.
 
 `ReadBatch::var_as` accepts only `Traversal<_, ReadOnly>` — mixing a mutation builder into a read batch is a compile error. `WriteBatch::var_as` accepts either.
 
@@ -53,7 +65,7 @@ pub fn sub() -> SubTraversal
 
 - `var_as<S>(name, traversal)` — store a named result, unconditional.
 - `var_as_if<S>(name, condition: BatchCondition, traversal)` — conditional entry.
-- `for_each_param(param: &str, body: ReadBatch | WriteBatch)` — run `body` once per object in an array param. `body.queries` are inlined inside a `BatchEntry::ForEach`.
+- `for_each_param(param: &str, body: ReadBatch | WriteBatch)` — run `body` once per object in an array param; inside `body`, parameter names resolve against the current object's fields. A variable set in `body` holds only the **last** iteration's result, so do not return it as "everything created"; re-read afterwards if the caller needs the rows.
 - `returning<I, S: Into<String>>(vars)` — restrict the response to these variable names.
 
 ### `BatchCondition`
@@ -152,6 +164,12 @@ score descending and entity ID ascending; project `$score`. BM25 statistics
 remain partition-wide. Use the same tenant partition for candidate construction
 and search.
 
+Limits: a whole-index vector search returns at most 800 results whatever `k` is.
+A traversal-scoped vector search fails when `min(k, unique candidates)` exceeds
+800; a traversal-scoped text search returns at most `min(candidates, k, 800)`.
+More than 1,000,000 unique candidates fails the query. Narrow the candidate
+stream (tenant, label, indexed predicates) before searching.
+
 Pass `None::<&str>` to skip label filtering: `.out(None::<&str>)`.
 
 ---
@@ -164,11 +182,15 @@ Pass `None::<&str>` to skip label filtering: `.out(None::<&str>)`.
 .has_key(prop)
 .where_(pred: Predicate)
 .dedup()
-.within(var_name)
-.without(var_name)
+.within(var_name)                                  // node streams and sub()
+.without(var_name)                                 // node streams and sub()
 .edge_has(prop, value: impl Into<PropertyInput>)   // Edges only
 .edge_has_label(label)                             // Edges only
 ```
+
+`out`, `in_` and `both` do not filter the target's label. To keep a target
+label (Cypher `(:User)-[:FOLLOWS]->(:User)`), add `.has_label("User")` after the
+hop.
 
 On edge streams, generic `.has`, `.has_label`, `.has_key`, and `.where_` filter
 stored edge properties plus virtual fields `$id`, `$label`, `$from`, `$to`,
@@ -205,15 +227,17 @@ Predicate::lt_param(prop, param)  Predicate::lte_param(prop, param)
 
 ### `SourcePredicate`
 
-Restricted subset for `n_where` / `e_where` (must be index-friendly):
+`SourcePredicate` is a type alias of `Predicate` (`pub type SourcePredicate =
+Predicate`), so every constructor above is accepted by `n_where`,
+`n_with_label_where`, `e_where`, and `e_with_label_where`. Comparison values take
+`impl Into<PropertyInput>`, so `SourcePredicate::eq("status", Expr::param("s"))`
+and `SourcePredicate::eq("status", "active")` both work.
 
-```text
-SourcePredicate::eq / neq / gt / gte / lt / lte / between / has_key / starts_with / and / or
-```
-
-Each comparison **auto-routes** by argument type. A literal keeps the plain variant (`SourcePredicate::eq("status", "active")` → `Eq("status", String("active"))`); an `Expr`/param routes to the `*Expr` variant (`SourcePredicate::eq("status", Expr::param("s"))` → `EqExpr("status", Param("s"))`). The enum carries both forms (`Eq`/`EqExpr`, `Between`/`BetweenExpr`, etc.); `.to_predicate()` maps the `*Expr` variants to `Compare`.
-
-**Not available** at source position: `is_null`, `is_not_null`, `contains[_param]`, `ends_with`, `is_in*`, `not`, `compare`. Push those into a following `.where_(Predicate::...)`.
+What matters is index use, not the type: an equality, range, or `is_in` on a
+top-level property with an index **for that label** can be pushed into the
+index. Use `n_with_label_where(label, pred)` (or `n_with_label(label)` followed
+directly by `.where_(pred)`); `n_where(pred)` has no label, scans every node,
+and cannot use label-scoped indexes.
 
 Property-name strings in filters can be dotted object paths, for example `Predicate::eq("metadata.externalID", "crm-42")`. Lookup is exact-first: a top-level property named `metadata.externalID` wins before walking the `metadata` object. Dotted paths are scan-only in the current runtime; secondary, text, and vector indexes remain top-level only. Arrays are opaque and do not support `tags.0` syntax.
 
@@ -245,6 +269,7 @@ Typical uses:
 - `Expr::prop("metadata.score")` — nested object field lookup with the same exact-first dotted-path rules as filters.
 - `ExprProjection::new("age_plus_one", Expr::prop("age").add(Expr::val(1i64)))` — computed column.
 - `PropertyInput::from(Expr::timestamp())` inside `add_n("Foo", vec![("createdAt", Expr::timestamp())])` — server-side timestamp stamp.
+- `Expr::case(vec![(Predicate::gte("score", 100i64), Expr::val("high"))], Some(Expr::val("low")))` inside `Projection::expr(...)` — a per-row value (Cypher/SQL `CASE`). Use this, not `choose`, when every row should survive.
 
 ---
 
@@ -282,9 +307,15 @@ Cross-entry references use `NodeRef::var(name)`, `EdgeRef::var(name)`, `NodeRef:
 ## Ordering
 
 ```text
-.order_by(property, order: Order)                       // Order::{Asc, Desc}
-.order_by_multiple(vec![(prop1, Order::Desc), (prop2, Order::Asc)])
+.order_by(property, order: Order)                       // Order::{Asc, Desc}; node and edge streams
+.order_by_multiple(vec![(prop1, Order::Desc), (prop2, Order::Asc)])   // node streams and sub() only
 ```
+
+Rows **missing** the sort property sort **first** for `Asc` and **last** for
+`Desc`, the opposite of Cypher and SQL defaults (nulls last ascending). When
+porting `ORDER BY`, filter with `Predicate::is_not_null(prop)` first or accept
+the different placement. `order_by` after `bind` is rejected; order before
+binding.
 
 Dotted paths such as `metadata.score` are valid for fallback ordering, but current
 range indexes do not accelerate nested paths.
@@ -312,14 +343,22 @@ Each arm is a `SubTraversal`, built by `sub()` + the same filter / traversal / p
 .union(vec![sub_a, sub_b, ...])
 .choose(condition: Predicate, then_t: SubTraversal, else_t: Option<SubTraversal>)
 .coalesce(vec![sub_a, sub_b, ...])   // first non-empty wins
-.optional(sub_a)                     // pass through if sub_a is empty
+.optional(sub_a)                     // sub_a's rows, or the input row unchanged when sub_a is empty
 ```
+
+- `optional` with an empty branch emits the **input row itself**, so the current
+  element is still the input (a `User`, not a missing `Company`). For Cypher
+  `OPTIONAL MATCH`, bind the anchor, bind inside the branch, and read columns
+  through `project_bindings` (see Row bindings).
+- `choose` without an else branch **drops** rows that fail the condition. It
+  picks a traversal; for a per-row value use `Expr::case`.
+- `choose`, `order_by`, and `repeat` are rejected after `bind`.
 
 `SubTraversal` includes: `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`,
 `out_n`, `in_n`, `other_n`, `has`, `has_label`, `has_key`, `where_`,
 `dedup`, `within`, `without`, `edge_has`, `edge_has_label`, `limit`, `skip`,
-`range`, `as_`, `store`, `select`, `order_by`, `order_by_multiple`, `path`,
-and `simple_path`.
+`range`, `as_`, `store`, `select`, `bind`, `order_by`, `order_by_multiple`,
+`path`, and `simple_path`. It has no projection or terminal steps.
 
 ---
 
@@ -339,11 +378,15 @@ traversal.repeat(
 
 - `.times(n: usize)` — fixed iterations
 - `.until(Predicate)` — stop when predicate is true
-- `.emit_all()`, `.emit_before()`, `.emit_after()` — emit policy
-- `.emit_if(Predicate)` — emit only matching elements after each iteration (sets emit to `After`)
+- `.emit_after()` — emit each iteration's output (Gremlin postfix `.emit()`; Cypher `*1..n` style results)
+- `.emit_before()` — emit each iteration's input (includes the seed, excludes the last hop's output)
+- `.emit_all()` — both, so a row reached at depth 1 is emitted twice (as output of hop 1 and input of hop 2); follow with `.dedup()` if that matters
+- `.emit_if(Predicate)` — emit matching rows after each iteration (sets emit to `After`)
 - `.max_depth(n)` — safety cap (default 100)
 
-Default `emit` is `EmitBehavior::None` (only the final result is returned). Bound every repeat with `times` or `until`; don't rely on `max_depth` alone.
+Default `emit` is `EmitBehavior::None` (only the final iteration's rows are
+returned). Bound every repeat with `times` or `until`; don't rely on
+`max_depth` alone. `repeat` is rejected after `bind`.
 
 ---
 
@@ -396,9 +439,34 @@ rows with `.project_bindings(...)` / `.project_distinct_bindings(...)`.
 ```
 
 `.bind()` does not change the stream — each path keeps its own row-local
-bindings, so later hops (including those inside `union`, `optional`, `choose`)
-can still reference earlier captures. `.bind()` is available on `Traversal`
-(both node and edge streams) and on `SubTraversal` inside branches.
+bindings, so later hops (including those inside `union`, `coalesce` and
+`optional`) can still reference earlier captures. `.bind()` is available on
+`Traversal` (both node and edge streams) and on `SubTraversal` inside branches.
+
+After a `bind`, the planner rejects `order_by[_multiple]`, `choose`, `repeat`,
+`id`, `label`, `values`, `value_map`, `project` and `edge_properties`
+(`invalid_after_bind_operation`). Order or repeat before the first `bind`, and
+finish with `project_bindings`, `project_distinct_bindings`, `count` or
+`exists`. A binding that was never set on a row (an empty `optional` branch), or
+a property it lacks, leaves that alias **out of the row object** rather than
+writing `null`; decode such columns as `Option<T>` with `#[serde(default)]`.
+
+OPTIONAL MATCH (one row per user, `employer` absent when there is none):
+
+```rust
+g().n_with_label("User")
+    .bind("user")
+    .optional(sub().out(Some("WORKS_AT")).has_label("Company").bind("employer"))
+    .project_bindings(vec![
+        BindingProjection::binding("user", "name", "name"),
+        BindingProjection::binding("employer", "name", "employer"),
+    ])
+```
+
+Do not write `.optional(sub().out(Some("WORKS_AT"))).project(...)`: for a user
+with no employer the current element is still the user, so "employer" columns
+would read the user's own properties.
+
 `BindingProjection` constructors:
 
 ```text
@@ -457,17 +525,18 @@ Usable on both node and edge streams. `.edge_properties()` is edge-only.
 
 ## Mutations (write-only)
 
-Source-position mutation (`Traversal<Empty>` → `Traversal<OnNodes, WriteEnabled>`):
+Source-position mutations (`Traversal<Empty>` → `Traversal<OnNodes, WriteEnabled>`):
 
 ```text
 g().add_n(label, vec![(prop, PropertyInput::from(val)), ...])
-g().drop_edge_by_id(edges: impl Into<EdgeRef>)
-g().inject(var_name)  // from var (ReadOnly side), safe to use in write batches
+g().drop_edge_by_id(edges: impl Into<EdgeRef>)   // delete edges by ID (multigraph-safe)
+g().inject(var_name)                             // ReadOnly source; usable in write batches
 ```
 
 Node-state mutations (`Traversal<OnNodes, _>` → `Traversal<OnNodes, WriteEnabled>`):
 
 ```text
+.add_n(label, vec![...])
 .add_e(label, to: impl Into<NodeRef>, vec![(prop, PropertyInput::from(val)), ...])
 .set_property(name, value: impl Into<PropertyInput>)
 .remove_property(name)
@@ -477,11 +546,23 @@ Node-state mutations (`Traversal<OnNodes, _>` → `Traversal<OnNodes, WriteEnabl
 .drop_edge_by_id(edges: impl Into<EdgeRef>)
 ```
 
-Edge-state mutation:
+Edge-state mutations (`Traversal<OnEdges, _>` → `Traversal<OnEdges, WriteEnabled>`):
 
 ```text
-.drop_edge_by_id(edges: impl Into<EdgeRef>)   // OnEdges -> OnEdges, WriteEnabled
+.set_property(name, value)    .remove_property(name)    .drop()
 ```
+
+To delete a node's outgoing `FOLLOWS` edges: `.out_e(Some("FOLLOWS")).drop()`.
+
+- `add_e` always creates one edge per (source row, target node) pair; it is not
+  idempotent, so re-running it duplicates edges. Guard it with a lookup
+  (`var_as` + `var_as_if(VarEmpty)`) when the edge must be unique. An empty
+  target fails the whole batch; an empty source creates nothing.
+- `NodeRef::var(name)` must name a **node stream**. A variable that ends in
+  `project`, `values`, `value_map`, `count`, or an index receipt fails at
+  runtime ("variable is not a node stream"). Keep the raw `add_n` in one
+  variable and project in another if the caller needs fields.
+- Unprojected mutation results return only `{"$id": N}` per element.
 
 Key `PropertyInput` shortcuts:
 
@@ -494,6 +575,24 @@ PropertyInput::from(PropertyValue::object(vec![("externalID", PropertyValue::fro
 
 ---
 
+## Paths
+
+```text
+g().shortest_path(source: impl Into<NodeRef>, target: impl Into<NodeRef>, max_depth: usize)
+    -> Traversal<Terminal>          // outgoing edges, any label
+g().shortest_path_with(source, target, label: Option<impl Into<String>>,
+    direction: ShortestPathDirection, max_depth: usize) -> Traversal<Terminal>
+// ShortestPathDirection::{Out, In, Both}
+```
+
+Unweighted BFS. Each endpoint (`NodeRef::id`, `::param`, `::var`) must resolve
+to exactly one node; several is a query error. Returns the node IDs from source
+to target in order (`[7]` when source equals target), or `[]` when an endpoint
+is missing or no path exists within `max_depth`. `max_depth` must be positive. Weighted shortest paths are
+not available; compute them in the application.
+
+---
+
 ## Indexes (write-only)
 
 Generic `IndexSpec` forms:
@@ -503,14 +602,20 @@ g().create_index_if_not_exists(spec: IndexSpec) -> Traversal<Terminal, WriteEnab
 g().drop_index(spec: IndexSpec)                 -> Traversal<Terminal, WriteEnabled>
 ```
 
-Convenience source forms:
+There is no `create_index`; `create_index_if_not_exists` is the only create
+builder.
+
+Convenience source forms (same wire output as `create_index_if_not_exists`):
 
 ```text
-g().create_vector_index_nodes(label, property, dimension: NonZeroUsize, metric: VectorDistanceMetric, tenant_property)
-g().create_vector_index_edges(label, property, dimension: NonZeroUsize, metric: VectorDistanceMetric, tenant_property)
-g().create_text_index_nodes(label, property, tenant_property)
-g().create_text_index_edges(label, property, tenant_property)
+g().create_vector_index_nodes(label, property, dimension: NonZeroUsize, metric: VectorDistanceMetric, tenant_property: Option<_>)
+g().create_vector_index_edges(label, property, dimension: NonZeroUsize, metric: VectorDistanceMetric, tenant_property: Option<_>)
+g().create_text_index_nodes(label, property, tenant_property: Option<_>)
+g().create_text_index_edges(label, property, tenant_property: Option<_>)
 ```
+
+Pass `None::<&str>` for an unscoped index: `create_text_index_nodes("Doc",
+"body", None::<&str>)`; a bare `None` cannot infer its type (E0282).
 
 `IndexSpec` constructors:
 
@@ -534,25 +639,119 @@ Range indexes default to ascending physical order. Use `RangeIndexDirection::Des
 
 Index properties are top-level only in the current runtime. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
 
+A unique equality index rejects a write that would duplicate a value with
+`unique_constraint_violation` (409, `retryable: false`), from the moment its
+build starts. It is the race-safe key for an upsert.
+
+### Index lifecycle
+
+Index DDL is asynchronous. CREATE and DROP return an `IndexDdlReceipt`
+(`helix_db::IndexDdlReceipt`, also in the prelude):
+
+| Receipt `kind` | Fields | Meaning |
+| --- | --- | --- |
+| `accepted` | `operation_id`, `index_id`, `generation` | A new build or drop started. |
+| `existing_operation` | `operation_id` | The same operation is already in flight. |
+| `already_active` | `index_id`, `generation` | An identical index is active; nothing to wait for. |
+
+Read lifecycle state with `g().get_index_operation(id)` (read batch) and act on
+it with `g().retry_index_operation(id)` / `g().abort_index_operation(id)`
+(write batch). Each returns an `IndexOperationStatus` tagged by `status`:
+`queued`, `running`, `blocked` (`blocker_code`, `message`), `succeeded`, or
+`aborted`. Queries cannot rely on the index until the build succeeds.
+
+```rust
+use std::time::Duration;
+use helix_db::{Client, HelixError, IndexDdlReceipt, IndexOperationStatus};
+use helix_db::dsl::prelude::*;
+
+#[derive(serde::Deserialize)]
+struct Ddl { index: IndexDdlReceipt }
+#[derive(serde::Deserialize)]
+struct Op { status: IndexOperationStatus }
+
+async fn ensure_user_id_index(client: &Client) -> Result<(), HelixError> {
+    let ddl: Ddl = client
+        .query(QueryRequest::write(
+            write_batch()
+                .var_as(
+                    "index",
+                    g().create_index_if_not_exists(IndexSpec::node_unique_equality("User", "userId")),
+                )
+                .returning(["index"]),
+        ))
+        .send()
+        .await?;
+    let operation_id = match ddl.index {
+        IndexDdlReceipt::AlreadyActive { .. } => return Ok(()),
+        IndexDdlReceipt::Accepted { operation_id, .. }
+        | IndexDdlReceipt::ExistingOperation { operation_id } => operation_id.to_string(),
+    };
+    loop {
+        let op: Op = client
+            .query(QueryRequest::read(
+                read_batch()
+                    .var_as("status", g().get_index_operation(operation_id.clone()))
+                    .returning(["status"]),
+            ))
+            .send()
+            .await?;
+        match op.status {
+            IndexOperationStatus::Succeeded { .. } => return Ok(()),
+            IndexOperationStatus::Queued { .. } | IndexOperationStatus::Running { .. } => {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            IndexOperationStatus::Blocked { .. } | IndexOperationStatus::Aborted { .. } => {
+                // Blocked: fix what `blocker_code` names (duplicate or invalid source
+                // data), then send `g().retry_index_operation(operation_id)` in a write
+                // batch, or `g().abort_index_operation(operation_id)` to discard it.
+                return Ok(()); // surface this to the caller in real code
+            }
+        }
+    }
+}
+```
+
+`blocker_code` is one of `invalid_source_data`, `uniqueness_violation`,
+`oversized_entity`, `manifest_limit`, `object_store_configuration_unavailable`,
+`invariant_violation`. A blocked build does not resume on its own. Lifecycle
+errors: `index_busy` (409, not retryable: another lifecycle operation on the
+index is running; wait for it), `index_build_blocked` (409, not retryable: a
+write would overflow a blocked build's queue; retry or abort the build first),
+`index_operation_not_found` (404), `index_operation_not_abortable` (409).
+
 ---
 
-## Reserved / no-op builders
+## Reserved-name steps (they execute)
 
-Emit the corresponding steps but have no effect in the current interpreter. Safe to include for forward-compatible queries.
+These Gremlin-style steps run; they are not no-ops.
 
 ```text
-.fold()    .unfold()    .path()    .simple_path()
-.with_sack(PropertyValue::I64(0))
-.sack_set(prop)    .sack_add(prop)    .sack_get()
+.fold()              // collect the stream into one folded value; an empty fold returns []
+.unfold()            // expand a folded value back into rows
+.path()              // annotate each row with its traversal path in the response
+.simple_path()       // keep only rows whose path repeats no element
+.with_sack(PropertyValue::I64(0))   // set a per-row value
+.sack_set(prop)      // sack = the element's property (cleared when missing)
+.sack_add(prop)      // add a numeric property to the sack
+.sack_get()          // include the sack in the response row
 ```
+
+Rows with visible paths or sacks keep an annotated row envelope instead of
+`{"$id": N}`; inspect the JSON before writing a decoder.
 
 ---
 
 ## `#[query]` Macro And Direct Requests
 
-`sdks/rust/helix-dsl-macros/src/lib.rs`. Apply to a top-level function returning `ReadBatch` or `WriteBatch`; the macro generates a wrapper that constructs a `QueryRequest` with the function's arguments as typed parameters and sets top-level `query_name` to the Rust function name.
+`sdks/rust/helix-dsl-macros/src/lib.rs`. Apply to a top-level function
+returning `ReadBatch` or `WriteBatch`. Inside the body each argument is rebound
+as `Expr::param("<name>")`, so pass it where an `Expr` is accepted (`.limit(limit)`)
+or refer to it by name (`Predicate::eq_param("tenantId", "tenant_id")`). The
+callable function returns `Result<QueryRequest, QueryError>` with the
+arguments as typed parameters and `query_name` set to the function name.
 
-```text
+```rust
 #[query]
 pub fn find_user(tenant_id: String, limit: i64) -> ReadBatch {
     read_batch()
@@ -566,18 +765,19 @@ pub fn find_user(tenant_id: String, limit: i64) -> ReadBatch {
         .returning(["users"])
 }
 
-// Generated: callable function that returns QueryRequest directly.
-let req = find_user("acme".to_string(), 25);
+let req = find_user("acme".to_string(), 25)?;   // Result<QueryRequest, QueryError>
 let json = req.to_json_string()?;
 ```
 
-The serialized request includes `"query_name":"find_user"`, so logs and
-diagnostics can group the direct request by name.
+The serialized request includes `"query_name":"find_user"`.
 
 Supported param types include primitives (`bool`, `i64`, `f64`, `f32`,
 `String`, `DateTime`), `PropertyValue`, `ParamValue`, `ParamObject`,
 `Vec<T>`, and string-keyed maps. Bytes cannot be represented on the JSON query
-route and raise `QueryError::UnsupportedBytesParameter`.
+route and raise `QueryError::UnsupportedBytesParameter`. Node and edge IDs are
+integers: declare ID arguments as `i64` or `Vec<i64>`, never `String`.
+`DateTime` is `helix_db::DateTime`: build it with `DateTime::from_millis(ms)` or
+`DateTime::parse_rfc3339("2026-01-01T00:00:00Z")?` (a `chrono::ParseError`).
 
 ### `QueryRequest`
 
@@ -587,93 +787,201 @@ QueryRequest::write(batch: WriteBatch)
 req.set_query_name("find_users")
 req.clear_query_name()
 req.with_query_name("find_users")
-req.with_parameter_value(name, QueryValue::String("x".into()))
-req.with_parameter_type(name, QueryParamType::DateTime)
+req.with_parameter_value(name, QueryValue::I64(42))                 // untyped; panics on invalid name/value or mixing
+req.with_typed_parameter(name, QueryParamType::DateTime, value)?    // typed; Result<Self, QueryError>
+req.try_insert_untyped_parameter(name, value)?                      // fallible untyped insert
+req.with_search_consistency(SearchConsistency::Eventual)?           // main only; read requests only
 req.to_json_string()   // Result<String, QueryError>
 req.to_json_bytes()
 ```
 
+A request is either all-typed or all-untyped. Adding a typed parameter after an
+untyped one returns `QueryError::MixedParameterModes`; `with_parameter_value`
+after a typed one panics. `QueryParamType` is `Bool | I64 | F64 | F32 | String |
+DateTime | Bytes | Value | Object | Array(Box<_>)`.
+
+`SearchConsistency::Strong` (default) makes every committed vector/text write
+searchable, including work the index worker has not published yet; it can fail
+with retryable `index_backpressure`. `Eventual` includes a bounded slice of
+unpublished work, never fails for backpressure, and may return a node that has
+since changed tenant, label, or indexed property. Write requests are always
+strong (`Eventual` on a write is an error). Not in 3.0.0: send
+`"search_consistency": "eventual"` in a direct HTTP body instead.
+
 Direct requests built with `QueryRequest::read/write` serialize `query_name: null` until a name is set. Missing or `null` falls back to `__dynamic__` at the gateway; blank names are rejected.
 
-For the JSON wire encoding this produces, see `../helix-query-json-dynamic/REFERENCE.md`.
+For the JSON wire encoding, see `../helix-query-json-dynamic/REFERENCE.md` (optional).
 
 ### `Client` (sending requests)
-
-Async HTTP client for running a direct request against a Helix instance.
 
 ```text
 use helix_db::{Client, HelixError, QueryErrorCode};
 
-Client::new(url: Option<&str>) -> Result<Self, HelixError>   // default "http://localhost:6969"; InvalidURL on bad url
+Client::new(url: Option<&str>) -> Result<Self, HelixError>   // default "http://localhost:6969"
     .with_api_key(api_key: Option<&str>) -> Self              // Authorization: Bearer <key>
+    .with_database_id(id: Option<&str>) -> Self               // main only: X-Helix-Database-Id
     .query::<R: Deserialize>(request) -> QueryExecutionRequest<R>
 
-// Advanced server headers:
 client.request_builder::<R>()
     .writer_only()                       // X-Helix-Require-Writer: true
-    .warm_only()                         // X-Helix-Warm: true
-    .should_await_durability(b: bool)    // X-Helix-Await-Durable: true|false
+    .warm_only()                         // X-Helix-Warm: true (reads only)
+    .should_await_durability(b: bool)    // X-Helix-Await-Durable: true|false (writes only)
     .query(request)
 
-request.send().await -> Result<R, HelixError>                // published 3.0.0: 200 -> R; every other status, including Cloud warm 204, -> RemoteError
+request.send().await -> Result<R, HelixError>
+request.send_bytes().await -> Result<Vec<u8>, HelixError>
 ```
+
+- Writes wait for durability by default; you do not need
+  `should_await_durability(true)`. `should_await_durability(false)` returns once
+  the write is applied on the writer and a crash before the WAL upload loses it.
+  It trades durability for latency and does **not** change conflict rates.
+  Sending `true` on a read returns `400 invalid_request_option`, as does
+  `warm_only()` on a write.
+- Helix Cloud answers a successful warm fanout with `204 No Content`. `main`
+  accepts it; 3.0.0 accepts only 200 and raises `RemoteError`, so warm Cloud
+  through direct HTTP with 3.0.0. A local server returns the normal 200 body.
+
+### Cypher and SQL (main only)
+
+The server runs Cypher and SQL natively: `POST /v2/cypher`, `POST
+/v2/cypher/explain`, `POST /v2/sql`, `POST /v2/sql/explain` (body
+`{"query", "parameters", "query_name"}`; SQL also takes positional `parameters`
+for `?` and `mappings`). The response is `{"columns": [...], "rows": [[...]]}`.
+
+```rust
+use std::collections::BTreeMap;
+
+let result = client
+    .cypher(
+        "MATCH (u:User {userId: $id})-[:WORKS_AT]->(c:Company) RETURN u.name AS name, c.name AS company",
+        BTreeMap::from([("id".to_string(), serde_json::json!("u-42"))]),
+        Some("user_company"),
+    )
+    .await?;                       // CypherResponse { columns, rows }
+let plan = client.explain_cypher("MATCH (u:User) RETURN count(u) AS n", BTreeMap::new(), None).await?;
+let rows = client
+    .sql("SELECT u.name FROM User u WHERE u.age > ?", vec![serde_json::json!(30)], &helix_db::SqlMappings::default(), None)
+    .await?;
+```
+
+3.0.0 has no `cypher`/`sql` methods: POST the same JSON with any HTTP client.
+Send a statement natively when the profile supports it. Hand-write the DSL for
+what it rejects (`MERGE`, variable-length paths, `shortestPath`, `UNION`,
+`CALL`/subqueries, list and pattern comprehensions, `FOREACH`, temporal
+functions; SQL outer joins, subqueries, CTEs, window functions, upserts), for
+vector/text search and index management, and when you need typed batches,
+`var_as_if`, or `for_each_param`. Profile reference:
+https://docs.helix-db.com/database/helix-db/query-guides/cypher and
+https://docs.helix-db.com/database/helix-db/query-guides/sql
 
 ### Query response shapes
 
-Only empty declared returns use inferred shapes. At-most-one empties are JSON
-`null`; collection, fold, and mutation empties are `[]`; scalar terminals keep
-`0` and `false`; an empty returns list produces `{}`. Populated values retain
-their existing representation, including the one-element array for an
-at-most-one traversal.
+The body is one JSON object keyed by the returned variable names.
 
-Deserialize an at-most-one field as `Option<Vec<T>>` and a collection field as
-`Vec<T>`:
+| Return | Populated | Empty or skipped `var_as_if` |
+| --- | --- | --- |
+| Any row stream, including `n(id)`, `limit(1)`, folds and mutations | array | `[]` |
+| `count()` | integer | `0` |
+| `exists()` | bool | `false` |
+| Index DDL / lifecycle | receipt or status object | — |
+
+An unprojected node or edge stream returns `{"$id": N}` per element (search
+streams add `$distance` or `$score`); project to get properties. An empty
+returns list produces `{}`. Decode every stream field as `Vec<T>` and take the
+first element for single lookups:
 
 ```rust
 #[derive(serde::Deserialize)]
+struct UserRow { id: i64, name: String }
+
+#[derive(serde::Deserialize)]
 struct FindUserResponse {
-    user: Option<Vec<UserRow>>,
+    user: Vec<UserRow>,      // [] when not found; use user.into_iter().next()
     friends: Vec<UserRow>,
-    count: usize,
+    count: u64,
 }
 ```
 
-Do not use a custom decoder to turn `null` into an empty vector; that erases
-the semantic distinction.
+Docker images before v0.0.13 returned `null` for an empty at-most-one return;
+v0.0.16 never does.
 
-The Cloud service returns `204 No Content` after a successful warm fanout, but
-the published Rust 3.0.0 client accepts only 200. Use direct
-HTTP for Cloud warming until a newer SDK release accepts 204. Partial target
-failure is still a service-level success when at least one backend warms.
+### Errors
 
-Prefer `.should_await_durability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
+Failures use one envelope: `{"error": "<code>", "msg": "<diagnostic>",
+"retryable": true|false}`; `retryable` is present only when the class settles
+it, and there is no `code` field. Branch on the code and `retryable`, never on
+the HTTP status alone or on `msg`.
 
-`HelixError::error_code() -> Option<&str>` returns a stable code when present.
-For remote failures, `status_code()`, `remote_code()`, `remote_message()`,
-`remote_details()`, and `raw_response_body()` preserve the HTTP status,
-open-string code, diagnostic, structured `details`, and original body.
-`is_conflict()` is true for HTTP 409 and `is_rate_limited()` for HTTP 429. The
-decoder supports canonical Helix `error`/`msg` (`error` is the code), legacy
-Helix `error`/`code`, and defensive generic-remote
-`code`/`message`/`details` bodies. The generic shape is not the Cloud gateway
-contract. `EmbeddedError { code: String, details }` provides code/diagnostic
-separation in embedded mode. Known Helix strings can be parsed as
-`QueryErrorCode`; unknown Helix or generic remote strings remain available.
+| Class | HTTP | `retryable` | Failed write | Codes |
+| --- | ---: | --- | --- | --- |
+| Invalid request | 400 | absent | committed nothing | `invalid_request`, `invalid_query_json`, `invalid_request_body`, `invalid_request_option`, `invalid_node_id`, `unbound_parameter`, `active_text_mutation_limit_exceeded`, `unsupported_unique_index_value_type`, `invalid_vector_dimension`, ... |
+| Planning | 400 | absent | committed nothing | `invalid_after_bind_operation`, `read_only_traversal_in_write_batch`, `duplicate_*`, `invalid_repeat_*`, `invalid_shortest_path_count`, `invalid_search_*`, ... |
+| Not found | 404 | absent | committed nothing | `node_not_found`, `edge_not_found`, `index_not_found`, `index_operation_not_found` |
+| Timeout | 408 | absent | **may have committed** | `query_deadline_exceeded` |
+| Retryable conflict | 409 | `true` | committed nothing | `transaction_conflict`, `request_read_view_changed`, `stale_index_generation` |
+| Conflict with state | 409 | `false` | committed nothing | `unique_constraint_violation`, `index_already_exists`, `index_definition_conflict`, `index_busy`, `index_operation_not_abortable`, `index_build_blocked` |
+| Index backpressure | 429 | `true` | committed nothing | `index_backpressure` |
+| Resource limit | 429 | absent | committed nothing | `query_memory_limit_exceeded` |
+| Internal | 500 | absent | **may have committed** | `storage_error`, `internal_error`, ... |
+| Unavailable | 503 | absent | committed nothing | `writer_mode_required`, `reader_mode_required`, `database_closed`, `migration_required`, ... |
+| Commit outcome unknown | 503 | `false` | **may have committed** | `writer_fenced_commit_outcome_unknown` |
+
+What to do:
+
+- `retryable: true` (`transaction_conflict`, `request_read_view_changed`,
+  `stale_index_generation`, `index_backpressure`): resend the whole request with
+  bounded backoff and jitter; rebuild a write from fresh reads if it depended on
+  them.
+- `unique_constraint_violation`: never resend unchanged. Report the duplicate, or
+  from an upsert's create branch re-run the upsert once (it now updates).
+- `index_busy` / `index_build_blocked`: wait for, retry, or abort the index
+  operation (see Index lifecycle) before resending.
+- 408, 500, and `writer_fenced_commit_outcome_unknown`: a write may have
+  committed. Reconcile (read back by an application key) before resubmitting.
+- `query_memory_limit_exceeded`: reduce the work; unchanged it fails again.
+- `writer_mode_required`: send writes with `writer_only()`.
+- Helix Cloud adds gateway codes (`unauthorized` 401, `forbidden` 403,
+  `query_timeout` 408, `payload_too_large` 413, `rate_limited` 429 with
+  `Retry-After`, `backend_unavailable` 503, `write_outcome_unknown` 503 /
+  `retryable: false`):
+  https://docs.helix-db.com/database/helix-cloud/operate/error-handling
+
+Full code list: https://docs.helix-db.com/database/helix-db/query-guides/error-handling
+
+On `main`, `HelixError` exposes `status_code()`, `remote_code()` /
+`error_code()`, `remote_message()`, `retryable()`, `is_retryable()`,
+`is_index_backpressure()`, `remote_details()`, and `raw_response_body()`.
+`is_conflict()` means `transaction_conflict` only; `is_rate_limited()` means
+HTTP 429. Known codes parse as `QueryErrorCode`; unknown codes stay available as
+strings.
 
 ```rust
-match request.send().await {
-    Err(error) if error.is_conflict()
-        && error.error_code() == Some(QueryErrorCode::TransactionConflict.as_str()) => {
-        // Reload state before rebuilding this write. Replay only if it is safe.
+use helix_db::QueryErrorCode;
+
+match client.query::<serde_json::Value>(request).send().await {
+    Ok(response) => Ok(response),
+    Err(error) if error.is_retryable() => {
+        // Bounded backoff with jitter, then resend the whole request.
+        Err(error)
     }
-    Err(error) => return Err(error),
-    Ok(response) => return Ok(response),
+    Err(error)
+        if error.error_code() == Some(QueryErrorCode::UniqueConstraintViolation.as_str()) =>
+    {
+        // Duplicate key: do not resend unchanged.
+        Err(error)
+    }
+    Err(error) => Err(error),
 }
 ```
 
-Use structured fields rather than parsing error text. Cloud `rate_limited` did not execute, but Rust 3.0.0 does not expose `Retry-After`; use an application policy or a direct transport that retains it. Reconcile a `query_timeout` write before resubmitting. For writes, reload state after a conflict and do not blindly replay a general server failure whose commit outcome may be unknown. See `../../docs/error-handling.md` for the gateway catalog, envelope migration, retry rules, and gRPC metadata. Other `HelixError` variants distinguish transport, serialization, invalid URL, and invalid request failures. Build the request from a `#[query]` function call or
-`QueryRequest::read/write(batch)`. Stored routes, registration, and bundles
-are not supported.
+**helix-db 3.0.0:** `HelixError::RemoteError { details }` carries only the raw
+response body and none of the helpers above. Parse `details` with
+`serde_json::from_str::<serde_json::Value>` and read `error` and `retryable`.
+SDK errors never expose response headers, so honor Cloud `Retry-After` through
+direct HTTP. Other `HelixError` variants distinguish transport, serialization,
+invalid URL, and invalid request failures. Stored routes, registration, and
+bundles are not supported.
 
 ---
 
@@ -683,5 +991,7 @@ are not supported.
 - `ReadBatch::var_as` rejects a traversal containing any `WriteEnabled` step at compile time — if a builder call returns `Traversal<_, WriteEnabled>`, the enclosing batch must be a `WriteBatch`.
 - `.out(None)` doesn't compile (ambiguous type). Use `.out(None::<&str>)` or pass `Some("LABEL")`.
 - `PropertyInput::param("x")` is the idiomatic way to tie a property write to a parameter; do not construct `Expr::Param` and then wrap manually unless you need composition.
-- `n_where(SourcePredicate::contains(...))` is a compile error — `SourcePredicate` does not have `contains`. Move the predicate into `.where_(Predicate::contains(...))` after the source.
+- `n_where(...)` has no label and scans every node. Use `n_with_label_where(label, pred)` so a label-scoped index can serve the predicate.
+- There is no `first()`, `create_index`, or `with_parameter_type` builder; use `.limit(1)`, `create_index_if_not_exists`, and `with_typed_parameter(..)?`.
+- `#[query]` functions return `Result<QueryRequest, QueryError>`; add `?` before passing the request to `client.query(...)`.
 - `vector_search_*` (non-`_with`) takes a concrete `Vec<f32>` + `usize`; parameterized routes need `vector_search_*_with` to accept `PropertyInput::param` / `Expr::param`.

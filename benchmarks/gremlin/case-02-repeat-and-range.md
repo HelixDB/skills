@@ -23,7 +23,10 @@ g.V().hasLabel('Entity').has('entityId', seedId).repeat(__.both('RELATED_TO')).t
 
 - anchor `Entity` by `entityId`
 - use bounded `repeat(...)` rather than claiming the traversal is unsupported
-- translate `emit()` to the repeat config's emit behavior
+- translate postfix `emit()` to `.emit_after()` (each iteration's output), not
+  `.emit_all()`, which also emits the seed and repeats intermediate levels
+- does not add `.without("seed")`: Gremlin emits the seed when a later hop
+  reaches it again
 - use `dedup()` and `range(...)` explicitly
 
 ## Gold Translation Sketch
@@ -41,7 +44,7 @@ read_batch()
             .repeat(
                 RepeatConfig::new(sub().both(Some("RELATED_TO")))
                     .times(3)
-                    .emit_all(),
+                    .emit_after(),
             )
             .dedup()
             .range(Expr::param("start"), Expr::param("end")),
@@ -53,6 +56,6 @@ read_batch()
 
 - [ ] Uses bounded `repeat(...)`
 - [ ] Preserves the two-way traversal direction
-- [ ] Handles emit behavior explicitly
+- [ ] Uses `emit_after()` for the postfix `emit()`
 - [ ] Uses `dedup()`
 - [ ] Uses `range(...)` for the windowing step

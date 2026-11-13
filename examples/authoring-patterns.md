@@ -1,7 +1,8 @@
 # v3 Authoring Patterns
 
-Generic published `helix-db = "3.0.0"` Rust SDK examples. Each builder produces a
-direct `QueryRequest`; there is no route registration or bundle generation.
+Generic Rust SDK examples (`helix-db` crate; see `docs/source-canon.md` for the
+verified release set). Each builder produces a direct `QueryRequest`; there is
+no route registration or bundle generation.
 
 ## Read By Indexed Identifier
 
@@ -24,9 +25,9 @@ read_batch()
 
 Why it is a good baseline:
 
-- starts from a narrow anchor
+- starts from a narrow, label-scoped anchor that an equality index on `User.userId` can serve
 - uses explicit projection
-- returns a stable named result
+- returns a stable named result: `[]` when no user matches, a one-element array otherwise
 
 ## Create Or Update With Explicit Branching
 
@@ -61,7 +62,13 @@ Why it is a good baseline:
 
 - makes read-versus-write intent obvious
 - does not invent unsupported `MERGE` semantics
-- keeps the control flow visible
+- keeps the control flow visible and atomic in one write batch
+
+Back `userId` with `IndexSpec::node_unique_equality("User", "userId")`. Without
+it, two concurrent requests can both see `existing` empty and create duplicates.
+With it, the second create fails with `unique_constraint_violation` (409,
+`retryable: false`); re-running the upsert once then takes the update branch.
+Do not treat that 409 like `transaction_conflict` in a generic retry loop.
 
 ## Traverse From One Known Node
 

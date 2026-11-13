@@ -1,7 +1,13 @@
 # Helix Query Authoring - Go Reference
 
-Use this reference to confirm published Go SDK v0.3.1 method names and request
-patterns. The module path intentionally has no `/v3` suffix:
+Use this reference to confirm Go SDK method names and request patterns. Names
+are checked against the SDK source on helix-db `main`; the published module is
+v0.3.1 (Docker `ghcr.io/helixdb/helixdb:v0.0.16`). APIs newer than v0.3.1 are
+marked **main only**. The module path has no `/v3` suffix:
+
+```bash
+go get github.com/helixdb/helix-db/sdks/go@latest
+```
 
 ```text
 import helix "github.com/helixdb/helix-db/sdks/go"
@@ -77,7 +83,7 @@ ref.Input() // helix.PropertyInput
 ref.Bound() // helix.StreamBound
 ```
 
-Direct Go values are literals in the inline AST. `helix.SourceEq("id", "foo")` and `helix.PredEq("id", "foo")` embed `"foo"` directly and do not create parameters. For request-specific values, declare a `q.Param*` value and pass the returned ref so the request body has a stable query shape and runtime value metadata:
+Direct Go values are literals in the inline AST. `helix.SourceEq("id", "foo")` and `helix.PredEq("id", "foo")` embed `"foo"` directly and do not create parameters. For request-specific values, declare a `q.Param*` value and pass the returned ref so the request body has a stable query shape and runtime value metadata. Bind node/edge IDs as integers (`q.ParamI64`, or `q.ParamArray(..., helix.ParamTypeI64())` with `helix.NodeParam`); a string ID fails at runtime.
 
 ```text
 id := q.ParamString("id", userID)
@@ -190,9 +196,20 @@ candidateEdges.TextSearchEdgesWithinWith(...)
 
 Restricted vector search enforces exact candidate membership while ranking may
 still use approximate index structures; project `$distance`. Restricted BM25
-search returns at most `k`, ordered by score descending then entity ID ascending,
-with partition-wide statistics; project `$score`. Pass the same tenant partition
-used to construct candidates.
+search returns at most `min(unique candidates, k, 800)`, ordered by score
+descending then entity ID ascending, with partition-wide statistics; project
+`$score`. Pass the same tenant partition used to construct candidates.
+
+Limits: a whole-index vector search returns at most 800 hits. A restricted vector
+search fails when `min(k, unique candidates)` exceeds 800 (a larger `k` succeeds
+when 800 or fewer candidates exist). More than 1,000,000 unique candidates fails
+either restricted search.
+
+Search consistency (**main only**): `helix.ReadQuery("q").WithSearchConsistency(helix.SearchConsistencyEventual)`.
+`strong` (default) includes committed but unpublished vector/text work;
+`eventual` bounds it and can briefly return hits whose tenant, label or property
+has since changed. Writes always search strongly. With v0.3.1, send
+`"search_consistency": "eventual"` in a direct HTTP body.
 
 Use `*With` variants for params:
 
@@ -215,7 +232,9 @@ Navigation:
 .OutN() .InN() .OtherN()
 ```
 
-Filters:
+Filters (`.Has` takes literal values only; a `ParamRef` makes the request fail
+to serialize, so use `.Where(helix.PredEq("status", ref))`. `.EdgeHas` accepts a
+`ParamRef`):
 
 ```text
 .Has("status", "active")
@@ -239,6 +258,33 @@ Bounds and variables:
 .As("x") .Store("x") .Select("x") .Inject("x")
 .Bind("service")   // tag current element as a row-local binding; enters row mode
 ```
+
+Ordering:
+
+```text
+.OrderBy("createdAt", helix.OrderDesc)
+.OrderByMultiple(
+    helix.Ordering{Property: "score", Order: helix.OrderDesc},
+    helix.Ordering{Property: "name", Order: helix.OrderAsc},
+)
+```
+
+Rows missing the sort property sort first for `OrderAsc` and last for
+`OrderDesc`, the opposite of Cypher and SQL defaults; filter with
+`helix.PredIsNotNull(prop)` first when that matters. Put `OrderBy` before any
+`Bind`.
+
+Shortest path (unweighted BFS, a source step on `helix.G()`):
+
+```text
+helix.G().ShortestPath(helix.NodeVar("from"), helix.NodeVar("to"), 6)
+helix.G().ShortestPath(helix.NodeID(1), helix.NodeParam(target.Name), 4,
+    helix.ShortestPathOptions{Label: "FOLLOWS", Direction: helix.ShortestPathBoth})
+```
+
+It returns one array of node IDs from source to target, such as `[0, 1, 2]`, or
+`[]` when no path exists within `maxDepth`. Direction defaults to
+`helix.ShortestPathOut`; `maxDepth` must be positive.
 
 Terminals and projection:
 
@@ -284,8 +330,13 @@ Row bindings (multi-hop correlation):
 `.Project(...)` only sees the final stream. When one output row must combine
 values captured at **different hops**, tag elements with `.Bind(name)` as you
 pass them, then assemble rows with `.ProjectBindings(...)` (preserves duplicate
-rows) or `.ProjectDistinctBindings(...)` (dedups). Constructors
-(`sdks/go/dsl.go:622-668`): `helix.Binding(name)` / `helix.CurrentBinding()`
+rows) or `.ProjectDistinctBindings(...)` (dedups). A binding that a row never
+reached (for example inside an empty `Optional`) is left out of that row's
+object, so decode those fields as pointers or check presence. After `.Bind`,
+`OrderBy`, `Choose`, `Repeat`, `Values`, `ValueMap`, `Project`, `ID`, `Label`
+and `EdgeProperties` are rejected (`invalid_after_bind_operation`); finish with
+`ProjectBindings`, `Count` or `Exists`. Constructors:
+`helix.Binding(name)` / `helix.CurrentBinding()`
 build a `BindingTarget`; `helix.ProjectBinding(target, source, alias)`,
 `ProjectNamedBinding`, `ProjectCurrentBinding`, and `ProjectBindingCoalesce`
 build `BindingProjection`s; `NamedBindingValue` / `CurrentBindingValue` build
@@ -293,7 +344,7 @@ build `BindingProjection`s; `NamedBindingValue` / `CurrentBindingValue` build
 `$id`, `$label`, `$from`, `$to`, `$distance`, `$score`. Binding projections
 serialize inside the normal direct request.
 
-Writes:
+Writes (unprojected mutation output is `{"$id": N}` per element):
 
 ```text
 .AddN("User", helix.Props{helix.Prop("name", nameParam)})
@@ -306,10 +357,15 @@ Writes:
 .DropEdgeByID(helix.EdgeID(1))
 ```
 
+`AddE` creates one edge per (source, target) pair every time it runs; it is not
+idempotent, and an empty target fails the whole batch. Guard it with `VarAsIf`
+(for example `VarEmpty` on an existing-edge lookup) when re-runs must not
+duplicate edges.
+
 Branching and aggregation:
 
 ```text
-.Repeat(helix.Repeat(helix.Sub().Out("FOLLOWS")).WithTimes(2).EmitAll().WithMaxDepth(4))
+.Repeat(helix.Repeat(helix.Sub().Out("FOLLOWS")).WithTimes(2).EmitAfter().WithMaxDepth(4))
 .Union(helix.Sub().Out("FOLLOWS"), helix.Sub().In("FOLLOWS"))
 .Choose(pred, helix.Sub().Out("A"), helix.Sub().Out("B"))
 .Coalesce(helix.Sub().Out("preferred"), helix.Sub().Out("fallback"))
@@ -317,13 +373,28 @@ Branching and aggregation:
 .Group("status")
 .GroupCount("status")
 .AggregateBy(helix.AggregateMean, "score")
+.Fold() .Unfold() .Path() .SimplePath()
+.WithSack(0) .SackSet("p") .SackAdd("p") .SackGet()
 ```
 
-`helix.Sub()` is for inline branch traversals. It currently supports `Out`, `In`,
-`Both`, `Where`, `Limit`, `Count`, and `Bind` (`sdks/go/dsl.go:1191-1209`) — use
+`helix.Sub()` is for inline branch traversals. It supports `Out`, `In`,
+`Both`, `Where`, `Limit`, `Count`, and `Bind` — use
 `.Bind` inside a branch to tag the element reached on that arm. Put shared
 terminal projections such as `ValueMap`, `Project`, or `ProjectBindings` after
 the parent `.Choose`, `.Union`, `.Coalesce`, or `.Optional` step.
+
+Semantics that differ from intuition:
+
+- `Repeat` emit: none returns only the last hop; `EmitAfter()` returns every
+  hop's output (Gremlin postfix `.emit()`); `EmitBefore()` every hop's input;
+  `EmitAll()` both, so depth-1 rows appear twice. `EmitIf(pred)` emits matching
+  hop outputs. Bound every repeat with `WithTimes` or `UntilPred`.
+- `Choose(pred, then)` without an else drops rows that fail `pred`.
+- `Optional(sub)` keeps the input row (current element unchanged) when `sub` is
+  empty; read the optional side through a `Bind` inside `sub` and
+  `ProjectBindings`.
+- `Fold`, `Unfold`, `Path`, `SimplePath`, `WithSack`, `SackSet`, `SackAdd` and
+  `SackGet` execute; they are not no-ops.
 
 Indexes:
 
@@ -342,6 +413,34 @@ Indexes:
 ```
 
 Range indexes default to ascending physical order (`helix.RangeIndexAsc`). Use `helix.RangeIndexDesc` for descending indexes that primarily serve newest-first or high-score-first scans.
+
+Index DDL is asynchronous. The returned variable is a receipt (a scalar, not an
+array):
+
+| `kind` | Fields | Next step |
+| --- | --- | --- |
+| `accepted` | `operation_id`, `index_id`, `generation` | Poll the operation |
+| `existing_operation` | `operation_id` | The same build is already in flight; poll it |
+| `already_active` | `index_id`, `generation` | Done |
+
+Lifecycle steps (the operation ID is a lowercase UUID string):
+
+```text
+helix.G().GetIndexOperation(operationID)    // read
+helix.G().RetryIndexOperation(operationID)  // write
+helix.G().AbortIndexOperation(operationID)  // write
+helix.UnmarshalIndexDdlReceipt(raw)         // -> IndexDdlAccepted | IndexDdlExistingOperation | IndexDdlAlreadyActive
+helix.UnmarshalIndexOperationStatus(raw)    // -> IndexOperationQueued | Running | Blocked | Succeeded | Aborted
+```
+
+Poll until `IndexOperationSucceeded`; queries cannot use the index before then.
+`IndexOperationBlocked` carries `BlockerCode` (`uniqueness_violation`,
+`invalid_source_data`, `oversized_entity`, ...) and does not resume on its own:
+fix the data, then `RetryIndexOperation`, or `AbortIndexOperation`. A unique
+index rejects duplicate writes with `unique_constraint_violation` from the
+moment its build starts. Related errors: `index_busy` (another lifecycle
+operation on the index is running), `index_build_blocked` (a write would
+overflow a blocked build's queue; fix and retry or abort the build first).
 
 ## Predicates And Expressions
 
@@ -368,11 +467,18 @@ helix.PredNot(pred)
 helix.PredCompare(left, helix.CompareGt, right)
 ```
 
-Source predicates use `SourceEq`, `SourceNeq`, `SourceGt`, `SourceGte`, `SourceLt`,
-`SourceLte`, `SourceHasKey`, `SourceStartsWith`, `SourceBetween`, `SourceAnd`, and
-`SourceOr` with the same expression promotion rules.
+Source predicates (`SourcePredicate` is the same type as `Predicate`) use
+`SourceEq`, `SourceNeq`, `SourceGt`, `SourceGte`, `SourceLt`, `SourceLte`,
+`SourceHasKey`, `SourceStartsWith`, `SourceEndsWith`, `SourceContains`,
+`SourceContainsExpr`, `SourceIsIn`, `SourceIsNull`, `SourceIsNotNull`,
+`SourceBetween`, `SourceCompare`, `SourceAnd`, `SourceOr`, and `SourceNot`.
 
-Passing a direct string, number, bool, or `helix.PropertyValue` to a predicate inlines it. Passing a `helix.ParamRef` parameterizes it.
+Comparison predicates (`Eq`, `Neq`, `Gt`, `Gte`, `Lt`, `Lte`, `Between`, `IsIn`)
+take `any`: a direct string, number, bool, or `helix.PropertyValue` is inlined; a
+`helix.ParamRef` or `helix.Expr` is parameterized. `StartsWith`, `EndsWith`, and
+`Contains` take a Go `string` (always inlined); for a parameterized substring use
+`helix.PredContainsExpr("bio", ref.Expr())`. There is no parameterized
+prefix/suffix builder in Go.
 
 Expressions:
 
@@ -388,6 +494,17 @@ helix.ExprProp("age").Neg()
 helix.ExprCase(branches, elseExprPtr)
 ```
 
+`ExprCase` is the per-row value choice (Cypher `CASE`), used in
+`helix.ProjectExpr` or `SetProperty`:
+
+```text
+other := helix.ExprVal("other")
+helix.ProjectExpr("tier", helix.ExprCase([]helix.WhenThen{
+    {When: helix.PredGte("score", int64(90)), Then: helix.ExprVal("gold")},
+    {When: helix.PredGte("score", int64(50)), Then: helix.ExprVal("silver")},
+}, &other))
+```
+
 ## Client
 
 ```text
@@ -395,6 +512,7 @@ client, err := helix.NewClient("http://localhost:6969")
 client, err := helix.NewClient("https://helix.example.com", helix.WithAPIKey("hx_secret"))
 client = client.WithAPIKey("hx_secret")
 client.ClearAPIKey()
+client, err := helix.NewClient(endpoint, helix.WithAPIKey(key), helix.WithDatabaseID(dbID)) // main only
 ```
 
 `WithAPIKey` / `ClearAPIKey` synchronize access to the stored API key, so `Exec`
@@ -404,62 +522,106 @@ Execute:
 
 ```text
 err := client.Exec(ctx, FindUsers("acme", 25), &out)
-err = client.Exec(ctx, CreateUser("Alice", "acme"), &created, helix.WriterOnly(), helix.AwaitDurability(true))
+err = client.Exec(ctx, CreateUser("Alice", "acme"), &created, helix.WriterOnly())
 ```
 
 Options:
 
 ```text
-helix.WriterOnly()
-helix.WarmOnly()
-helix.AwaitDurability(true)
+helix.WriterOnly()             // X-Helix-Require-Writer: true
+helix.WarmOnly()               // X-Helix-Warm: true (reads only)
+helix.AwaitDurability(false)   // X-Helix-Await-Durable: false (writes only)
 ```
 
 `Exec` posts to `/v2/query`, serializes the request internally, and decodes responses with `json.Decoder.UseNumber()`.
 
-Only empty declared returns use inferred shapes. At-most-one empties are JSON
-`null`; collection, fold, and mutation empties are `[]`; scalar terminals keep
-`0` and `false`; an empty returns list produces `{}`. Populated values retain
-their existing representation, including the one-element array for an
-at-most-one traversal.
+Writes wait for durability by default. `AwaitDurability(false)` returns once the
+write is applied on the writer, so a crash before the WAL upload loses it; it
+does not change conflict rates. `AwaitDurability(true)` only restates the
+default, and on a read it is `400 invalid_request_option`.
 
-Use slices for both row categories and preserve their decoded state:
+Response shape: one JSON object keyed by the `.Returning(...)` names. Every row
+stream is an array, and an empty one is `[]` (single lookups, `Limit(1)` and
+skipped `VarAsIf` entries included). `Count()` and `Exists()` stay scalars (`0`,
+`false`); index DDL and lifecycle steps return an object. A zero-argument
+`.Returning()` produces `{}`. Element streams without a projection return
+`{"$id": N}` per element.
 
 ```go
 type FindUserResponse struct {
-	User    []UserRow `json:"user"`    // nil for null; one element when present
-	Friends []UserRow `json:"friends"` // non-nil empty slice for []
-	Count   int       `json:"count"`
+	User    []UserRow `json:"user"`    // [] when missing; take User[0] after a length check
+	Friends []UserRow `json:"friends"`
+	Count   int64     `json:"count"`
 }
 ```
-
-Do not normalize a nil at-most-one slice to an empty slice before contract
-validation. Use `*[]T` or `json.RawMessage` only when the application needs
-additional presence tracking.
 
 `helix.WarmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; combine it with `helix.WriterOnly()` to target only the
-authoritative writer. The published Go v0.3.1 client accepts only HTTP 200, so
-it currently returns a remote `*helix.HelixError` for the Cloud `204`; use
-direct HTTP for Cloud warming. Standalone `v0.0.5` warming
-returns the normal 200 response.
+authoritative writer. `Exec` on `main` accepts the `204`; v0.3.1 accepts only
+HTTP 200 and returns a remote `*helix.HelixError` for it, so use direct HTTP for
+Cloud warming with v0.3.1. A local server returns the normal 200 response.
 
-Prefer `helix.AwaitDurability(true)` on writes: concurrent writers are more likely to hit HTTP 409 write conflicts, and awaiting durability reduces them. It does not eliminate conflicts, so callers still own retry policy and must reload current state before rebuilding a conflicting mutation.
+### Errors
 
-`helix.QueryErrorCode` is an open string type. Remote errors are returned as
-`*helix.HelixError` with `Kind: helix.ErrorRemote`, `Code`, `Details`, and
-`StatusCode`. Canonical Helix HTTP `error`/`msg` populates `Code` from `error`;
-legacy `error`/`code` is also decoded without rejecting unknown future codes.
-In v0.3.1, a generic noncanonical `message`/`code` remote body is retained as raw
-`Details` but does not populate `Code`; keep status-aware fallback handling and
-do not call that generic shape the gateway contract. `helix.IsConflict(err)` and
-`errors.Is(err, helix.ErrConflict)` retain HTTP 409 detection; compare `Code`
-with `helix.QueryErrorCode("transaction_conflict")` when you need the Helix
-classification. Reconcile a `query_timeout` write before resubmitting. Go
-v0.3.1 does not expose `Retry-After`; use a custom HTTP transport or direct HTTP
-when the exact Cloud delay is required. Never parse `Details`. See
-`../../docs/error-handling.md`.
+Remote errors are `*helix.HelixError` with `Kind: helix.ErrorRemote`, `Code`
+(open-string `helix.QueryErrorCode`, from the body's `error` field), `Details`
+(the `msg` diagnostic), and `StatusCode`. On `main` it also has `Retryable
+*bool` (the body's `retryable`), and `helix.IsRetryable(err)`,
+`helix.IsConflict(err)` (`transaction_conflict` only) and
+`helix.IsIndexBackpressure(err)`. In v0.3.1, `Retryable` and `IsRetryable` do
+not exist and `IsConflict` / `errors.Is(err, helix.ErrConflict)` are true for
+every 409, including `unique_constraint_violation`; branch on `Code`.
+
+| Class | HTTP | `retryable` | A failed write | Codes |
+| --- | ---: | --- | --- | --- |
+| Invalid request / planning | 400 | absent | committed nothing | `invalid_request`, `invalid_query_json`, `invalid_request_body`, `invalid_request_option`, `unbound_parameter`, `invalid_node_id`, `invalid_after_bind_operation`, `duplicate_*`, `invalid_*` |
+| Not found | 404 | absent | committed nothing | `node_not_found`, `edge_not_found`, `index_not_found`, `index_operation_not_found` |
+| Timeout | 408 | absent | may have committed | `query_deadline_exceeded` |
+| Retryable conflict | 409 | `true` | committed nothing | `transaction_conflict`, `request_read_view_changed`, `stale_index_generation` |
+| Conflict with database state | 409 | `false` | committed nothing | `unique_constraint_violation`, `index_already_exists`, `index_definition_conflict`, `index_busy`, `index_operation_not_abortable`, `index_build_blocked` |
+| Index backpressure | 429 | `true` | committed nothing | `index_backpressure` |
+| Resource limit | 429 | absent | committed nothing | `query_memory_limit_exceeded` |
+| Internal | 500 | absent | may have committed | `storage_error`, `internal_error`, `invalid_query`, ... |
+| Unavailable | 503 | absent | committed nothing | `writer_mode_required`, `reader_mode_required`, `database_closed`, `index_lifecycle_unavailable`, `migration_required`, ... |
+| Commit outcome unknown | 503 | `false` | may have committed | `writer_fenced_commit_outcome_unknown` |
+
+- Retry the retryable classes unchanged with bounded backoff and jitter;
+  rebuild a write from freshly read state when it depends on what it read.
+- `unique_constraint_violation`: report a duplicate or pick another key; from an
+  upsert's create branch, re-run the upsert once (it then takes the update branch).
+- `index_busy` / `index_build_blocked`: resolve the index operation first.
+- 408, 500 and `writer_fenced_commit_outcome_unknown`: reconcile (read back by
+  an application key) before resubmitting a write.
+- Helix Cloud adds gateway codes such as `query_timeout` (408), `rate_limited`
+  (429, honor `Retry-After`), `payload_too_large` (413, 2 MiB) and
+  `write_outcome_unknown` (503). The SDK does not expose `Retry-After`; use a
+  custom HTTP transport when the exact delay matters.
+- Never parse `Details`. Full catalog:
+  https://docs.helix-db.com/database/helix-db/query-guides/error-handling
+
+### Cypher And SQL (**main only**)
+
+```text
+res, err := client.Cypher(ctx, helix.CypherRequest{
+    Query:      "MATCH (u:User {email: $email}) RETURN u.name AS name",
+    Parameters: map[string]any{"email": email},
+    QueryName:  "user_by_email",
+})
+// res.Columns == ["name"]; res.Rows == [["Ada"]]
+res, err = client.SQL(ctx, helix.SQLRequest{
+    Query: "SELECT p.name FROM Person p WHERE p.age > ?",
+    Args:  []any{30},
+})
+plan, err := client.ExplainCypher(ctx, helix.CypherRequest{Query: "..."})
+```
+
+These post to `POST /v2/cypher`, `/v2/sql` and their `/explain` routes and take
+the same `ExecOption`s. With v0.3.1, POST `{"query", "parameters",
+"query_name"}` (SQL: `parameters` may be a list for `?`, plus `mappings`) to
+those routes over HTTP. A failed statement returns
+`{"error": "<category>", "msg", "details": {"detail", "phase", "span"}}`, for
+example `unsupported_feature` with `details.detail` `merge`.
 
 ## Published Release Scope
 
@@ -469,21 +631,7 @@ constructors return `ErrNativeBindingsUnavailable`, and `Client.Graph` returns
 `ErrNativeGraphUnavailable`. The `helixdb_uniffi` build tag is only for callers
 that separately generate and link compatible bindings and native libraries.
 
-```text
-func ExecWithConflictRetry(ctx context.Context, client *helix.Client, reloadAndBuild func(context.Context) (helix.Request, error), out any) error {
-	for attempt := 0; attempt < 3; attempt++ {
-		request, err := reloadAndBuild(ctx)
-		if err != nil {
-			return err
-		}
-		err = client.Exec(ctx, request, out)
-		var helixErr *helix.HelixError
-		isTransactionConflict := errors.As(err, &helixErr) && helixErr.Code == helix.QueryErrorCode("transaction_conflict")
-		if err == nil || !helix.IsConflict(err) || !isTransactionConflict || attempt == 2 {
-			return err
-		}
-		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
-	}
-	return nil
-}
-```
+Not in v0.3.1 (source on `main` only): `IsRetryable`, `HelixError.Retryable`,
+`IsIndexBackpressure`, `WithDatabaseID`, `WithSearchConsistency`, `Cypher`,
+`SQL`, `ExplainCypher`, `ExplainSQL`, and accepting Cloud warm `204`. The retry
+loop in `EXAMPLES.md` switches on `Code`, so it compiles against both.

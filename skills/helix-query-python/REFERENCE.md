@@ -1,8 +1,10 @@
 # Helix Query Authoring - Python Reference
 
-Use this reference to confirm published Python SDK method names and request
-patterns. The published package is `helix-db` v0.3.4, the import is `helixdb`,
-Python 3.10 or newer is required, and the package artifacts are Apache-2.0.
+Use this reference to confirm Python SDK method names and request patterns.
+Install with `pip install helix-db` (import `helixdb`, Python 3.10+). Names are
+checked against the SDK source on helix-db `main`; items marked **main only**
+are not in the published 0.3.4 package. Server behavior is checked against
+Docker `ghcr.io/helixdb/helixdb:v0.0.16`.
 
 ```text
 from helixdb import (
@@ -12,12 +14,15 @@ from helixdb import (
     AsyncQueryExecutionRequest,
     BatchCondition,
     BindingProjection,
+    BindingValueRef,
     Client,
     CompareOp,
     DateTime,
     Disk,
     EdgeRef,
     Expr,
+    HelixError,
+    IndexDdlAlreadyActive,
     IndexSpec,
     InMemory,
     NodeRef,
@@ -26,13 +31,18 @@ from helixdb import (
     Projection,
     PropertyInput,
     PropertyValue,
+    QueryRequest,
     RangeIndexDirection,
     RepeatConfig,
+    SearchConsistency,      # main only
+    ShortestPathDirection,
     SourcePredicate,
     VectorDistanceMetric,
     define_params,
     g,
     param,
+    parse_index_ddl_receipt,
+    parse_index_operation_status,
     read_batch,
     sub,
     write_batch,
@@ -46,15 +56,25 @@ read_batch() -> ReadBatch
 write_batch() -> WriteBatch
 QueryRequest.read(batch, query_name=None)
 QueryRequest.write(batch, query_name=None)
+request.with_search_consistency(SearchConsistency.EVENTUAL)   # main only; reads only
 ```
 
 Batches serialize to the same JSON shape as Rust and TypeScript:
 
 ```text
 batch.to_json_string()     # raw typed batch JSON
-batch.to_query_request()   # direct QueryRequest object
-batch.to_query_json()      # request JSON string for POST /v2/query
+batch.to_query_request(params, values, query_name=..., search_consistency=...)
+batch.to_query_json(params, values, query_name=..., search_consistency=...)
 ```
+
+`search_consistency` (**main only**) is `strong` by default: searches include
+committed but unpublished vector/text work. `eventual` includes a bounded amount
+of it and can return a hit whose tenant, label or property changed since the
+last publication. A write request rejects `eventual`. With 0.3.4, add
+`"search_consistency": "eventual"` to the JSON body yourself.
+
+Limits: a request body is at most 16 MiB locally (2 MiB on Helix Cloud) and
+JSON nests at most 255 levels.
 
 ## Batch Builders
 
@@ -69,7 +89,11 @@ Both read and write batches support:
 
 Read batches reject write traversals. Write batches accept read-only and write traversals.
 
-Conditions:
+`for_each_param` runs the body once per array element; a variable assigned in
+the body holds only the **last** iteration when returned. Read the written rows
+back in a follow-up request if you need them all.
+
+Conditions (a skipped `var_as_if` returns `[]`):
 
 ```text
 BatchCondition.var_not_empty("users")
@@ -101,7 +125,7 @@ Use refs directly where accepted:
 
 ```text
 Predicate.eq("tenantId", params.tenant_id)
-g().n(NodeRef.param("node_ids"))
+g().n(NodeRef.param("node_ids"))     # node_ids: param.array(param.i64()); IDs are integers
 g().limit(params.limit)
 g().set_property("name", params.name)
 ```
@@ -165,9 +189,9 @@ g().n(NodeRef.ids([1, 2]))
 g().n(NodeRef.var("users"))
 g().n(NodeRef.param("node_ids"))
 g().n(NodeRef.all())
-g().n_where(SourcePredicate.eq("tenantId", params.tenant_id))
+g().n_where(SourcePredicate.eq("tenantId", params.tenant_id))   # unlabeled: cannot use a label-scoped index
 g().n_with_label("User")
-g().n_with_label_where("User", pred)
+g().n_with_label_where("User", pred)   # use this for indexed lookups
 
 g().e(EdgeRef.id(1))
 g().e(EdgeRef.ids([1, 2]))
@@ -187,7 +211,12 @@ g().text_search_nodes("Document", "body", "graph", 10, tenant_value="acme")
 g().text_search_nodes_with("Document", "body", PropertyInput.param("query"), params.limit, PropertyInput.param("tenant_id"))
 g().vector_search_edges(...)
 g().text_search_edges(...)
+g().shortest_path(NodeRef.param("from_id"), NodeRef.param("to_id"), 6, label="FOLLOWS", direction=ShortestPathDirection.BOTH)
 ```
+
+`shortest_path` is an unweighted BFS. It returns the node IDs on the path,
+source first, or `[]` when there is none within `max_depth`; each endpoint must
+resolve to exactly one node.
 
 These source methods search the whole selected tenant partition. For an exact
 vector or BM25 prefilter, start with a node or edge traversal and use:
@@ -208,6 +237,11 @@ still use approximate index structures; project `$distance`. Restricted BM25
 search returns at most `k`, ordered by score descending then entity ID ascending,
 with partition-wide statistics; project `$score`. Pass the same tenant partition
 used to construct candidates.
+
+Limits: whole-index vector search caps the effective result count at 800. A
+restricted vector search fails when `min(k, unique candidates)` exceeds 800;
+restricted text returns at most `min(unique candidates, k, 800)`. More than
+1,000,000 unique candidates fails either search.
 
 Project `$distance` for vector hits or `$score` for BM25 hits before navigating
 away from the hit stream.
@@ -246,7 +280,8 @@ Bounds and variables:
 .as_("x") .store("x") .select("x") .inject("x")
 ```
 
-Terminals and projections:
+Terminals and projections (an unprojected element stream returns
+`{"$id": N}` per element; project to get properties):
 
 ```text
 .count()
@@ -280,17 +315,39 @@ Ordering and aggregation:
 .order_by_multiple([("status", Order.ASC), ("createdAt", Order.DESC)])
 .group("status")
 .group_count("status")
-.aggregate_by(AggregateFunction.SUM, "score")
+.aggregate_by(AggregateFunction.SUM, "score")   # COUNT, SUM, MIN, MAX, MEAN
 ```
+
+Rows missing the sort property sort first for `Order.ASC` and last for
+`Order.DESC`, the opposite of Cypher/SQL defaults. When their position matters
+in a translated `ORDER BY`, query them separately (`Predicate.is_null(...)` /
+`Predicate.is_not_null(...)`) and concatenate in the order the source expects.
 
 Branching and repeat:
 
 ```text
-.repeat(RepeatConfig.new(sub().out("FOLLOWS")).times(2).emit_all().max_depth(4))
+.repeat(RepeatConfig.new(sub().out("FOLLOWS")).times(2).emit_after().max_depth(4))
 .union([sub().out("FOLLOWS"), sub().in_("FOLLOWS")])
 .choose(Predicate.eq("tier", "pro"), sub().out("PremiumContent"), sub().out("FreeContent"))
 .coalesce([sub().out("PREFERRED_TEAM"), sub().out("PRIMARY_TEAM")])
 .optional(sub().out("PROFILE"))
+```
+
+- `emit_after()` emits each iteration's output (Gremlin postfix `.emit()`);
+  `emit_before()` emits each iteration's input; `emit_all()` emits both, so a
+  node reached at depth 1 appears twice. Without an emit, only the final
+  iteration's rows are returned.
+- `choose` without an else branch drops rows that fail the condition. For a
+  per-row value (Cypher `CASE`), use `Expr.case` in a projection.
+- `optional(sub)` passes the input row through when the branch is empty, so the
+  current element is still the input. For OPTIONAL MATCH semantics, see
+  [Row Bindings](#row-bindings).
+
+Reserved steps execute (they are not no-ops):
+
+```text
+.fold() .unfold() .path() .simple_path()
+.with_sack(PropertyValue.i64(0)) .sack_set("score") .sack_add("score") .sack_get()
 ```
 
 Mutations:
@@ -321,6 +378,29 @@ g().create_text_index_nodes("Document", "body", "tenantId")
 
 Range indexes default to ascending physical order (`RangeIndexDirection.ASC`). Use `RangeIndexDirection.DESC` for descending indexes that primarily serve newest-first or high-score-first scans.
 
+Index DDL is asynchronous. Each call returns a scalar receipt; decode it with
+`parse_index_ddl_receipt(response["var"])`:
+
+| Receipt `kind` | Fields | Next step |
+| --- | --- | --- |
+| `accepted` | `operation_id`, `index_id`, `generation` | Poll `operation_id`. |
+| `existing_operation` | `operation_id` | The same build is already in flight; poll it. |
+| `already_active` | `index_id`, `generation` | Ready. |
+
+```text
+g().get_index_operation(operation_id)     # read batch; decode with parse_index_operation_status
+g().retry_index_operation(operation_id)   # write batch; after fixing a blocker
+g().abort_index_operation(operation_id)   # write batch; discards a constructing build
+```
+
+The status `status` is `queued`, `running`, `blocked`, `succeeded` or `aborted`.
+A query cannot use the index until the build succeeds. `blocked` carries
+`blocker_code` (`invalid_source_data`, `uniqueness_violation`,
+`oversized_entity`, `manifest_limit`, `object_store_configuration_unavailable`,
+`invariant_violation`) and does not resume on its own. A unique index rejects
+duplicate writes with `unique_constraint_violation` from the moment its build
+starts.
+
 ## Predicates And Expressions
 
 Predicates:
@@ -347,11 +427,14 @@ Predicate.not_(p1)
 Predicate.compare(Expr.prop("score"), CompareOp.GT, Expr.val(10))
 ```
 
-Source predicates are the index-eligible source-side subset:
+`SourcePredicate` is an alias of `Predicate`; the name only marks source
+positions (`n_where`, `n_with_label_where`, `e_where`, `e_with_label_where`).
+Whether an index is used depends on the label scope and the indexes that exist,
+not on the class:
 
 ```text
-SourcePredicate.eq("$label", "User")
-SourcePredicate.and_([SourcePredicate.eq("$label", "User"), SourcePredicate.eq("tenantId", params.tenant_id)])
+SourcePredicate.eq("tenantId", params.tenant_id)
+SourcePredicate.and_([SourcePredicate.eq("tenantId", params.tenant_id), SourcePredicate.eq("status", "active")])
 ```
 
 Expressions:
@@ -367,6 +450,9 @@ Expr.prop("score").add(Expr.val(1))
 Expr.prop("score").neg()
 Expr.case([(Predicate.eq("tier", "pro"), Expr.val("paid"))], Expr.val("free"))
 ```
+
+`Expr.case` is the translation of Cypher/SQL `CASE`: use it inside
+`Projection.expr(alias, ...)` or a property input, not `choose`.
 
 Python operators are also available for expressions: `+`, `-`, `*`, `/`, `%`, and unary `-`.
 
@@ -385,37 +471,87 @@ Execute a request directly:
 ```text
 client.query(request)
 client.execute(request, writer_only=True)
-client.execute(request, warm_only=True)
-client.execute(request, await_durability=True)
+client.execute(request, warm_only=True)           # reads only
+client.execute(request, await_durability=False)   # writes only; skip the durability wait
+```
+
+Writes wait for durability by default (no header). `await_durability=False`
+returns once the write is applied on the writer; a crash before the WAL upload
+loses it. It does not reduce conflicts. `await_durability=True` or
+`warm_only=True` on the wrong request type is `400 invalid_request_option`.
+
+Native Cypher and SQL (**main only**; with 0.3.4 post the same JSON body to
+`/v2/cypher`, `/v2/cypher/explain`, `/v2/sql` or `/v2/sql/explain`):
+
+```text
+client.cypher(query, parameters=None, *, query_name=None, timeout=30, **execute_options)
+client.explain_cypher(query, parameters=None, *, query_name=None, timeout=30, **execute_options)
+client.sql(query, parameters=None, *, mappings=None, query_name=None, timeout=30, **execute_options)
+client.explain_sql(...)
+# -> {"columns": [...], "rows": [[...], ...]}
 ```
 
 The client returns parsed JSON and raises `HelixError` for network, remote,
-serialization, URL, request, or embedded failures. `code` contains the optional
-stable open-string code, `details` the diagnostic, `status_code` the HTTP status
-for remote failures, and `kind` the failure family. Canonical Helix
-`error`/`msg` populates the code from `error`; legacy `error`/`code` and embedded
-`error`/`msg` pairs are also preserved without rejecting unknown future codes.
-In v0.3.4, a generic noncanonical `message`/`code`/`details` remote body is
-retained as raw diagnostic `details` and does not populate `code`; use
-`status_code` for conservative fallback handling and do not call the generic
-shape the gateway contract.
-Never parse `details`; see
-`../../docs/error-handling.md`. A Helix Cloud warm read returns `204 No Content`
-with no query payload after fanout, but the published Python 0.3.4 transport
-accepts only 200 and surfaces that response as a remote `HelixError`. Use
-direct HTTP for Cloud warming until a newer SDK release accepts
-204. Standalone `v0.0.5` warming returns the normal 200 response. Combine
-`warm_only=True` with `writer_only=True` to target only the authoritative
-writer.
+serialization, URL, request, or embedded failures:
 
-Only empty declared returns use inferred shapes. At-most-one empties decode as
-`None`; collection, fold, and mutation empties decode as `[]`; scalar terminals
-keep `0` and `False`; an empty returns list produces `{}`. Populated values
-retain their existing representation, including the one-element list for an
-at-most-one traversal.
+| Attribute | Meaning |
+| --- | --- |
+| `kind` | `Network`, `Remote`, `Serialization`, `InvalidUrl`, `InvalidRequest`, embedded kinds |
+| `code` | The body's `error` field (open string; keep unknown codes) |
+| `details` | Diagnostic (`msg`) |
+| `status_code` | HTTP status for remote failures |
+| `retryable` / `is_retryable()` | The server's `retryable` hint; `is_retryable()` is `True` only when it is `true` |
+| `is_index_backpressure()` | `code == "index_backpressure"` |
 
-Use `list[UserRow] | None` for an at-most-one field and `list[UserRow]` for a
-collection field. Do not normalize `None` to `[]` before contract validation.
+If the installed package lacks `code` / `retryable`, `details` holds the raw
+body; `json.loads(error.details)` and read `error` and `retryable`. Never parse
+the diagnostic text to classify a failure.
+
+Every code has one class, and the class sets the status and `retryable`
+(source: `crates/ast/src/error_code.rs`):
+
+| Class | HTTP | `retryable` | A failed write | Codes |
+| --- | ---: | --- | --- | --- |
+| Invalid request | 400 | absent | committed nothing | `invalid_request`, `invalid_query_json` (malformed, unknown field, nesting > 255), `invalid_request_body` (unreadable, > 16 MiB), `invalid_request_option`, `invalid_node_id`, `unbound_parameter`, `active_text_mutation_limit_exceeded`, `invalid_index_source_data`, `invalid_secondary_index_value`, `unsupported_unique_index_value_type`, `invalid_vector_dimension`, `invalid_vector_component`, ... |
+| Planning | 400 | absent | committed nothing | `invalid_after_bind_operation`, `read_only_traversal_in_write_batch`, `duplicate_projection_alias`, `invalid_search_result_count`, `invalid_repeat_count`, `invalid_shortest_path_count`, ... |
+| Not found | 404 | absent | committed nothing | `node_not_found`, `edge_not_found`, `index_not_found`, `index_operation_not_found` |
+| Timeout | 408 | absent | may have committed | `query_deadline_exceeded` |
+| Retryable conflict | 409 | `true` | committed nothing | `transaction_conflict`, `request_read_view_changed`, `stale_index_generation` |
+| Conflict with database state | 409 | `false` | committed nothing | `unique_constraint_violation`, `index_already_exists`, `index_definition_conflict`, `index_busy`, `index_operation_not_abortable`, `index_build_blocked` |
+| Index backpressure | 429 | `true` | committed nothing | `index_backpressure` |
+| Resource limit | 429 | absent | committed nothing | `query_memory_limit_exceeded` |
+| Internal | 500 | absent | may have committed | `storage_error`, `internal_error`, ... |
+| Unavailable | 503 | absent | committed nothing | `writer_mode_required`, `reader_mode_required`, `database_closed`, `index_lifecycle_unavailable`, `migration_required`, ... |
+| Commit outcome unknown | 503 | `false` | may have committed | `writer_fenced_commit_outcome_unknown` |
+
+- Retry `retryable: true` codes with bounded backoff and jitter; rebuild a
+  write from freshly read state when it depends on what it read.
+- `unique_constraint_violation`: report the duplicate, or re-run an upsert once
+  (it then takes the update branch).
+- `index_busy`: wait for the running lifecycle operation. `index_build_blocked`:
+  fix the blocked build's `blocker_code`, then retry or abort that operation.
+- Timeout, internal, commit-outcome-unknown and `Network` failures after a write
+  was sent: reconcile (read back by key) before resubmitting.
+- Helix Cloud's gateway adds its own codes, such as `query_timeout` (408),
+  `rate_limited` (429, honor `Retry-After` through direct HTTP; the SDK does
+  not expose headers), `payload_too_large` (413, 2 MiB) and
+  `write_outcome_unknown` (503). See
+  https://docs.helix-db.com/database/helix-cloud/operate/error-handling.
+
+Cypher/SQL statement failures use
+`{"error": "<category>", "msg", "details": {"detail", "phase", "span"}}`;
+`unsupported_feature` names the rejected construct in `details.detail`.
+
+A Helix Cloud warm read returns `204 No Content` with no query payload after
+fanout. 0.3.4 accepts only 200 and raises a remote `HelixError` for it; `main`
+accepts 204. Combine `warm_only=True` with `writer_only=True` to target only
+the authoritative writer.
+
+Every returned row stream is a list, and an empty one is `[]`, including an
+at-most-one lookup (`n(NodeRef.id(...))`, `limit(1)`) and a skipped
+`var_as_if`. Only `count()` (`0`), `exists()` (`False`) and index DDL /
+lifecycle operations return scalars; an empty returns list produces `{}`. Type
+single-row fields as `list[UserRow]` and take the first element.
 
 Asynchronous server execution:
 
@@ -432,7 +568,7 @@ async_client = AsyncClient(
 async with async_client:
     response = await async_client.query(request)
     response = await async_client.query(request, timeout=2.0)
-    response = await async_client.execute(request, writer_only=True, await_durability=True)
+    response = await async_client.execute(request, writer_only=True)
 ```
 
 `AsyncClient` owns a reusable HTTPX connection pool. The default timeout is
@@ -446,7 +582,7 @@ required:
 ```text
 response = await async_client.request_builder() \
     .writer_only() \
-    .should_await_durability(True) \
+    .should_await_durability(False) \
     .query(request) \
     .send()
 raw = await async_client.request_builder().query(request).send_bytes()
@@ -477,6 +613,22 @@ g().n_with_label("User") \
         BindingProjection.binding("user", "$id", "user_id"),
         BindingProjection.binding("friend", "$id", "friend_id"),
     ])
+
+# OPTIONAL MATCH (u:User)-[:WORKS_AT]->(c:Company)
+g().n_with_label("User") \
+    .bind("user") \
+    .optional(sub().out("WORKS_AT").has_label("Company").bind("employer")) \
+    .project_bindings([
+        BindingProjection.binding("user", "name", "name"),
+        BindingProjection.binding("employer", "name", "employer"),
+    ])
 ```
+
+A binding that was never set (an empty optional branch) leaves its alias out of
+the row. `BindingProjection.coalesce([BindingValueRef.binding(...), ...], alias)`
+takes the first bound, non-null value. After a `bind`, `order_by`, `choose`,
+`repeat`, `values`, `value_map`, `project`, `id`, `label` and
+`edge_properties` are rejected (`invalid_after_bind_operation`); order before
+binding and finish with `project_bindings`, `count` or `exists`.
 
 Stored routes, registration, and query bundles are not supported.

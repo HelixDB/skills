@@ -59,8 +59,29 @@ when the filter is known before traversal.
 Node and edge indexes are distinct. Index label, property, vector dimension, distance
 metric, and tenant property must match the query.
 
-Index DDL is durable and asynchronous. A create request returns a receipt; poll its
-status and wait for the index to be active before benchmarking the read path.
+Index DDL is durable and asynchronous. `create_index_if_not_exists` returns a
+receipt, never a finished index:
+
+| Receipt `kind` | Fields | Next step |
+| --- | --- | --- |
+| `accepted` | `operation_id`, `index_id`, `generation` | poll `get_index_operation(operation_id)` |
+| `existing_operation` | `operation_id` | the same build is in flight; poll it |
+| `already_active` | `index_id`, `generation` | none |
+
+`get_index_operation` returns `status` (`queued`, `running`, `blocked`,
+`succeeded`, `aborted`) with `stage`, `attempt` and `progress`. Benchmark only
+after `succeeded`: the planner does not choose an index whose build has not
+activated. A `blocked` build names a `blocker_code`; repair the data, then
+`retry_index_operation(operation_id)`, or `abort_index_operation(operation_id)`.
+A unique index checks writes from the moment its build starts, so duplicates in
+existing data block the build rather than the writes.
+
+| Error | HTTP | `retryable` | Meaning |
+| --- | ---: | --- | --- |
+| `index_busy` | 409 | `false` | another lifecycle operation on this index is running |
+| `index_build_blocked` | 409 | `false` | a write would overflow a blocked build's queue; retry or abort the build first |
+| `index_backpressure` | 429 | `true` | vector/text index work is saturated; retry the unchanged request after a backoff |
+| `index_not_found` | 404 | absent | no active index matches the query |
 
 ## Exact Value Semantics
 
@@ -158,8 +179,9 @@ operation unless equivalence is proven; the fallback retains semantic order.
 
 ## Ordering
 
-Ordering a large property stream without a matching range index can require a full
-materialize-and-sort path. With a compatible ordered range index, execution can:
+Elements missing the sort property sort first for `Asc` and last for `Desc` (SQL
+and Cypher put nulls last for ascending). Ordering a large property stream without a matching
+range index can require a full materialize-and-sort path. With a compatible ordered range index, execution can:
 
 1. build/intersect equality or range filter ID sets
 2. scan the range index in the requested direction
@@ -193,7 +215,8 @@ materialized row stream. Alternatives include:
 
 Use `.count()` directly after the logical operations whose cardinality is needed.
 Adding `.id()`, `.project(...)`, or client-side length forces work the count
-planner could otherwise avoid.
+planner could otherwise avoid. An `order_by` in the trailing window of a count is
+ignored (ordering never changes a cardinality); leave it out.
 
 ## Correctness Fallbacks
 
@@ -252,18 +275,41 @@ node or edge IDs, call traversal-scoped text search on that stream instead of
 post-filtering source top-k hits.
 
 Restricted BM25 search is exact: it deduplicates candidate IDs, preserves full
-tenant-partition BM25 statistics, and returns at most `k` ordered by score
-descending then entity ID ascending. It is a materializing barrier with a
-1,000,000-unique-candidate limit. Common query terms can still enumerate many BM25
-matches, so candidate selectivity does not guarantee proportional latency.
+tenant-partition BM25 statistics, and returns at most `min(candidates, k, 800)`
+ordered by score descending then entity ID ascending. It is a materializing
+barrier with a 1,000,000-unique-candidate limit. Common query terms can still
+enumerate many BM25 matches, so candidate selectivity does not guarantee
+proportional latency.
+
+| Search | Limit |
+| --- | --- |
+| whole-index vector or text | `k` is clamped to 800 |
+| traversal-scoped vector | fails when `min(k, unique candidates)` exceeds 800 |
+| traversal-scoped text | at most `min(candidates, k, 800)` rows |
+| either traversal-scoped search | fails above 1,000,000 unique candidates |
+
+### Search consistency
+
+Reads carry `search_consistency` at the top level of the request:
+
+| Value | Behavior | Cost |
+| --- | --- | --- |
+| `strong` (default) | includes all committed but unpublished vector/text work | a search whose answer lies behind more than 800 superseded results fails with `index_backpressure` (429, retryable) until the worker publishes |
+| `eventual` | includes up to a bounded slice of unpublished work, oldest first, and serves the rest as last published | never rejected with `index_backpressure`, but can return a hit whose tenant, label or indexed property has since changed |
+
+Write batches always search strongly; asking for `eventual` on a write is
+rejected. The published SDK packages cannot set the option; send it in a direct
+HTTP body (`"search_consistency": "eventual"`). See
+https://docs.helix-db.com/database/helix-db/query-guides/search-consistency
 
 ## Batch cost
 
 Batch entries execute in order. Later entries can refer to earlier named results.
 Only names in `returns` become response members, but non-returned entries still run.
-An empty at-most-one return is `null`; empty collections, folds, and mutations
-are `[]`; scalar `0` and `false` remain scalars. Adding `limit(1)` therefore
-requires a nullable response field even though populated values remain arrays.
+Every row-stream return is an array and `[]` when empty, including point lookups,
+`limit(1)`, and a skipped conditional entry; only `count` (`0`), `exists`
+(`false`) and index DDL/lifecycle operations return scalars. Adding `limit(1)`
+never changes the response shape.
 
 Conditional entries can avoid unnecessary work:
 
@@ -278,16 +324,34 @@ length and body cost; keep it bounded.
 ## Write cost and safety
 
 - `add_n` creates a node for each applicable input row.
-- `add_e` can create a product of source and target rows.
+- `add_e` creates one edge per (source, target) pair on every run; it is not
+  idempotent, and an empty target fails the whole batch.
 - property mutation touches every element in the current stream.
 - broad drop operations should be reviewed for graph cardinality.
-- upsert existence checks should use an equality-indexed key.
+- upsert keys should use a unique equality index
+  (`IndexSpec::node_unique_equality`): an owner point read, and concurrent
+  creates of the same key cannot both commit.
 
 Use a write batch so the lookup, conditional update/create, and any related edge
-write share one transaction. Awaiting durability can reduce concurrent-write
-conflicts, but classify them with the stable `transaction_conflict` code, reload
-current state before rebuilding, and replay only safe operations; see
-`../../docs/error-handling.md`.
+write share one transaction.
+
+Durability: writes wait for durability by default (no header). Skipping it
+(`X-Helix-Await-Durable: false`, `should_await_durability(false)`) lowers
+latency, but a crash before the WAL upload loses the write. It has no effect on
+conflicts. `true` on a read request is `400 invalid_request_option`.
+
+Retries: branch on the error body's `retryable` field, never on the status.
+
+| Code | HTTP | `retryable` | Action |
+| --- | ---: | --- | --- |
+| `transaction_conflict`, `request_read_view_changed`, `stale_index_generation` | 409 | `true` | retry the whole request with bounded backoff; rebuild a write from fresh state |
+| `unique_constraint_violation` | 409 | `false` | duplicate key; from an upsert's create branch, re-run the upsert once |
+| `index_busy`, `index_build_blocked` | 409 | `false` | wait for, retry or abort the index operation first |
+| `index_backpressure` | 429 | `true` | retry unchanged after a backoff |
+| `query_memory_limit_exceeded` | 429 | absent | reduce the work |
+| `query_deadline_exceeded` | 408 | absent | a write may have committed; reconcile before resubmitting |
+
+Full catalog: https://docs.helix-db.com/database/helix-db/query-guides/error-handling
 
 ## Wire shape
 
@@ -340,3 +404,14 @@ Every SDK emits the same nested operation tree:
 ```
 
 There is no step array, stored route, registration table, or bundle layer.
+
+## Cypher and SQL plans
+
+`POST /v2/cypher/explain` and `POST /v2/sql/explain` take the same body as
+`/v2/cypher` and `/v2/sql` (`{"query", "parameters", "query_name"}`; SQL also
+accepts a positional `parameters` list and `mappings`) and plan the statement
+without running it. The plan reports its `effect` (`Read` or `Write`), selected
+access paths such as index lookups, estimated cardinalities, blocking work,
+Cartesian products and optimizer warnings. Supply every parameter the statement
+uses. An index is used only when every other condition on that node cannot fail;
+arithmetic and function calls on the indexed property keep a label scan.

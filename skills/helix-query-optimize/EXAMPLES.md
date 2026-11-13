@@ -159,7 +159,20 @@ writeBatch()
 }
 ```
 
-Wait for the DDL receipt to become active before benchmarking `active_users`.
+The response is a receipt such as
+`{"index": {"kind": "accepted", "operation_id": "…", "index_id": "7", "generation": "1"}}`.
+Poll the operation until it succeeds before benchmarking `active_users`:
+
+```ts
+readBatch()
+  .varAs("op", g().getIndexOperation(operationId))
+  .returning(["op"]);
+// repeat with backoff until op.status === "succeeded";
+// "blocked" needs a data fix, then g().retryIndexOperation(operationId) in a write batch
+```
+
+`existing_operation` means the same build is already running (poll its
+`operation_id`); `already_active` means there is nothing to wait for.
 
 ## Bound graph expansion
 
@@ -365,15 +378,21 @@ readBatch()
   .returning(["orders"]);
 ```
 
-Wait for the descending range index before measuring the ordered query. The
+Poll the descending range index's build to `succeeded` before measuring the
+ordered query. The
 planner can union status IDs, intersect the region IDs, drive the route from the
 descending range index, filter before satisfying the 25-row limit, and avoid a
 redundant in-memory sort. Range candidates remain authoritatively verified.
 
-If the caller needs only the cardinality of this ordered window, replace
-`.valueMap(...)` with `.count()`. Null equality still needs a scan, NaN is
-non-indexable, a unique equality hit verifies its owner, and a genuinely
-late-bound equality parameter may select a dynamic equality program.
+If the caller needs only the cardinality of that window, drop `.orderBy(...)`
+as well as `.valueMap(...)` and end in `.limit(25).count()`: ordering never
+changes a count, so the range index is not needed and the planner can count the
+status/region bitmap intersection and clamp it to 25. Null equality still needs
+a scan, NaN is non-indexable, a unique equality hit verifies its owner, and a
+genuinely late-bound equality parameter may select a dynamic equality program.
+
+Elements without `createdAt` sort last for `Order.Desc` and first for
+`Order.Asc`.
 
 ## Scope vector search to its tenant
 
@@ -401,6 +420,23 @@ function tenantVectorSearch(p = vectorParams) {
 
 Do not run an unscoped top-k query and try to repair it with a later tenant filter.
 
+`limit` here is clamped to 800 for a whole-index search. If a strong search is
+rejected with `index_backpressure` (429, retryable) because indexing lags writes,
+retry after a backoff, or send the read with `"search_consistency": "eventual"`
+when a hit whose tenant or indexed text changed moments ago is acceptable. The
+published SDK packages cannot set this option yet; on SDK source from `main`:
+
+```ts
+readBatch()
+  .varAs("hits", tenantVectorSearch())
+  .returning(["hits"])
+  .toQueryRequest(
+    vectorParams,
+    { queryVector, limit: 10, tenantId },
+    { searchConsistency: SearchConsistency.Eventual },
+  );
+```
+
 ## Preserve rank fields
 
 Project the search result while it is still ranked:
@@ -419,11 +455,41 @@ entry and run the traversal from a second named entry.
 Use `forEachParam` for small, bounded object arrays. For large imports, page the input
 and measure transaction duration instead of sending an unbounded batch.
 
-For an application-level upsert, build one write batch:
+For an application-level upsert, back the key with a unique equality index and
+build one write batch:
 
-1. find the existing object by a label-scoped equality-indexed key
-2. conditionally update when the named result is non-empty
-3. conditionally create when it is empty
+```ts
+writeBatch()
+  .varAs(
+    "index",
+    g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("User", "email")),
+  )
+  .returning(["index"]);
+```
 
-This keeps the decision and mutation in one direct request without stored routes or
-query registration.
+```ts
+const upsertParams = defineParams({ email: param.string(), name: param.string() });
+
+function upsertUser(p = upsertParams) {
+  return writeBatch()
+    .varAs("existing", g().nWithLabelWhere("User", SourcePredicate.eq("email", p.email)))
+    .varAsIf(
+      "updated",
+      BatchCondition.varNotEmpty("existing"),
+      g().n(NodeRef.var("existing")).setProperty("name", p.name),
+    )
+    .varAsIf(
+      "created",
+      BatchCondition.varEmpty("existing"),
+      g().addN("User", { email: p.email, name: p.name }),
+    )
+    .returning(["updated", "created"]);
+}
+```
+
+Exactly one of `updated` / `created` holds `[{"$id": N}]`; the other is `[]`.
+The unique index makes the lookup an owner point read and stops two concurrent
+creates of the same email from both committing: the loser gets
+`unique_constraint_violation` (409, `retryable: false`). Re-run the upsert once on
+that error and it takes the update branch. A `transaction_conflict` (409,
+`retryable: true`) is retried the same way.

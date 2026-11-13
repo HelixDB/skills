@@ -1,10 +1,15 @@
 # Helix Query Authoring - Go Examples
 
-All snippets target the published v0.3.1 server module and assume:
+Snippets compile against the Go SDK source on helix-db `main`; everything here
+except the noted `main only` calls also exists in the published v0.3.1 module
+(`go get github.com/helixdb/helix-db/sdks/go@latest`). They assume:
 
 ```go
 import helix "github.com/helixdb/helix-db/sdks/go"
 ```
+
+Every row variable in a response is a JSON array (`[]` when empty), so decode
+into slices.
 
 ## 1. Count Nodes Matching A Label And Predicate
 
@@ -22,7 +27,7 @@ Declare request-specific values with `q.Param*`. Passing a direct value such as 
 
 ```go
 type UserRow struct {
-	ID       int64  `json:"$id"`
+	ID       int64  `json:"id"` // ProjectPropAs("$id", "id") renames the key
 	Name     string `json:"name"`
 	TenantID string `json:"tenantId"`
 }
@@ -67,9 +72,16 @@ func ListUsers(ctx context.Context, client *helix.Client, tenantID string, limit
 
 ## 4. Create A Node
 
+An unprojected mutation returns only `{"$id": N}` per element, so decode the
+created node as an ID row:
+
 ```go
+type CreatedRow struct {
+	ID int64 `json:"$id"`
+}
+
 type CreateUserResponse struct {
-	User []UserRow `json:"user"`
+	User []CreatedRow `json:"user"`
 }
 
 func CreateUser(name string, tenantID string) helix.Request {
@@ -88,17 +100,20 @@ func CreateUser(name string, tenantID string) helix.Request {
 		Returning("user")
 }
 
-func ExecuteCreateUser(ctx context.Context, client *helix.Client) error {
+func ExecuteCreateUser(ctx context.Context, client *helix.Client) (int64, error) {
 	var created CreateUserResponse
-	return client.Exec(
-		ctx,
-		CreateUser("Alice", "acme"),
-		&created,
-		helix.WriterOnly(),
-		helix.AwaitDurability(true),
-	)
+	if err := client.Exec(ctx, CreateUser("Alice", "acme"), &created, helix.WriterOnly()); err != nil {
+		return 0, err
+	}
+	if len(created.User) == 0 {
+		return 0, errors.New("create_user returned no node")
+	}
+	return created.User[0].ID, nil
 }
 ```
+
+Writes already wait for durability; add `helix.AwaitDurability(false)` only to
+trade crash durability for latency.
 
 ## 5. Explicit Create Or Update
 
@@ -119,6 +134,13 @@ func UpsertUser(userID string, name string) helix.Request {
 		Returning("updated", "created")
 }
 ```
+
+Exactly one of `updated` / `created` is non-empty; the skipped one is `[]`.
+Create a unique equality index on the key once,
+`helix.G().CreateIndexIfNotExists(helix.NodeUniqueEqualityIndex("User", "userId"))`
+(see section 12), so two concurrent upserts cannot both create: the loser fails
+with `unique_constraint_violation` (409, `retryable: false`). Re-run the upsert
+once on that code; it then takes the update branch.
 
 ## 6. Vector Prefiltering Over Traversal Candidates
 
@@ -193,12 +215,98 @@ func FriendsAndFollowers(userID int64) helix.Request {
 		VarAs("network",
 			helix.G().
 				N(helix.NodeParam(start.Name)).
-				Repeat(helix.Repeat(helix.Sub().Out("FOLLOWS")).WithTimes(2).EmitAll().WithMaxDepth(4)).
+				Repeat(helix.Repeat(helix.Sub().Out("FOLLOWS")).WithTimes(2).EmitAfter().WithMaxDepth(4)).
 				Union(helix.Sub().Out("FOLLOWS"), helix.Sub().In("FOLLOWS")).
 				Dedup().
 				ValueMap("$id", "name"),
 		).
 		Returning("network")
+}
+```
+
+`EmitAfter()` returns the nodes reached at hops 1 and 2 (Gremlin's postfix
+`.emit()`). `EmitAll()` would also re-emit each hop's input, duplicating rows.
+
+## Optional Hop (Cypher `OPTIONAL MATCH`)
+
+`Optional(sub)` keeps the input row when `sub` finds nothing, so the current
+element would still be the `User`. Bind both sides and read them through
+`ProjectBindings`; the `employer` key is absent for users without one.
+
+```go
+type UserEmployerRow struct {
+	Name     string  `json:"name"`
+	Employer *string `json:"employer"` // nil when the key is absent
+}
+
+func UsersWithEmployer() helix.Request {
+	return helix.ReadQuery("users_with_employer").
+		VarAs("rows",
+			helix.G().
+				NWithLabel("User").
+				Bind("user").
+				Optional(helix.Sub().Out("WORKS_AT").Bind("employer")).
+				ProjectBindings(
+					helix.ProjectNamedBinding("user", "name", "name"),
+					helix.ProjectNamedBinding("employer", "name", "employer"),
+				),
+		).
+		Returning("rows")
+}
+```
+
+## Ordered Pagination
+
+```go
+func RecentPosts(authorID int64, offset int64, pageSize int64) helix.Request {
+	q := helix.ReadQuery("recent_posts")
+
+	author := q.ParamI64("author_id", authorID)
+	skip := q.ParamI64("offset", offset)
+	size := q.ParamI64("page_size", pageSize)
+
+	return q.
+		VarAs("posts",
+			helix.G().
+				N(helix.NodeParam(author.Name)).
+				Out("WROTE").
+				Where(helix.PredIsNotNull("publishedAt")).
+				OrderBy("publishedAt", helix.OrderDesc).
+				Skip(skip).
+				Limit(size).
+				Project(
+					helix.ProjectPropAs("$id", "id"),
+					helix.ProjectProp("title"),
+					helix.ProjectProp("publishedAt"),
+				),
+		).
+		Returning("posts")
+}
+```
+
+Rows missing the sort property sort first for `OrderAsc` and last for
+`OrderDesc`; the `PredIsNotNull` filter keeps unpublished drafts out entirely.
+Use `OrderByMultiple(helix.Ordering{...}, ...)` for tie-breakers.
+
+## Shortest Path
+
+```go
+type ConnectionPathResponse struct {
+	Path []int64 `json:"path"` // node IDs from source to target; [] when none within maxDepth
+}
+
+func ConnectionPath(fromID int64, toID int64) helix.Request {
+	q := helix.ReadQuery("connection_path")
+
+	from := q.ParamI64("from_id", fromID)
+	to := q.ParamI64("to_id", toID)
+
+	return q.
+		VarAs("path",
+			helix.G().ShortestPath(helix.NodeParam(from.Name), helix.NodeParam(to.Name), 6,
+				helix.ShortestPathOptions{Label: "KNOWS", Direction: helix.ShortestPathBoth}),
+		).
+		Returning("path")
 }
 ```
 
@@ -262,21 +370,37 @@ normal direct request.
 
 ## 9. For Each Param Writes
 
+A variable assigned inside a `ForEachParam` body holds only the **last**
+iteration's result after the loop, so returning it would report one row. Read
+the created nodes back after the loop instead:
+
 ```go
-func CreateEvents(rows []map[string]any) helix.Request {
+func CreateEvents(rows []map[string]any, eventIDs []string) helix.Request {
 	q := helix.WriteQuery("create_events")
 
 	q.ParamArray("rows", rows, helix.ParamTypeObject())
+	ids := q.ParamArray("event_ids", eventIDs, helix.ParamTypeString())
 
-	body := helix.Write().VarAs("created", helix.G().AddN("Event", helix.Props{
+	body := helix.Write().VarAs("row", helix.G().AddN("Event", helix.Props{
 		helix.Prop("eventId", helix.ParamInput("eventId")),
 		helix.Prop("kind", helix.ParamInput("kind")),
 		helix.Prop("score", helix.ParamInput("score")),
 	}))
 
-	return q.ForEachParam("rows", body).Returning("created")
+	return q.
+		ForEachParam("rows", body).
+		VarAs("created",
+			helix.G().
+				NWithLabel("Event").
+				Where(helix.PredIsIn("eventId", ids)).
+				Project(helix.ProjectPropAs("$id", "id"), helix.ProjectProp("eventId")),
+		).
+		Returning("created")
 }
 ```
+
+The read-back runs in the same write transaction and sees the new nodes. Use
+`Count()` instead of `Project(...)` when only the number matters.
 
 ## 10. Inspect Request JSON In A Test
 
@@ -292,40 +416,163 @@ func TestFindUsersRequest(t *testing.T) {
 }
 ```
 
-## 11. Caller-Owned Conflict Retry
+## 11. Caller-Owned Retry
 
-`Client.Exec` returns HTTP 409 as a `*helix.HelixError` with `Code`, `Details`, and
-`StatusCode` set and `helix.ErrConflict` wrapped. It does not retry automatically.
-Reload authoritative state before rebuilding a conflict and replay only when the
-operation is safe. Use the stable code rather than parsing `Details`.
+`Client.Exec` never retries. HTTP 409 has two classes, so retry on the code, not
+the status: `transaction_conflict`, `request_read_view_changed` and
+`stale_index_generation` (409) and `index_backpressure` (429) may succeed when
+resent; `unique_constraint_violation`, `index_busy` and `index_build_blocked`
+(409, `retryable: false`) fail again. In v0.3.1, `helix.IsConflict(err)` and
+`errors.Is(err, helix.ErrConflict)` are true for every 409, so do not gate
+retries on them. On `main`, `helix.IsRetryable(err)` replaces the switch below.
 
 ```go
 import (
+	"context"
 	"errors"
 	"time"
+
+	helix "github.com/helixdb/helix-db/sdks/go"
 )
 
-func ExecWithConflictRetry(ctx context.Context, client *helix.Client, reloadAndBuild func(context.Context) (helix.Request, error), out any) error {
+func ExecWithRetry(ctx context.Context, client *helix.Client, reloadAndBuild func(context.Context) (helix.Request, error), out any) error {
+	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		request, err := reloadAndBuild(ctx)
-		if err != nil {
+		var request helix.Request
+		if request, err = reloadAndBuild(ctx); err != nil {
 			return err
 		}
-		err = client.Exec(ctx, request, out)
-		var helixErr *helix.HelixError
-		isTransactionConflict := errors.As(err, &helixErr) && helixErr.Code == helix.QueryErrorCode("transaction_conflict")
-		if err == nil || !helix.IsConflict(err) || !isTransactionConflict || attempt == 2 {
+		if err = client.Exec(ctx, request, out); err == nil {
+			return nil
+		}
+		var herr *helix.HelixError
+		if !errors.As(err, &herr) || herr.Kind != helix.ErrorRemote {
 			return err
 		}
-		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+		switch herr.Code {
+		case "transaction_conflict", "request_read_view_changed", "stale_index_generation", "index_backpressure":
+		default:
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 50 * time.Millisecond):
+		}
 	}
-	return nil
+	return err
 }
 ```
 
-In v0.3.1, a generic noncanonical `message`/`code` remote body remains raw
-`Details` and does not populate `Code`; retain `StatusCode`-aware fallback
-handling and do not call that generic shape the gateway contract.
-Reconcile a `query_timeout` write before resubmitting. Go v0.3.1 does not expose
-`Retry-After`; use a custom HTTP transport or direct HTTP when the exact Cloud
+Rebuild a write from freshly read state when it depends on what it read. A
+`408 query_deadline_exceeded`, a 500, or `503
+writer_fenced_commit_outcome_unknown` may have committed the write: reconcile by
+an application key before resubmitting. On Helix Cloud the gateway's own
+`query_timeout` (408) and `write_outcome_unknown` (503) mean the same. The SDK
+does not expose `Retry-After`; use a custom HTTP transport when the exact Cloud
 delay is required.
+
+## 12. Create An Index And Wait For It
+
+Index DDL returns a receipt immediately and builds in the background. Queries
+cannot use the index until its operation succeeds.
+
+```go
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	helix "github.com/helixdb/helix-db/sdks/go"
+)
+
+func CreateUserEmailIndex() helix.Request {
+	return helix.WriteQuery("create_user_email_index").
+		VarAs("index", helix.G().CreateIndexIfNotExists(helix.NodeUniqueEqualityIndex("User", "email"))).
+		Returning("index")
+}
+
+func IndexOperation(operationID string) helix.Request {
+	return helix.ReadQuery("index_operation").
+		VarAs("status", helix.G().GetIndexOperation(operationID)).
+		Returning("status")
+}
+
+func EnsureUserEmailIndex(ctx context.Context, client *helix.Client) error {
+	var created struct {
+		Index json.RawMessage `json:"index"`
+	}
+	if err := client.Exec(ctx, CreateUserEmailIndex(), &created); err != nil {
+		return err
+	}
+	receipt, err := helix.UnmarshalIndexDdlReceipt(created.Index)
+	if err != nil {
+		return err
+	}
+	var operationID helix.IndexOperationID
+	switch r := receipt.(type) {
+	case helix.IndexDdlAlreadyActive:
+		return nil
+	case helix.IndexDdlAccepted:
+		operationID = r.OperationID
+	case helix.IndexDdlExistingOperation:
+		operationID = r.OperationID
+	}
+	for {
+		var out struct {
+			Status json.RawMessage `json:"status"`
+		}
+		if err := client.Exec(ctx, IndexOperation(string(operationID)), &out); err != nil {
+			return err
+		}
+		status, err := helix.UnmarshalIndexOperationStatus(out.Status)
+		if err != nil {
+			return err
+		}
+		switch s := status.(type) {
+		case helix.IndexOperationSucceeded:
+			return nil
+		case helix.IndexOperationBlocked:
+			// Fix the data the blocker names, then run RetryIndexOperation in a
+			// write query, or AbortIndexOperation to discard the build.
+			return fmt.Errorf("index build %s blocked: %s %s", operationID, s.BlockerCode, s.Message)
+		case helix.IndexOperationAborted:
+			return errors.New("index build was aborted")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+```
+
+Re-running the same create while the build is in flight returns
+`existing_operation` with the same ID. While another lifecycle operation runs
+on the index, DDL fails with `index_busy`; while a build is blocked, writes that
+would overflow its queue fail with `index_build_blocked`. Both are 409 with
+`retryable: false`: resolve the operation first.
+
+## 13. Send Cypher Directly (`main` only)
+
+The server runs Cypher and SQL natively. When the statement fits the supported
+profile, send it instead of translating it. v0.3.1 has no `Cypher` method; POST
+the same body to `/v2/cypher` over HTTP.
+
+```go
+func UserNames(ctx context.Context, client *helix.Client, minAge int64) (*helix.CypherResponse, error) {
+	return client.Cypher(ctx, helix.CypherRequest{
+		Query:      "MATCH (p:Person) WHERE p.age >= $age RETURN p.name AS name ORDER BY name",
+		Parameters: map[string]any{"age": minAge},
+		QueryName:  "adult_names",
+	})
+}
+```
+
+The response is `{"columns": ["name"], "rows": [["Ada"], ...]}`. `MERGE`,
+variable-length paths, `shortestPath`, `UNION`, subqueries, `FOREACH`, and
+vector or text search are rejected (`unsupported_feature`); write those with the
+DSL.

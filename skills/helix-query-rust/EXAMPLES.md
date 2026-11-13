@@ -6,7 +6,14 @@ serialize either builder for the canonical direct JSON request.
 
 All snippets assume `use helix_db::dsl::prelude::*;`.
 
-Calling a public `#[query]` function returns a `QueryRequest` whose top-level `query_name` is the Rust function name. Direct `QueryRequest::read/write` builders serialize `query_name: null` until `.with_query_name(...)` or `.set_query_name(...)` is used.
+Calling a public `#[query]` function returns `Result<QueryRequest, QueryError>`
+(add `?`); the request's top-level `query_name` is the Rust function name.
+Inside the body each argument is rebound as `Expr::param("<name>")`. Direct
+`QueryRequest::read/write` builders serialize `query_name: null` until
+`.with_query_name(...)` or `.set_query_name(...)` is used.
+
+Every stream return is an array, `[]` when empty, including single lookups; an
+unprojected element is `{"$id": N}`.
 
 ---
 
@@ -426,8 +433,7 @@ pub fn create_user_and_link_post(
                     ("name", PropertyInput::param("name")),
                     ("createdAt", PropertyInput::from(Expr::timestamp())),
                 ],
-            )
-            .project(vec![PropertyProjection::renamed("$id", "id")]),
+            ),
         )
         .var_as(
             "link",
@@ -437,6 +443,11 @@ pub fn create_user_and_link_post(
         .returning(["newUser", "link"])
 }
 ```
+
+`NodeRef::var("newUser")` needs a node stream, so `newUser` stays the raw
+`add_n` (it returns `[{"$id": N}]`). A variable ending in `.project(...)` is not a
+node stream and fails at runtime. `add_e` creates one edge per (post, user) pair
+every time it runs, and an empty `newUser` target fails the batch.
 
 ---
 
@@ -473,6 +484,12 @@ pub fn upsert_user(userId: String, name: String) -> WriteBatch {
 }
 ```
 
+Create `IndexSpec::node_unique_equality("User", "userId")` first (example 17).
+Without it, two concurrent upserts can both take the create branch and
+duplicate the user; with it, the loser fails with `unique_constraint_violation`
+(409, `retryable: false`) and re-running the upsert once takes the update
+branch.
+
 ---
 
 ## 14. Write: `for_each_param` over an array of objects
@@ -491,15 +508,15 @@ pub fn bulk_create_users(data: Vec<ParamObject>) -> WriteBatch {
             ],
         ),
     );
-    write_batch()
-        .for_each_param("data", body)
-        .returning(["created"])
+    write_batch().for_each_param("data", body)
 }
 ```
 
 Inside `body`, the parameter names resolve against each object's fields. A
 `data: Vec<ParamObject>` argument makes `#[query]` record a structured
-array-of-object parameter schema.
+array-of-object parameter schema. A variable set in `body` holds only the last
+iteration's result, so returning `created` would report one node, not all of
+them; read the created nodes back afterwards if the caller needs them.
 
 ---
 
@@ -579,8 +596,9 @@ pub fn users_filtered(
 ```
 
 The macro records `statuses` as an array-of-string schema and `since` as
-`"date_time"`. On the client, pass any RFC3339 string or epoch-millis integer;
-the wrapper normalizes to UTC RFC3339 before serializing.
+`"date_time"`. `since` is a `helix_db::DateTime`: build it with
+`DateTime::from_millis(ms)` or `DateTime::parse_rfc3339("2026-01-01T00:00:00Z")?`;
+the wrapper serializes it as UTC RFC3339.
 
 ---
 
@@ -616,7 +634,17 @@ pub fn bootstrap_indexes() -> WriteBatch {
 }
 ```
 
-Drop an index with `g().drop_index(IndexSpec::...)`. The convenience methods (`create_vector_index_nodes`, etc.) are available but produce identical wire output — prefer `create_index_if_not_exists` + `IndexSpec` for consistency with the dynamic JSON reference.
+Each variable returns a receipt, not an active index:
+`{"kind": "accepted", "operation_id", "index_id", "generation"}`,
+`{"kind": "existing_operation", "operation_id"}` or
+`{"kind": "already_active", "index_id", "generation"}`. Builds run in the
+background; poll `g().get_index_operation(operation_id)` until its `status` is
+`succeeded` before relying on the index, and handle `blocked` with
+`retry_index_operation` / `abort_index_operation` (see `REFERENCE.md`, Index
+lifecycle). Drop an index with `g().drop_index(IndexSpec::...)`. The convenience
+methods (`create_vector_index_nodes`, etc.) produce identical wire output;
+`create_text_index_nodes("Doc", "body", None::<&str>)` needs the turbofish for an
+unscoped index.
 
 ---
 
@@ -629,23 +657,22 @@ use helix_db::Client;
 
 let client = Client::new(Some("http://localhost:6969"))?;
 
-// Helix Cloud returns 204 after a successful warm. Published Rust 3.0.0
-// classifies that non-200 response as RemoteError, so use this builder only
-// against this standalone server until an SDK release accepts 204.
+// Helix Cloud returns 204 after a successful warm. helix-db 3.0.0 accepts only
+// 200 and raises RemoteError for it; `main` accepts 204. With 3.0.0, warm Cloud
+// through direct HTTP.
 let response = client
     .request_builder::<serde_json::Value>()
     .warm_only()
-    .query(user_by_id("u-42".to_string()))
+    .query(user_by_id("u-42".to_string())?)
     .send_bytes()
     .await?;
-# let _ = response;
 ```
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writer_only().warm_only()` to warm only the authoritative
-writer. The standalone `v0.0.5` runtime warms one process and returns the normal
-query body. Warming is strictly read-only; a `WriteBatch` with
-`X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
+writer. A local server warms one process and returns the normal query body.
+Warming is strictly read-only; a `WriteBatch` with `X-Helix-Warm: true` is
+rejected with `400 invalid_request_option` before execution.
 
 ---
 
@@ -655,22 +682,56 @@ query body. Warming is strictly read-only; a `WriteBatch` with
 use helix_db::QueryErrorCode;
 
 match client.query::<serde_json::Value>(request).send().await {
-    Err(error) if error.is_conflict()
-        && error.error_code() == Some(QueryErrorCode::TransactionConflict.as_str()) => {
-        // Reload state before rebuilding the write. Replay only if it is safe.
+    Ok(response) => Ok(response),
+    // transaction_conflict, request_read_view_changed, stale_index_generation,
+    // index_backpressure: resend the whole request with bounded backoff + jitter.
+    Err(error) if error.is_retryable() => Err(error),
+    // 409 with retryable: false. Resending unchanged fails again.
+    Err(error)
+        if error.error_code() == Some(QueryErrorCode::UniqueConstraintViolation.as_str()) =>
+    {
+        Err(error)
     }
-    Err(error) => return Err(error),
-    Ok(response) => return Ok(response),
+    Err(error) => Err(error),
 }
 ```
 
-`is_rate_limited()` and temporary 503 codes can drive a bounded backoff policy.
-The published client does not expose `Retry-After`, so use direct HTTP when the
-exact Cloud delay is required. Reconcile a `query_timeout` write before
-resubmitting it. `remote_message()`, `remote_details()`, and
-`raw_response_body()` preserve structured remote diagnostics without string
-parsing. Canonical Helix failures still use `error` as the code and `msg` as the
-diagnostic; generic `code`/`message` decoding is defensive compatibility, not
-the gateway contract. `error_code()` also returns unknown strings; preserve them
-for telemetry and generic handling. Never blindly retry a write after a general
-server failure because its commit outcome may be unknown.
+Branch on `is_retryable()` / `retryable()`, not on the 409 status:
+`unique_constraint_violation`, `index_busy` and `index_build_blocked` are 409s
+that are **not** retryable. `is_conflict()` means `transaction_conflict` only.
+A `query_deadline_exceeded` (408), a 500, or
+`writer_fenced_commit_outcome_unknown` (503) may follow a committed write:
+reconcile before resubmitting. `remote_message()`, `remote_details()`, and
+`raw_response_body()` keep diagnostics without string parsing; unknown codes
+stay available through `error_code()`.
+
+These helpers are on `main`. In helix-db 3.0.0, `HelixError::RemoteError {
+details }` holds the raw body: parse it with `serde_json` and read `error` and
+`retryable`. The SDK does not expose `Retry-After`; use direct HTTP when the
+exact Cloud delay matters.
+
+---
+
+## Shortest path
+
+```rust
+#[query]
+pub fn route(fromId: i64, toId: i64) -> ReadBatch {
+    let _ = (&fromId, &toId);
+    read_batch()
+        .var_as(
+            "path",
+            g().shortest_path_with(
+                NodeRef::param("fromId"),
+                NodeRef::param("toId"),
+                Some("ROUTES_TO"),
+                ShortestPathDirection::Out,
+                6,
+            ),
+        )
+        .returning(["path"])
+}
+```
+
+Unweighted BFS: `path` is the ordered node IDs from source to target, or `[]`
+when there is no path within the depth.

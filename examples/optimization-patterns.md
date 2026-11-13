@@ -36,6 +36,7 @@ g().n_with_label_where(
 
 Compatible `limit`/`skip`/`range` windows are normalized with saturating
 arithmetic. Identity-sensitive or unsupported pipelines keep a streaming count.
+`order_by` never changes a count; leave it out of count-only routes.
 
 ## Equality Union And Intersection Before Rows Load
 
@@ -66,13 +67,35 @@ g().n_with_label_where(
 )
 .order_by("createdAt", Order::Desc)
 .limit(50)
-.count()
+.value_map(Some(vec!["$id", "createdAt", "total"]))
 ```
 
 With a descending `Order.createdAt` range index and an `Order.region` equality
-index, the planner can filter the ordered range scan before satisfying the limit,
-avoid a redundant sort, and select a dedicated count program. A genuinely
-late-bound equality parameter may use a dynamic equality program.
+index, the planner can filter the ordered range scan before satisfying the limit
+and avoid a redundant sort. A genuinely late-bound equality parameter may use a
+dynamic equality program. Orders without `createdAt` sort last for `Desc` and
+first for `Asc`.
+
+If only the window's size is needed, drop the ordering:
+`g().n_with_label_where("Order", SourcePredicate::eq("region", "eu")).limit(50).count()`
+counts the region bitmap and clamps it to 50.
+
+## Race-Safe Upsert Key
+
+```rust
+write_batch()
+    .var_as(
+        "index",
+        g().create_index_if_not_exists(IndexSpec::node_unique_equality("User", "email")),
+    )
+    .returning(["index"])
+```
+
+Poll the returned `operation_id` with `get_index_operation` until `status` is
+`succeeded`. The upsert batch then reads the key, updates under
+`BatchCondition::VarNotEmpty`, and creates under `BatchCondition::VarEmpty`. A
+concurrent create of the same email fails with `unique_constraint_violation`
+(409, `retryable: false`); re-running the upsert takes the update branch.
 
 ## Smaller search projection
 
@@ -173,10 +196,12 @@ match. Source BM25 followed by `where_` can underfill.
 All v3 SDK requests use the direct `POST /v2/query` route. Warm stable,
 performance-sensitive reads with `X-Helix-Warm: true`.
 
-The standalone `v0.0.5` runtime warms its single process and returns the normal
-query body. Helix Cloud fans the read out to every eligible backend and returns
+A standalone server (Docker `v0.0.16`) warms its single process and returns the
+normal query body. Helix Cloud fans the read out to every eligible backend and returns
 `204 No Content` after at least one succeeds. Add
 `X-Helix-Require-Writer: true` to target only the writer.
 
-Write warming is rejected with `400 Bad Request` before backend execution. Fix
-a slow write's query and storage-access pattern.
+Write warming is rejected with `400 invalid_request_option` before backend
+execution. Fix a slow write's query and storage-access pattern; skipping the
+durability wait (`X-Helix-Await-Durable: false`) lowers write latency at the
+cost of crash safety and does not reduce conflicts.

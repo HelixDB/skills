@@ -1,17 +1,21 @@
 ---
 name: helix-query-typescript
-description: Write and revise queries with the published HelixDB TypeScript SDK (`@helix-db/helix-db@3.2.0`, Node.js 20+). Use for `readBatch`, `writeBatch`, traversal builders, direct `toQueryRequest`/`toQueryJson` payloads, projections, indexes, vector and BM25 search with traversal-scoped prefiltering, structured remote errors, and `Client.query`, including Helix Cloud GA database routing with `withDatabaseId`. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
+description: Write and revise queries with the HelixDB TypeScript SDK (`@helix-db/helix-db`, verified 3.2.0, Node.js 20+). Use for `readBatch`, `writeBatch`, traversal builders, direct `toQueryRequest`/`toQueryJson` payloads, projections, row bindings, ordering, shortest paths, indexes and their async build lifecycle, vector and BM25 search with traversal-scoped prefiltering, upserts, structured remote errors and retries, running Cypher or SQL from TypeScript, and `Client.query`, including Helix Cloud GA database routing with `withDatabaseId`. Stored routes, registration, and query bundles are not v3 SDK APIs. When the target is Helix Cloud, always use helix-mcp first.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.1.0
+  version: 3.2.0
 ---
 
 # Helix Query Authoring — TypeScript
 
 Write Helix TypeScript DSL queries in a way that is schema-aware, explicit,
-and easy for agents to reason about. The published package is
-`@helix-db/helix-db@3.2.0`, is ESM-only, and requires Node.js 20 or newer.
+and easy for agents to reason about. Install with
+`npm install @helix-db/helix-db`; the package is ESM-only and requires Node.js
+20 or newer. This skill was verified against `@helix-db/helix-db` 3.2.0, the SDK
+source on `HelixDB/helix-db` `main`, and the Docker image
+`ghcr.io/helixdb/helixdb:v0.0.16` (the Helix CLI 3.7.0 default). Features marked
+"main only" are not in 3.2.0; use the HTTP fallback given with them.
 
 This is the preferred way to author Helix queries in a TypeScript codebase — type-checked, and it emits the dynamic-request JSON for you. Drop to raw dynamic JSON (`helix-query-json-dynamic`) only for debugging or dynamically-shaped requests.
 
@@ -25,6 +29,8 @@ Use this skill when the task is to:
 - send a request to a running Helix instance with the built-in `Client` (`client.query(req).send()`)
 - add traversal, projection, pagination, BM25 search, or vector search to an existing query
 - migrate a Rust v3 DSL query (`#[query]`, `read_batch()`, …) to TypeScript
+- run a Cypher or SQL statement from TypeScript (send it natively; see rule 12)
+- create an index and wait for its build, or handle a retryable vs non-retryable error
 
 Do not use this skill for inline JSON AST hand-authoring — for the wire format
 and serde rules that govern what these builders emit, use
@@ -99,11 +105,12 @@ Prefer this anchor order: node/edge ID → unique property lookup → equality-i
 
 Do not return oversized properties like embeddings unless the caller explicitly needs them.
 
-Empty declared returns follow semantic cardinality: at-most-one is `null`,
-collections/folds/mutations are `[]`, and scalars keep values such as `0` and
-`false`. Populated values keep the existing shape. Type at-most-one response
-fields as `T[] | null`; keep collection fields as `T[]`. See `REFERENCE.md` for
-the client contract.
+Every row-stream return is an array, and an empty one is `[]`, including an
+at-most-one lookup (`n(id)`, `limit(1)`) and a skipped `varAsIf` entry. Only
+`count` (`0`), `exists` (`false`) and index DDL / lifecycle operations return
+scalars. Type single lookups as `T[]` and read `[0]`. An unprojected node or edge
+stream, read or mutation, returns `{"$id": N}` per element, so project the
+fields you need.
 
 ### 5. Preserve Search Scope
 
@@ -119,13 +126,50 @@ first, then call `.vectorSearch[With](...)` or `.textSearch[With](...)` on that
 stream. Source-level vector and text search methods rank the whole tenant
 partition; filtering after them can return fewer than `k` eligible hits.
 
+Limits: a whole-index vector search returns at most 800 hits. A traversal-scoped
+vector search fails when `min(k, unique candidates)` exceeds 800; a scoped text
+search returns at most `min(candidates, k, 800)`. More than 1,000,000 unique
+candidates fails the request.
+
+Reads search with `strong` consistency by default (committed but unpublished
+vector/text writes are included). `eventual` bounds that work and can return a
+hit that has since changed tenant, label or property. It is set with
+`toQueryRequest(params, values, { searchConsistency: SearchConsistency.Eventual })`
+on `main` only; with 3.2.0 add `"search_consistency": "eventual"` to the JSON body.
+Writes always search strongly.
+
 ### 6. Use Traversal Controls Deliberately
 
 Apply `dedup`, `limit`, `range`, `skip`, `count` because the route needs them, not by habit. Bound every `repeat(...)` with `times` or `until`; the default `maxDepth` is 100.
 
+Semantics that differ from Cypher and Gremlin:
+
+- `orderBy` puts rows missing the property **first** for `Order.Asc` and **last**
+  for `Order.Desc` (Cypher and SQL do the opposite). Filter with
+  `Predicate.isNotNull(prop)` first if that matters.
+- `optional(sub)` passes the input row through unchanged when the branch is
+  empty, so the current element is still the input. For OPTIONAL MATCH, `bind`
+  the anchor, `bind` inside the branch and read through `projectBindings`; a
+  missing binding's key is absent from the row.
+- `choose(cond, then)` without an else drops rows that fail `cond`. A per-row
+  value choice (Cypher `CASE`) is `Expr.case(...)` in a projection.
+- After `bind`, `orderBy`, `choose`, `repeat`, `values`, `valueMap`, `project`,
+  `id` and `label` are rejected (`invalid_after_bind_operation`); order first,
+  finish with `projectBindings`, `count` or `exists`.
+- `fold`, `unfold`, `path`, `simplePath`, `withSack`, `sackSet`, `sackAdd`,
+  `sackGet` execute; they are not no-ops (see `REFERENCE.md`).
+- `g().shortestPath(source, target, maxDepth, { label, direction })` is an
+  unweighted BFS returning the path's node IDs (`[]` when none within
+  `maxDepth`); each endpoint must resolve to exactly one node.
+
 ### 7. Prefer Explicit Write Branching Over Invented MERGE Semantics
 
-For create-or-update: load existing nodes, branch with `varAsIf` (`VarNotEmpty` → update, `VarEmpty` → create). See EXAMPLES.md §13.
+For create-or-update: load existing nodes, branch with `varAsIf` (`VarNotEmpty` → update, `VarEmpty` → create) in one write batch. See EXAMPLES.md §13.
+Back the key with a unique equality index (`IndexSpec.nodeUniqueEquality("User",
+"userId")`): two concurrent creates then fail with `unique_constraint_violation`
+instead of duplicating, and re-running the upsert once takes the update branch.
+`addE` always creates a new edge, so guard edge creation the same way when it
+must be idempotent.
 
 ### 8. Parameters: `defineParams` + Plain Builder Functions
 
@@ -151,11 +195,16 @@ function findUsers(p = params) {
 - **Raw batch JSON:** `findUsers().toJsonString()` — the inline `query` body only (no envelope).
 - **Send it:** `new Client(url).withApiKey(key).query<R>(findUsers().toQueryRequest(params, values, { queryName: "find_users" })).send()` posts to `/v2/query`. A remote `HelixError` exposes `statusCode`, open-string `code`, `serverMessage`, structured `serverDetails`, `rawBody`, compatibility `details`, `retryable`, and `kind`. Advanced headers use `client.requestBuilder<R>().writerOnly().query(request).send()` and the equivalent `warmOnly` / `shouldAwaitDurability` builders.
 
+Writes wait for durability by default. `shouldAwaitDurability(false)` skips the
+wait for latency, and a crash before the WAL upload can lose the write; it does
+not change conflict rates. `shouldAwaitDurability(true)` on a read is rejected
+with `400 invalid_request_option`.
+
 `warmOnly()` is read-only. Helix Cloud fans the read out to every eligible
 backend and returns `204 No Content` with no query payload after at least one
 target succeeds; chain `writerOnly()` to target only the authoritative writer.
-TypeScript 3.2.0 accepts that `204`, and `send()` resolves `undefined`.
-Standalone `v0.0.5` warming returns the normal 200 response.
+TypeScript 3.2.0 accepts that `204`, and `send()` resolves `undefined`. A local
+server returns the normal 200 response.
 
 A Helix Cloud GA shared gateway needs the database on every request: set it
 once with `client.withDatabaseId("<database-id>")`, which sends
@@ -163,7 +212,57 @@ once with `client.withDatabaseId("<database-id>")`, which sends
 database-specific cluster gateway rejects the header with
 `tenant_id_not_allowed`, so leave it unset there.
 
-`isConflict()` and `isRateLimited()` classify HTTP 409 and 429; `isRetryable()` is true only when the body says `"retryable": true`. Reconcile a `query_timeout` write before resubmitting, honor `Retry-After` through a transport that exposes response headers, and use bounded backoff for retryable 429/503 failures. On a write conflict, reload current state before rebuilding the mutation; never blindly retry a write after a general server failure because its commit outcome may be unknown. See `../../docs/error-handling.md`.
+### 10. Handle Errors By `retryable`, Not Status
+
+Failures carry `{"error": "<code>", "msg": "...", "retryable": true|false}`;
+`err.code` is the code and `err.isRetryable()` is true only for
+`"retryable": true`. Branch on that, never on the status alone, because HTTP 409
+has two classes:
+
+- retry with bounded backoff: `transaction_conflict`, `request_read_view_changed`,
+  `stale_index_generation` (409) and `index_backpressure` (429)
+- do not resend unchanged (`retryable: false`): `unique_constraint_violation`,
+  `index_busy`, `index_build_blocked`, `index_already_exists`,
+  `index_definition_conflict`, `index_operation_not_abortable` (409)
+- a write may have committed, so reconcile before resubmitting:
+  `query_deadline_exceeded` (408), 500 codes, `writer_fenced_commit_outcome_unknown`
+  (503), and the Cloud gateway's `query_timeout` (408) / `write_outcome_unknown` (503)
+
+In 3.2.0, `isConflict()` is true for **every** 409, including
+`unique_constraint_violation`; use `isRetryable()` (on `main`, `isConflict()`
+means `transaction_conflict` only). `isRateLimited()` is any 429. The client does
+not expose `Retry-After`; use direct HTTP when the exact Cloud delay matters.
+`REFERENCE.md` has the full class table; the public reference is
+https://docs.helix-db.com/database/helix-db/query-guides/error-handling.
+
+### 11. Index Builds Are Asynchronous
+
+`createIndexIfNotExists(spec)` / `dropIndex(spec)` return a receipt, not a ready
+index: `{ kind: "accepted", operation_id, index_id, generation }`,
+`{ kind: "existing_operation", operation_id }`, or
+`{ kind: "already_active", index_id, generation }`. Poll
+`g().getIndexOperation(operationId)` in a read batch until `status` is
+`"succeeded"` before relying on the index. A `"blocked"` status carries
+`blocker_code` (for example `uniqueness_violation`) and never resumes alone: fix
+the data, then run `g().retryIndexOperation(id)` or `g().abortIndexOperation(id)`
+in a write batch. While a build is blocked, writes that would overflow its queue
+fail with `index_build_blocked`; a concurrent lifecycle change fails with
+`index_busy`. See EXAMPLES.md §17.
+
+### 12. Cypher And SQL Run Natively
+
+The server executes openCypher and SQL directly: `POST /v2/cypher`,
+`POST /v2/cypher/explain`, `POST /v2/sql`, `POST /v2/sql/explain`, with body
+`{ "query", "parameters", "query_name" }` (SQL also takes positional
+`parameters` for `?` and `mappings`) and response `{ "columns": [...], "rows": [[...]] }`.
+On `main`, `client.cypher(query, params, name)`, `client.sql(query, params,
+mappings, name)`, `explainCypher` and `explainSql` wrap them; with 3.2.0 send the
+body with `fetch`. Send supported statements as-is. Write the DSL instead for
+what the profiles reject (`MERGE`, variable-length paths, `shortestPath`,
+`UNION`, subqueries, `FOREACH`, SQL outer joins and upserts), for vector/text
+search and index management, or when you need typed parameters and multi-entry
+batches. See https://docs.helix-db.com/database/helix-db/query-guides/cypher and
+https://docs.helix-db.com/database/helix-db/query-guides/sql.
 
 ## Number & DateTime Handling
 
@@ -182,16 +281,19 @@ database-specific cluster gateway rejects the header with
 | Filters | `has`, `hasLabel`, `hasKey`, `where`, `dedup`, `within`, `without`, `edgeHas`, `edgeHasLabel` | `Predicate.*` + `Predicate.*Param`; dotted paths like `metadata.externalID` are scan-only. |
 | Limits | `limit`, `skip`, `range` | Accept `number`, `bigint`, `Expr`, `ParamRef`, or `StreamBound`. |
 | Variables | `as`, `store`, `select`, `inject` | Cross-entry refs via `NodeRef.var/param`, `EdgeRef.var/param`. |
-| Ordering | `orderBy`, `orderByMultiple` | `Order.Asc` / `Order.Desc`. |
+| Ordering | `orderBy`, `orderByMultiple` | `Order.Asc` / `Order.Desc`. Missing values sort first for `Asc`, last for `Desc`. |
 | Aggregation | `count`, `exists`, `group`, `groupCount`, `aggregateBy` | `AggregateFunction.{Count,Sum,Min,Max,Mean}`. |
 | Branching | `union`, `choose`, `coalesce`, `optional` | Each arm is a `sub()` sub-traversal. |
-| Repeat | `repeat(RepeatConfig.new(sub).times(n).until(pred).emitAfter().maxDepth(100))` | Bound with `times`/`until`; default `maxDepth` 100. |
+| Repeat | `repeat(RepeatConfig.new(sub).times(n).until(pred).emitAfter().maxDepth(100))` | Bound with `times`/`until`; default `maxDepth` 100. `emitAfter` = Gremlin postfix `.emit()`; `emitAll` also emits each iteration's input, so depth-1 rows repeat. |
+| Paths | `g().shortestPath(source, target, maxDepth, { label?, direction? })` | Unweighted BFS; returns node IDs. `ShortestPathDirection.{Out,In,Both}`. |
+| Row bindings | `bind`, `projectBindings`, `projectDistinctBindings` | Correlate values from several hops in one output row. |
 | Projection | `values`, `valueMap`, `project`, `edgeProperties` | `project` mixes `PropertyProjection` (incl. `renamed`) and `ExprProjection`; filtered outputs accept dotted paths; edge streams can project endpoint fields with `Projection.fromEndpoint` / `Projection.toEndpoint`. |
 | Expressions | `Expr.prop/val/id/timestamp/datetime/param`, `.add/.sub/.mul/.div/.modulo/.neg`, `Expr.case` | `Expr.timestamp()` writes server UTC millis; `Expr.datetime()` writes typed datetime. |
 | Mutations | `addN`, `addE`, `setProperty`, `removeProperty`, `drop`, `dropEdge`, `dropEdgeLabeled`, `dropEdgeById` | `dropEdgeById` is multigraph-safe. |
-| Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/nodeRangeDesc/nodeRangeWithDirection/edgeEquality/edgeRange/edgeRangeDesc/edgeRangeWithDirection/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. `RangeIndexDirection.Desc` sets descending physical order. |
-| Output | `toJsonString`, `toQueryJson`, `toQueryRequest`, `toQueryBytes` | Dynamic forms take `(params, values, options)` unless the query has no parameters; pass `{ queryName }` to set top-level `query_name`. |
-| Client / transport | `new Client(url)`, `Client.server(url)`, `.withApiKey`, `.withDatabaseId`, `.query<R>(request)`, `.requestBuilder<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.send()` | Direct requests use `POST /v2/query`; remote failures preserve HTTP status, code, message, structured details, and raw text; stored routes are not supported. |
+| Indexes | `createIndexIfNotExists(spec)`, `dropIndex(spec)`, plus `createVectorIndexNodes/Edges`, `createTextIndexNodes/Edges`; `IndexSpec.nodeEquality/nodeUniqueEquality/nodeRange/nodeRangeDesc/nodeRangeWithDirection/edgeEquality/edgeRange/edgeRangeDesc/edgeRangeWithDirection/nodeVector/nodeText/edgeVector/edgeText` | All write-only and top-level only for indexed properties. `RangeIndexDirection.Desc` sets descending physical order. Returns a receipt; the build is asynchronous. |
+| Index lifecycle | `getIndexOperation(id)` (read), `retryIndexOperation(id)`, `abortIndexOperation(id)` (write); `parseIndexDdlReceipt`, `parseIndexOperationStatus` | Poll until `status === "succeeded"`. |
+| Output | `toJsonString`, `toQueryJson`, `toQueryRequest`, `toQueryBytes` | Dynamic forms take `(params, values, options)` unless the query has no parameters; pass `{ queryName }` to set top-level `query_name` (`searchConsistency` too on `main`). |
+| Client / transport | `new Client(url)`, `Client.server(url)`, `.withApiKey`, `.withDatabaseId`, `.query<R>(request)`, `.requestBuilder<R>()`, `.writerOnly`/`.warmOnly`/`.shouldAwaitDurability`, `.send()`; `main` only: `.cypher`, `.sql`, `.explainCypher`, `.explainSql` | Direct requests use `POST /v2/query`; remote failures preserve HTTP status, code, message, `retryable`, structured details, and raw text; stored routes are not supported. |
 
 See `REFERENCE.md` for full signatures and typestate constraints.
 
@@ -278,6 +380,11 @@ Do not:
 - pass a `param.bytes()` parameter through the JSON route — it throws `QueryError.UnsupportedBytesParameter`
 - put a write traversal into `readBatch().varAs(...)` — it is rejected at compile time and throws at runtime
 - traverse off a vector/text hit stream before projecting `$distance` or `$score`
+- retry on `isConflict()` or on HTTP 409 alone — use `isRetryable()`
+- bind node or edge IDs as strings — they are integers (`param.i64()`, `bigint`)
+- treat `optional(sub().out(...))` as OPTIONAL MATCH, or `choose` as `CASE`
+- query an index before its build operation has `succeeded`
+- hand-translate Cypher or SQL the server can run natively
 
 ## Validation Checklist
 
@@ -287,7 +394,9 @@ Before finishing:
 - verify labels, edge labels, and properties match the repo exactly
 - verify the first anchor is the narrowest practical indexed set
 - verify the returned variable names and shape match service expectations
-- verify at-most-one response fields allow `null` without changing populated arrays
+- verify every row-stream response field is typed as an array (`[]` when empty) and single lookups read `[0]`
+- verify retries branch on `isRetryable()` and timed-out or unknown-outcome writes are reconciled, not resent
+- verify new indexes are polled to `succeeded` before the code depends on them
 - verify text/vector routes pass the tenant value when the index is scoped, and project `$distance` or `$score` before navigating
 - verify exact vector and BM25 prefilters build candidates before calling the traversal-scoped search method
 - verify `bigint`/`i64(...)` is used for large integers and serialization goes through `toJsonString`/`stringifyJson`

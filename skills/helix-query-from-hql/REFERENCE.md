@@ -3,10 +3,14 @@
 This is the per-feature lookup table for migrating legacy **HelixQL (HQL)** — the deprecated `.hx`
 text language (`QUERY Foo(...) => ... RETURN ...`) — into the two code-native DSLs that replace it:
 
-- **Rust v3 DSL** — `helix-db = "3.0.0"`, imported as `helix_db`; a `#[query]`
-  function returns a direct `QueryRequest`.
-- **TypeScript v3 DSL** — `@helix-db/helix-db@3.2.0`; a normal builder uses
+- **Rust v3 DSL** — crate `helix-db` (verified release 3.0.0), imported as `helix_db`; a `#[query]`
+  function becomes a callable returning `Result<QueryRequest, QueryError>`.
+- **TypeScript v3 DSL** — `@helix-db/helix-db` (verified release 3.2.0); a normal builder uses
   `toQueryRequest` or `toQueryJson`.
+
+The Go (`helix.G()`, PascalCase) and Python (`g()`, snake_case) SDKs build the same AST; see the
+`helix-query-go` / `helix-query-python` skills for their spellings. Snippets follow the SDK source on helix-db
+`main`; published packages can lag it (for example, crates.io 3.0.0 has no edge-stream `drop()`).
 
 Both DSLs serialize to the **same JSON query AST**. A Rust query and a TS query that produce identical JSON are
 semantically identical — that is the primary fidelity check (see §Verification).
@@ -15,9 +19,8 @@ The published source lives under
 [`crates/ast`](https://github.com/HelixDB/helix-db/tree/main/crates/ast),
 [`sdks/rust`](https://github.com/HelixDB/helix-db/tree/main/sdks/rust), and
 [`sdks/typescript`](https://github.com/HelixDB/helix-db/tree/main/sdks/typescript).
-For full builder signatures see `../helix-query-rust/REFERENCE.md` and
-`../helix-query-typescript/REFERENCE.md`; this file only documents the HQL→DSL
-correspondence.
+For full builder signatures see the `helix-query-rust` and `helix-query-typescript`
+skills' `REFERENCE.md`; this file only documents the HQL→DSL correspondence.
 
 ---
 
@@ -34,8 +37,8 @@ The DSLs are structurally identical but spelled differently. Most translation mi
 | Edge/traversal label | `Some("FOLLOWS")` / `None::<&str>` | `"FOLLOWS"` / `null` |
 | Property lists | `vec!["a","b"]` / `Some(vec![...])` / `None::<Vec<&str>>` | `["a","b"]` / `null` |
 | Write properties | `vec![("name","Alice")]` | `{ name: "Alice" }` or `[["name","Alice"]]` |
-| Integers in params | native `i64` | `bigint` (`1n`) for `i64`/IDs |
-| Direct request | `#[query] fn foo(..) -> ReadBatch` | `defineParams(...)` + `batch.toQueryRequest(...)` |
+| Integers in params (incl. IDs) | native `i64` | `number` or `bigint` (`1n`; use `bigint` above 2^53) |
+| Direct request | `#[query] fn foo(..) -> ReadBatch`, called as `foo(..)?` (returns `Result<QueryRequest, QueryError>`) | `defineParams(...)` + `batch.toQueryRequest(...)` |
 
 ---
 
@@ -43,7 +46,7 @@ The DSLs are structurally identical but spelled differently. Most translation mi
 
 | HQL | Rust DSL | TypeScript DSL | Notes |
 | --- | --- | --- | --- |
-| `QUERY Foo(p: ID) =>` (read) | `#[query] pub fn foo(p: String) -> ReadBatch { read_batch()... }` | `const fooParams = defineParams({ p: param.string() }); function foo(_ = fooParams) { return readBatch()... }` | HQL `ID` → `String` in Rust, `param.string()` in TS. |
+| `QUERY Foo(p: ID) =>` (read) | `#[query] pub fn foo(p: i64) -> ReadBatch { read_batch()... }` | `const fooParams = defineParams({ p: param.i64() }); function foo(_ = fooParams) { return readBatch()... }` | HQL `ID` → `i64` / `param.i64()`. v3 node and edge IDs are integers; a string ID parameter fails at runtime. |
 | `QUERY Foo(..) =>` (write) | `#[query] pub fn foo(..) -> WriteBatch { write_batch()... }` | `function foo(...) { return writeBatch()... }` | Pick read vs write by whether the body mutates. The Rust typestate / TS types reject a write op inside a read batch. |
 | `name: String, age: U8, vec: [F64]` | fn params `name: String, age: i64, vec: Vec<f64>` | `param.string()`, `param.i64()`, `param.array(param.f64())` | HQL integer widths (`U8`,`I32`,`U64`,…) all collapse to `i64`/`param.i64()`. `[F64]` → `Vec<f64>` / `param.array(param.f64())`. |
 | Parameter use in a predicate | `Predicate::eq_param("status","status")` | `Predicate.eqParam("status","status")` | Pass the **parameter name** as a string, not a value. |
@@ -53,9 +56,9 @@ The DSLs are structurally identical but spelled differently. Most translation mi
 | `RETURN NONE` | `.returning(Vec::<&str>::new())` | `.returning([])` | Return nothing. |
 | `RETURN "ok"` (literal) | **NONE** — return a binding instead | **NONE** | DSLs return named variables, not bare literals. Bind the value first if you truly need it. |
 
-The `RETURN NONE` response is `{}`. For named returns, empty at-most-one
-results are `null`, empty collections/folds/mutations are `[]`, and scalar `0`
-or `false` remains scalar. Populated values keep their existing response shape.
+The `RETURN NONE` response is `{}`. For named returns, every row-stream return is `[]` when empty — including
+`N<T>(id)` lookups, `.limit(1)`, and skipped `var_as_if` entries. Only `count` (`0`), `exists` (`false`) and index
+DDL / lifecycle operations return scalars. Unprojected node and edge streams return `{"$id": N}` per element.
 
 ---
 
@@ -63,12 +66,12 @@ or `false` remains scalar. Populated values keep their existing response shape.
 
 | HQL | Rust DSL | TypeScript DSL | Notes |
 | --- | --- | --- | --- |
-| `N<T>(id)` | `g().n(NodeRef::id(id))` | `g().n(NodeRef.id(id))` | Narrowest anchor — prefer it. |
+| `N<T>(id)` | `g().n(NodeRef::id(id))` | `g().n(NodeRef.id(id))` | Narrowest anchor — prefer it. `id` is an integer; HQL UUIDs become an indexed property (e.g. `externalId`). |
 | `N<T>(id)` from a param | `g().n(NodeRef::param("user_id"))` | `g().n(NodeRef.param("userId"))` | |
 | `N<T>` (all of a label) | `g().n_with_label("User")` | `g().nWithLabel("User")` | Always carry the label; avoid an unlabeled full scan. |
-| `N<T>({field: value})` (indexed lookup) | `g().n_where(SourcePredicate::eq("field", value))` | `g().nWhere(SourcePredicate.eq("field", value))` | Use **`SourcePredicate` at the source** (index-friendly), **not** `.where_`. Parameterized: there is also `n_with_label_where`/`nWithLabelWhere`. |
+| `N<T>({field: value})` (indexed lookup) | `g().n_with_label_where("T", SourcePredicate::eq_param("field", "field"))` | `g().nWithLabelWhere("T", SourcePredicate.eqParam("field", "field"))` | Keep the **label**: `n_where` without one scans every node and cannot use the label's index. `SourcePredicate` is an alias of `Predicate`; `.eq("field", value)` for a constant. |
 | `E<T>(id)` | `g().e(EdgeRef::id(id))` | `g().e(EdgeRef.id(id))` | |
-| `E<T>` by indexed property | `g().e_where(SourcePredicate::eq(..))` | `g().eWhere(SourcePredicate.eq(..))` | |
+| `E<T>` by indexed property | `g().e_with_label_where("T", SourcePredicate::eq(..))` | `g().eWithLabelWhere("T", SourcePredicate.eq(..))` | Label-scoped, like nodes. |
 | `V<T>(id)` | `g().n(NodeRef::id(id))` | `g().n(NodeRef.id(id))` | Vectors are nodes in the DSL; anchor by id like any node. There is no separate `V<T>` source — see Search for similarity lookup. |
 
 ---
@@ -120,11 +123,11 @@ test a sub-traversal. See §Unsupported for HQL `EXISTS`/count-in-`WHERE`.
 | `::GROUP_BY(p)` | `.group_count("p")` | `.groupCount("p")` | HQL `GROUP_BY` returns count summaries → `group_count`. |
 | `::AGGREGATE_BY(p)` (full objects) | `.group("p")` | `.group("p")` | `group` groups full objects; `group_count` returns counts. Match HQL output shape. |
 | `MIN/MAX/SUM/AVG/COUNT(coll)` | `.aggregate_by(AggregateFunction::Min/Max/Sum/Mean/Count, "p")` | `.aggregateBy(AggregateFunction.Min/…, "p")` | HQL `AVG` → `Mean`. |
-| `::ORDER<Asc>(_::{f})` | `.order_by("f", Order::Asc)` | `.orderBy("f", Order.Asc)` | |
+| `::ORDER<Asc>(_::{f})` | `.order_by("f", Order::Asc)` | `.orderBy("f", Order.Asc)` | Elements missing `f` sort first for `Asc`, last for `Desc`. |
 | `::ORDER<Desc>(_::{f})` | `.order_by("f", Order::Desc)` | `.orderBy("f", Order.Desc)` | |
 | `::RANGE(a, b)` | `.range(a, b)` | `.range(a, b)` | Inclusive start, exclusive end — same as HQL. |
 | (limit / page size) | `.limit(n)` / `.skip(n)` | `.limit(n)` / `.skip(n)` | `n` accepts `Expr::param(..)` / a `ParamRef`. |
-| `::FIRST` | `.limit(1)` | `.limit(1)` | **Semantic difference:** HQL `FIRST` yields a single object; `.limit(1)` yields a one-element array. Unwrap client-side. |
+| `::FIRST` | `.limit(1)` | `.limit(1)` | **Semantic difference:** HQL `FIRST` yields a single object; `.limit(1)` yields a one-element array, or `[]` when nothing matches. Unwrap client-side. |
 
 ---
 
@@ -137,7 +140,7 @@ test a sub-traversal. See §Unsupported for HQL `EXISTS`/count-in-`WHERE`.
 | all properties (no projection / spread `..`) | `.value_map(None::<Vec<&str>>)` | `.valueMap(null)` | DSL has no spread operator; "all properties" is `value_map` with no list. |
 | `::{new: old}` (rename) | `PropertyProjection::renamed("old","new")` | `PropertyProjection.renamed("old","new")` | Note argument order: **(source, alias)**. |
 | `::ID` / `::{id: ::ID}` | `"$id"` in projection/value_map, or `.id()` terminal | `"$id"`, or `.id()` | The element id is the virtual field `$id`. e.g. `PropertyProjection::renamed("$id","id")`. |
-| computed `::{total: ...math...}` | `ExprProjection::new("total", Expr::prop("price").mul(Expr::prop("qty")))` | `ExprProjection.new("total", Expr.prop("price").mul(Expr.prop("qty")))` | Only `+ - * / %`. See §Unsupported for advanced math. |
+| computed `::{total: ...math...}` | `ExprProjection::new("total", Expr::prop("price").mul(Expr::prop("qty")))` | `ExprProjection.new("total", Expr.prop("price").mul(Expr.prop("qty")))` | Only `+ - * / %` and negation. See §Unsupported for advanced math. |
 | `::!{a, b}` (exclusion) | **NONE** — list the wanted fields explicitly | **NONE** | No "all-except" projection. Enumerate the fields to keep. |
 | `user::|u|{ posts: ... }` (nested closure) | **NONE** | **NONE** | No closure/nested projection. Return the related set as a separate binding and join client-side, or use a second `var_as`. |
 
@@ -149,12 +152,14 @@ test a sub-traversal. See §Unsupported for HQL `EXISTS`/count-in-`WHERE`.
 | --- | --- | --- | --- |
 | `AddN<T>({props})` | `g().add_n("T", vec![("name","Alice")])` | `g().addN("T", { name: "Alice" })` | TS also accepts `[["name","Alice"]]`. |
 | `AddN<T>` (empty) | `g().add_n("T", Vec::<(&str, PropertyInput)>::new())` | `g().addN("T")` | |
-| `AddE<T>::From(a)::To(b)` | `g().n(NodeRef::var("a")).add_e("T", NodeRef::var("b"), Vec::<(&str, PropertyInput)>::new())` | `g().n(NodeRef.var("a")).addE("T", NodeRef.var("b"), {})` | `add_e` is a step on the **From** node; the **To** node is the second arg. |
+| `AddE<T>::From(a)::To(b)` | `g().n(NodeRef::var("a")).add_e("T", NodeRef::var("b"), Vec::<(&str, PropertyInput)>::new())` | `g().n(NodeRef.var("a")).addE("T", NodeRef.var("b"), {})` | `add_e` is a step on the **From** node; the **To** node is the second arg. It always creates a new edge; an empty To fails the whole batch. |
 | `AddE<T>({props})::From(a)::To(b)` | `.add_e("T", NodeRef::var("b"), vec![("since", since)])` | `.addE("T", NodeRef.var("b"), { since })` | |
 | `::UPDATE({f: v})` | `.set_property("f", v)` | `.setProperty("f", v)` | One call per field; chain for several. Omitted fields are unchanged. |
 | (remove a property) | `.remove_property("f")` | `.removeProperty("f")` | No direct HQL form. |
 | `DROP N<T>(id)` | `g().n(NodeRef::id(id)).drop()` | `g().n(NodeRef.id(id)).drop()` | Dropping a node also removes its edges. |
-| `DROP N<T>::OutE<E>` (edges only) | `...out_e(Some("E")).drop_edge_by_id(EdgeRef::var("e"))` or `.drop_edge_by_id(..)` | `.dropEdgeById(EdgeRef.var("e"))` | Prefer `drop_edge_by_id` (multigraph-safe) over `.drop_edge(to)`, which drops *all* edges to a target. |
+| `UpsertN<T>({key: k}, {props})` | one `write_batch()`: `.var_as("existing", g().n_with_label_where("T", SourcePredicate::eq_param("key","key")))`, `.var_as_if("updated", BatchCondition::VarNotEmpty("existing".into()), g().n(NodeRef::var("existing")).set_property(..))`, `.var_as_if("created", BatchCondition::VarEmpty("existing".into()), g().add_n("T", ..))` | same with `varAsIf` and `BatchCondition.varNotEmpty("existing")` / `.varEmpty("existing")` | Atomic in one request. Add a unique index on `key` (`IndexSpec::node_unique_equality`) so concurrent creates fail with `unique_constraint_violation` instead of duplicating; re-run the upsert once. A skipped branch returns `[]`. |
+| `UpsertE<T>::From(a)::To(b)` | stage `existing` as `g().n(NodeRef::var("a")).out(Some("T")).within("b")`, then `var_as_if(VarEmpty("existing"), g().n(NodeRef::var("a")).add_e("T", NodeRef::var("b"), ..))` | same with `varAsIf` | Creates the edge only when `a` is not already linked to `b`. |
+| `DROP N<T>::OutE<E>` (edges only) | `g().n(NodeRef::param("id")).out_e(Some("E")).drop()` | `g().n(NodeRef.param("id")).outE("E").drop()` | Drops exactly the traversed edges, endpoints kept. With crates.io 3.0.0 (no edge-stream `drop()`), stage the edges with `var_as("edges", ...out_e(..))` and use `g().drop_edge_by_id(EdgeRef::var("edges"))`. Avoid `.drop_edge(to)`, which drops *all* edges to a target. |
 
 ---
 
@@ -172,6 +177,7 @@ variants (`vector_search_nodes_with` / `vectorSearchNodesWith`,
 | `SearchV<T>(.., k)` on an edge index | `g().vector_search_edges(..)` | `g().vectorSearchEdges(..)` | |
 | `SearchBM25<T>(text, k)` | `g().text_search_nodes("T","body", text, k, None)` | `g().textSearchNodes("T","body", text, k, null)` | `"body"` = the BM25-indexed text property. Edge form: `text_search_edges`. |
 | tenant-scoped search | last arg `Some(PropertyValue::from("acme"))` | last arg `"acme"` | Always carry the tenant value if the original schema/route was tenant-scoped. Dropping it changes results. |
+| result cap | — | — | A whole-index vector search returns at most 800 results. A traversal-scoped (prefiltered) vector search fails when `min(k, candidates)` exceeds 800 or there are more than 1,000,000 candidates. |
 | similarity score | `$distance` / `$score` in the projection **at the search step** | same | Project the score immediately; it is not available after a further traversal hop. |
 | `SearchV<T>(Embed(text), k)` | **NONE** — embed in app code, pass the vector | **NONE** | See §Unsupported (`Embed`). |
 
@@ -185,13 +191,36 @@ defaults. The query DSL does **not** declare schema. Migrate as follows:
 | HQL schema feature | DSL equivalent | Notes |
 | --- | --- | --- |
 | `N::User { name: String, ... }` | (no DSL form) | Labels/properties are implied by the data and the labels used in queries. Keep the schema as documentation. |
-| `INDEX field: T` | `g().create_index_if_not_exists(IndexSpec::node_equality("User","field"))` in a **write batch** | Run once at setup. |
-| `UNIQUE INDEX field: T` | `IndexSpec::node_unique_equality("User","field")` / `IndexSpec.nodeUniqueEquality` | |
+| `INDEX field: T` | `g().create_index_if_not_exists(IndexSpec::node_equality("User","field"))` in a **write batch** | Run once at setup; returns a receipt (below). |
+| `UNIQUE INDEX field: T` | `IndexSpec::node_unique_equality("User","field")` / `IndexSpec.nodeUniqueEquality` | The race-safe key for upserts. Existing duplicates block the build. |
 | vector index (for `SearchV`) | `g().create_vector_index_nodes("Doc", "embedding", NonZeroUsize::new(1536).expect("non-zero dimension"), VectorDistanceMetric::Cosine, None::<&str>)` / `g().createVectorIndexNodes("Doc", "embedding", 1536, VectorDistanceMetric.Cosine)` | Dimension and distance metric are required; tenant property is optional. |
-| BM25 index (for `SearchBM25`) | `g().create_text_index_nodes("Doc","body", None)` | |
+| BM25 index (for `SearchBM25`) | `g().create_text_index_nodes("Doc","body", None::<&str>)` / `g().createTextIndexNodes("Doc","body")` | `None::<&str>` — a bare `None` cannot infer the tenant-property type (E0282). |
 | `DEFAULT 0` / `DEFAULT "draft"` | **NONE** | Apply the default value at write time (include it in `add_n`). |
 | `DEFAULT NOW` | use the server timestamp expr: `Expr::timestamp()` / `Expr::datetime()` as the property value at write time | No schema-level default; set it in the `add_n` call. |
 | `DEFAULT NONE` | **NONE** — simply omit the property | Null is implicit. |
+
+Index DDL is **asynchronous**. The index binding returns a receipt:
+
+```json
+{"kind": "accepted", "operation_id": "<uuid>", "index_id": "42", "generation": "3"}
+{"kind": "existing_operation", "operation_id": "<uuid>"}
+{"kind": "already_active", "index_id": "42", "generation": "3"}
+```
+
+Queries cannot use the index until its build succeeds. Poll the operation:
+
+```rust
+read_batch()
+    .var_as("op", g().get_index_operation(operation_id))
+    .returning(["op"])
+```
+
+until `status` is `succeeded` (`queued` → `running` → `succeeded`). `blocked` carries a `blocker_code` (for
+example `uniqueness_violation` when a `UNIQUE INDEX` meets existing duplicates) and does not resume on its own:
+fix the data, then send `g().retry_index_operation(id)` in a write batch, or `g().abort_index_operation(id)` to
+discard the build. TypeScript: `getIndexOperation` / `retryIndexOperation` / `abortIndexOperation`. While a build
+is blocked, writes that would overflow its queue fail with `index_build_blocked`; a second lifecycle change to a
+busy index fails with `index_busy` (both HTTP 409, `retryable: false`).
 
 ---
 
@@ -205,21 +234,33 @@ defaults. The query DSL does **not** declare schema. Migrate as follows:
 
 ---
 
-## Unsupported HQL features (no equivalent in either DSL)
+## Shortest paths
 
-These exist in HQL but **not** in the Rust or TS DSL (verified absent from `dsl.rs` and `index.ts`). Flag each
+| HQL | Rust DSL | TypeScript DSL | Notes |
+| --- | --- | --- | --- |
+| `ShortestPathBFS` (out, any label) | `g().shortest_path(NodeRef::param("from"), NodeRef::param("to"), 6)` | `g().shortestPath(NodeRef.param("from"), NodeRef.param("to"), 6)` | Unweighted BFS. Returns the node IDs from source to target inclusive, or `[]` when there is no path within `max_depth`. |
+| `ShortestPathBFS<E>` (labeled / undirected) | `g().shortest_path_with(src, dst, Some("E"), ShortestPathDirection::Both, 6)` | `g().shortestPath(src, dst, 6, { label: "E", direction: ShortestPathDirection.Both })` | Direction `Out` (default), `In`, or `Both`. Each endpoint must resolve to exactly one node. |
+| `ShortestPathDijkstras` / `ShortestPathAStar` | **NONE** | **NONE** | Weighted; see §Unsupported. |
+
+Go: `helix.G().ShortestPath(src, dst, maxDepth, helix.ShortestPathOptions{Label: "E", Direction: helix.ShortestPathBoth})`.
+Python: `g().shortest_path(src, dst, max_depth, label="E", direction=ShortestPathDirection.BOTH)`.
+
+---
+
+## Unsupported HQL features (no equivalent in any DSL)
+
+These exist in HQL but **not** in the v3 DSLs (verified against `crates/ast` on helix-db `main`). Flag each
 clearly during migration and **move the logic into application code** — do not fake a DSL workaround.
 
-- **`UpsertN` / `UpsertE` / `UpsertV`** — no upsert. Do it in app code: read first; if present, `set_property`;
-  else `add_n`/`add_e`. (Two round-trips, or two conditional bindings.)
 - **`RerankRRF` / `RerankMMR`** — no reranking. Run `SearchV` and/or `SearchBM25`, return the ranked lists, and
   fuse/rerank (RRF, MMR) in the application.
-- **`ShortestPathBFS` / `ShortestPathDijkstras` / `ShortestPathAStar`** — no path algorithms. Compute paths in
-  app code, or do bounded hop expansion and select client-side.
+- **`ShortestPathDijkstras` / `ShortestPathAStar`** — no weighted path algorithms. Compute weighted paths in app
+  code. (`ShortestPathBFS` maps to `shortest_path`, above.)
 - **`Embed(text)`** — no inline embedding. Call your embedding model in app code and pass the resulting `[f32]`
   vector into `vector_search_nodes` / `add_n`.
 - **Advanced math** — `ABS`, `SQRT`, `LN`, `LOG`, `EXP`, `CEIL`, `FLOOR`, `ROUND`, trig (`SIN`/`COS`/…),
-  constants (`PI()`/`E()`). Only `+ - * / %` exist (`Expr::add/sub/mul/div/modulo`). Compute the rest app-side.
+  constants (`PI()`/`E()`). Only `+ - * / %` and negation exist (`Expr::add/sub/mul/div/modulo/neg`). Compute the
+  rest app-side.
 - **`WHERE(EXISTS(_::In<E>))` / `WHERE(!EXISTS(...))`** — relationship-existence filtering. `Predicate` is
   property-only. Stage the related set in a `var_as` and filter with `.within(var)` / `.without(var)`, or filter
   app-side. (`.exists()` is only a terminal boolean on its own binding.)
@@ -234,13 +275,15 @@ clearly during migration and **move the logic into application code** — do not
 
 ## Verification (per migration)
 
-1. **Compile.** Rust: `cargo build` / `cargo test` — the typestate checker rejects write ops in a `ReadBatch`
-   and non-`SourcePredicate` at a source. TS: `tsc` — the type system rejects a write traversal in `readBatch`.
+1. **Compile.** Rust: `cargo build` / `cargo test` — the typestate checker rejects write ops in a `ReadBatch`.
+   TS: `tsc` — the type system rejects a write traversal in `readBatch`.
 2. **AST parity.** Generate raw batch JSON for both languages, or generate full dynamic envelopes only after setting
    the same Rust `query_name` / TS `{ queryName }` (`req.to_json_string()` /
    `batch.toQueryJson(params, values, { queryName })`). Diff the
    JSON. **Identical AST = the Rust and TS migrations agree** and match the wire format.
 3. **Run.** POST both direct requests to a test Helix instance at `POST /v2/query` on the
    same dataset the HQL query ran on. Compare row counts, ordering, and projected fields against the HQL output.
+   Branch on the error body's `retryable` field: a 409 `transaction_conflict` can be resent, a 409
+   `unique_constraint_violation` cannot (full table: https://docs.helix-db.com/database/helix-db/query-guides/error-handling).
 
 See `EXAMPLES.md` for end-to-end HQL→Rust→TS migrations, including unsupported-feature cases.

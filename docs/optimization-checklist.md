@@ -44,6 +44,18 @@ Look for:
 
 If the route shape is good but the index is missing, call that out clearly.
 
+Index builds are asynchronous. `create_index_if_not_exists` returns a receipt
+(`accepted` with an `operation_id`, `existing_operation`, or `already_active`).
+Poll `get_index_operation(operation_id)` until `status` is `succeeded` before
+measuring; the planner does not use an index that has not activated. A
+`blocked` build names a `blocker_code`; fix the data, then
+`retry_index_operation` or `abort_index_operation`. `index_busy` and
+`index_build_blocked` are 409 with `retryable: false`.
+
+Upsert keys need a unique equality index (`IndexSpec::node_unique_equality`):
+it serves owner point reads and stops concurrent creates of the same key from
+both committing (`unique_constraint_violation`, 409, `retryable: false`).
+
 ## 3. Check Equality Semantics And Set Algebra
 
 - Exact cross-numeric equality does not round integers through `f64`.
@@ -111,15 +123,16 @@ Check whether it should use:
 - `limit(...)`
 - `range(...)`
 - `skip(...)`
-- `count()` instead of materializing full rows
-- `first()` instead of returning a whole stream
+- `count()` instead of materializing full rows (without `order_by`, which
+  never changes a count)
+- `limit(1)` when the caller only reads one element (there is no `first()`
+  builder)
 
 These controls should be driven by route semantics, not habit.
 
-Adding a guaranteed upper bound of one changes an empty return to `null` while
-leaving populated values as one-element arrays. Confirm the caller accepts the
-nullable shape before adding or moving `limit(1)` or `first()`. Empty
-collections/folds/mutations remain `[]`; scalar `0` and `false` remain scalars.
+Bounds never change the response shape: every row return, including
+`limit(1)` and point lookups, is an array and `[]` when empty. Only `count()`
+(`0`) and `exists()` (`false`) are scalars.
 
 ## 7. Review BM25 Routes Separately
 
@@ -147,7 +160,8 @@ g().n_with_label("Document")
 
 Source text search followed by `where_` is a post-filter and can underfill top-k.
 Traversal-scoped text search ranks the exact candidate IDs while retaining
-partition-wide BM25 statistics.
+partition-wide BM25 statistics. It returns at most `min(candidates, k, 800)`
+rows and fails above 1,000,000 unique candidates.
 
 ## 8. Review Vector Routes Separately
 
@@ -178,6 +192,17 @@ g().n_with_label("Document")
 Source vector search followed by `where_` is a post-filter and can underfill
 top-k. Traversal-scoped vector search enforces exact candidate membership.
 
+Limits: a whole-index search clamps `k` to 800; a traversal-scoped vector search
+fails when `min(k, unique candidates)` exceeds 800, and above 1,000,000 unique
+candidates.
+
+Search consistency (reads only): `strong` (default) includes committed but
+unpublished index work and can fail with `index_backpressure` (429,
+`retryable: true`) when indexing lags; `eventual` includes a bounded slice of
+unpublished work, is never rejected that way, but can return hits whose tenant,
+label or indexed property changed since. The published SDK packages cannot set
+it; send `"search_consistency": "eventual"` in the request body.
+
 ## 9. Review Ordered Range Drivers
 
 For `orderBy(property, direction).limit(n)` over a large stream:
@@ -188,12 +213,18 @@ For `orderBy(property, direction).limit(n)` over a large stream:
 - avoid a redundant in-memory sort when the index supplies the requested order
 - remember that range candidates are authoritatively verified
 - prefer cursor predicates over a deep `skip`
+- elements missing the property sort first for `Asc` and last for `Desc`
+  (opposite to SQL/Cypher null ordering)
 
 Do not claim this depends only on immediate `OrderBy -> Limit` lookahead.
 
 ## 10. Steady-Traffic Reads
 
-Every query executes on the dynamic route (`POST /v2/query`), which parses and validates the inline AST per request. For stable, production-facing reads, warm the caches (see §11) rather than treating per-request parsing as the optimization target.
+Every query executes on the dynamic route (`POST /v2/query`), which parses and validates the inline AST per request; there are no stored routes. For stable, production-facing reads, warm the caches (see §11) rather than treating per-request parsing as the optimization target.
+
+Cypher (`POST /v2/cypher`) and SQL (`POST /v2/sql`) run against the same indexes.
+`POST /v2/cypher/explain` and `POST /v2/sql/explain` take the same body and
+return the plan without running it, including the selected index access paths.
 
 ## 11. Query Warming
 
@@ -203,14 +234,26 @@ Rules:
 
 - warming only supports reads
 - it uses the same request shape as the live read
-- standalone `v0.0.5` warms one process and returns `200 OK` with the normal response
+- a standalone server (Docker `v0.0.16`) warms one process and returns `200 OK` with the normal response
 - Helix Cloud fans out to every eligible backend and returns `204 No Content`
   after at least one succeeds; partial backend failure is best-effort success
 - combine `X-Helix-Warm: true` with `X-Helix-Require-Writer: true` to warm only
   the authoritative writer
-- invalid warm-header values and warm writes return `400 Bad Request`
+- invalid warm-header values and warm writes return `400 invalid_request_option`
 
-## 12. Common Optimization Mistakes
+## 12. Writes, Durability, And Retries
+
+- Writes wait for durability by default. `X-Helix-Await-Durable: false` skips the
+  wait for latency (a crash can lose the write); it does not reduce conflicts.
+  `true` on a read is `400 invalid_request_option`.
+- Branch retries on the error's `retryable` field, not the status. 409 is
+  retryable for `transaction_conflict` / `request_read_view_changed` /
+  `stale_index_generation`, and not for `unique_constraint_violation`,
+  `index_busy` or `index_build_blocked`. 429 `index_backpressure` is retryable.
+- `add_e` always creates edges; make edge writes idempotent with a lookup and
+  `var_as_if`.
+
+## 13. Common Optimization Mistakes
 
 Do not:
 
@@ -225,7 +268,8 @@ Do not:
 - ignore tenant scope on text or vector search
 - return embeddings by default
 - optimize around the edges before fixing the anchor and index story
-- recommend dynamic routes for stable production traffic without a reason
+- recommend stored routes, query registration, or bundles (v3 has none)
+- benchmark before the index build has `succeeded`
 
 ## Review Output Template
 
@@ -238,7 +282,8 @@ When reviewing a query, answer in this order:
 5. dedicated count alternative versus identity-sensitive fallback
 6. filter timing, projection size, and traversal breadth
 7. search-specific issues if the route uses BM25 or vectors
-8. whether steady-traffic reads should be warmed
+8. index build status and search consistency
+9. whether steady-traffic reads should be warmed
 
 ## See Also
 

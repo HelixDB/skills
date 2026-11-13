@@ -1,7 +1,8 @@
 # v3 Search Patterns
 
-Generic published `helix-db = "3.0.0"` Rust SDK patterns for BM25, vector
-search, and bounded expansion. These builders serialize direct requests.
+Generic Rust SDK patterns (`helix-db` crate; see `docs/source-canon.md`) for
+BM25, vector search, and bounded expansion. These builders serialize direct
+requests.
 
 ## Tenant-Scoped BM25 Search
 
@@ -51,8 +52,9 @@ read_batch()
 ```
 
 The filters construct the exact candidate stream before BM25 ranking. Restricted
-search deduplicates those IDs and refills to `limit` when enough candidates match.
-Pass the same tenant partition used to construct candidates.
+search deduplicates those IDs and refills to `limit` when enough candidates match,
+up to `min(candidates, limit, 800)` rows. Pass the same tenant partition used to
+construct candidates.
 
 ## Tenant-Scoped Vector Search
 
@@ -105,6 +107,17 @@ The filters construct the exact candidate stream before vector ranking. The
 engine cannot return an ID outside that stream, although approximate index
 structures may accelerate ranking.
 
+Limits: the request fails when `min(limit, unique candidates)` exceeds 800, and
+more than 1,000,000 unique candidates fails the query. A whole-index search
+(previous pattern) returns at most 800 hits.
+
+Reads default to strong search consistency: committed but unpublished vector
+and text writes are searchable, and a search that would need too much
+unpublished work fails with retryable `index_backpressure` (429). Request
+`SearchConsistency::Eventual` on the `QueryRequest` (SDK `main`; send
+`"search_consistency": "eventual"` over HTTP with published packages) when
+slightly stale results are acceptable.
+
 ## Fixed-Depth Expansion
 
 ```rust
@@ -120,7 +133,7 @@ read_batch()
             .repeat(
                 RepeatConfig::new(sub().both(Some("RELATED_TO")))
                     .times(3)
-                    .emit_all(),
+                    .emit_after(),
             )
             .without("seed")
             .dedup()
@@ -128,3 +141,8 @@ read_batch()
     )
     .returning(["expanded"])
 ```
+
+`emit_after()` returns every node reached at depths 1 to 3. `both` walks back to
+the seed at depth 2, so `without("seed")` removes it; drop that step if the seed
+itself should count when reached again. `emit_all()` would also emit the seed
+and emit each intermediate depth twice.

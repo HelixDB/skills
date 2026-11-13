@@ -26,6 +26,10 @@ Every benchmark case should include:
 - a gold translation sketch or gold expectations
 - a flat scoring checklist
 
-Gold answers must use the published v3 SDK names and the nested direct-request JSON
-AST. Stored routes, registration, step arrays, and query bundles are failures unless
-the prompt explicitly asks to identify invalid legacy guidance.
+Gold answers must use the v3 SDK names and the nested direct-request JSON AST, and
+must match the contracts in `docs/source-canon.md` (empty returns are `[]`, IDs are
+integers, branch on `retryable` rather than the 409 status). Stored routes,
+registration, step arrays, and query bundles are failures unless the prompt explicitly
+asks to identify invalid legacy guidance. For Cypher and SQL prompts, sending a
+supported statement unchanged to `POST /v2/cypher` or `POST /v2/sql` is a correct
+answer unless the prompt asks for DSL code.

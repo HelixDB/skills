@@ -11,6 +11,10 @@ direct request with
 execute it with `await Client.server(url).query<R>(request).send()`. Use
 `toQueryJson` to inspect the exact `POST /v2/query` body.
 
+Every row-stream return decodes as an array (`[]` when empty, even for a single
+lookup); only `count`, `exists` and index DDL / lifecycle entries are scalars.
+Unprojected node or edge streams return `{ "$id": number }` per element.
+
 ---
 
 ## 1. Count nodes matching label + predicate
@@ -234,6 +238,9 @@ function userContent(p = contentParams) {
 }
 ```
 
+Without the else branch, users who are not `premium` would be dropped. To pick a
+value per row instead of a branch, use `Expr.case` (scenario 10).
+
 ---
 
 ## 9. `coalesce` (fallback traversal)
@@ -383,20 +390,34 @@ const createUserParams = defineParams({
 
 function createUserAndLinkPost(p = createUserParams) {
   return writeBatch()
+    // Keep the variable a node stream: NodeRef.var() needs nodes, not a projection.
     .varAs(
       "newUser",
-      g()
-        .addN("User", {
-          userId: PropertyInput.param("userId"),
-          name: PropertyInput.param("name"),
-          createdAt: PropertyInput.expr(Expr.timestamp()),
-        })
-        .project([PropertyProjection.renamed("$id", "id")]),
+      g().addN("User", {
+        userId: PropertyInput.param("userId"),
+        name: PropertyInput.param("name"),
+        createdAt: PropertyInput.expr(Expr.timestamp()),
+      }),
     )
     .varAs("link", g().n(NodeRef.param("postId")).addE("CREATED_BY", NodeRef.var("newUser"), {}))
-    .returning(["newUser", "link"]);
+    // Project in a separate entry for the response.
+    .varAs(
+      "user",
+      g()
+        .n(NodeRef.var("newUser"))
+        .project([PropertyProjection.renamed("$id", "id"), PropertyProjection.new("name")]),
+    )
+    .returning(["user", "link"]);
 }
+
+type CreateUserResponse = {
+  user: { id: number; name: string }[];
+  link: { $id: number }[]; // unprojected edges return only their ID
+};
 ```
+
+`addE` creates one edge per (source, target) pair every time it runs; it is not
+idempotent, and an empty target stream fails the whole batch.
 
 ---
 
@@ -421,6 +442,12 @@ function upsertUser(p = upsertParams) {
     .returning(["updated", "created"]);
 }
 ```
+
+Both entries return `{ "$id": number }[]`; the branch that did not run returns
+`[]`. Create `IndexSpec.nodeUniqueEquality("User", "userId")` (§17) so two
+concurrent upserts cannot both create: the loser fails with
+`unique_constraint_violation`, and re-running the upsert once takes the update
+branch.
 
 ---
 
@@ -545,6 +572,44 @@ function bootstrapIndexes() {
 
 Drop an index with `g().dropIndex(IndexSpec....)`. The convenience methods (`createVectorIndexNodes`, etc.) produce identical wire output — prefer `createIndexIfNotExists` + `IndexSpec` for consistency with the dynamic JSON reference.
 
+Each entry returns a receipt object, and the build runs asynchronously. Wait for
+it before relying on the index:
+
+```ts
+async function waitForIndex(client: Client, receiptValue: unknown): Promise<void> {
+  const receipt = parseIndexDdlReceipt(receiptValue);
+  if (receipt.kind === "already_active") return;
+  const operationId = receipt.operation_id;
+  const statusRequest = readBatch()
+    .varAs("status", g().getIndexOperation(operationId))
+    .returning(["status"])
+    .toQueryRequest({ queryName: "index_operation_status" });
+  for (;;) {
+    const { status } = await client.query<{ status: unknown }>(statusRequest).send();
+    const operation = parseIndexOperationStatus(status);
+    if (operation.status === "succeeded") return;
+    if (operation.status === "aborted") throw new Error(`index operation ${operationId} aborted`);
+    if (operation.status === "blocked") {
+      // Fix what blocker_code names (e.g. duplicate values for uniqueness_violation), then
+      // run writeBatch().varAs("retry", g().retryIndexOperation(operationId)), or abort with
+      // g().abortIndexOperation(operationId).
+      throw new Error(`index build blocked: ${operation.blocker_code} ${operation.message ?? ""}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
+const created = await client
+  .query<Record<string, unknown>>(bootstrapIndexes().toQueryRequest({ queryName: "bootstrap_indexes" }))
+  .send();
+for (const receipt of Object.values(created)) await waitForIndex(client, receipt);
+```
+
+Repeating the same create while the build runs returns `existing_operation` with
+the same `operation_id`. `index_busy` means another lifecycle change on that
+index is running; `index_build_blocked` on an ordinary write means a blocked
+build's queue is full until you retry or abort that build.
+
 ---
 
 ## 18. Warm a read route
@@ -558,45 +623,113 @@ const client = new Client("http://localhost:6969");
 const request = userById().toQueryRequest(userByIdParams, { userId: "u-42" });
 
 // Helix Cloud returns 204 after a successful warm and send() resolves
-// undefined; the standalone runtime returns the normal 200 body.
+// undefined; a local server returns the normal 200 body.
 await client.requestBuilder<void>().warmOnly().query(request).send();
 ```
 
 Helix Cloud fans the read out to every eligible backend and discards the result
 bodies. Chain `.writerOnly().warmOnly()` to warm only the authoritative writer.
-The standalone `v0.0.5` runtime warms one process and returns the normal query
-body. Warming is strictly read-only; a `WriteBatch` with
-`X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
+A local server warms one process and returns the normal query body. Warming is
+strictly read-only; a `WriteBatch` with `X-Helix-Warm: true` is rejected with
+`400 invalid_request_option` before execution.
 
 ---
 
 ## 19. Handle Structured Remote Errors
 
 ```ts
-import { HelixError } from "@helix-db/helix-db";
+import { Client, HelixError, QueryRequest } from "@helix-db/helix-db";
+
+async function sendWithRetry<R>(client: Client, request: QueryRequest, attempts = 4): Promise<R> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await client.query<R>(request).send();
+    } catch (cause) {
+      // Only "retryable": true (transaction_conflict, request_read_view_changed,
+      // stale_index_generation, index_backpressure) may succeed unchanged.
+      if (!(cause instanceof HelixError) || !cause.isRetryable() || attempt >= attempts) throw cause;
+      await new Promise((resolve) => setTimeout(resolve, 50 * 2 ** attempt + Math.random() * 50));
+    }
+  }
+}
 
 try {
-  await client.query(request).send();
+  const request = upsertUser().toQueryRequest(upsertParams, { userId: "u-42", name: "Ada" }, { queryName: "upsert_user" });
+  await sendWithRetry(client, request);
 } catch (cause) {
-  if (cause instanceof HelixError && cause.isConflict() && cause.code === "transaction_conflict") {
-    // Reload state before rebuilding the write. Replay only if it is safe.
+  if (!(cause instanceof HelixError)) throw cause;
+  if (cause.code === "unique_constraint_violation") {
+    // 409 with retryable: false. Resending unchanged fails again: report the duplicate,
+    // or re-run an upsert once so it takes the update branch.
+  } else if (cause.statusCode === 408 || cause.statusCode === 500 || cause.code === "writer_fenced_commit_outcome_unknown") {
+    // The write may have committed. Read it back by its key before resubmitting.
   } else {
     throw cause;
   }
 }
 ```
 
-`isRateLimited()` and retryable 503 codes can drive bounded backoff.
-`isRetryable()` is true only when the body carries `"retryable": true`; a
-missing flag means unknown, not safe to replay. The
-published client does not expose `Retry-After`, so use direct HTTP when the
-exact Cloud delay is required. Reconcile a `query_timeout` write before
-resubmitting it. Use `serverMessage`, `serverDetails`, and `rawBody` for structured remote
-diagnostics. Canonical Helix failures still use `error` as the code and `msg` as
-the diagnostic; generic `code`/`message` decoding is defensive compatibility,
-not the gateway contract. Preserve unfamiliar `code` strings and never classify
-errors by parsing `details`. Never blindly retry a write after a general server
-failure because its commit outcome may be unknown.
+Do not use `isConflict()` as the retry test: in 3.2.0 it is true for every 409,
+including `unique_constraint_violation`, `index_busy` and `index_build_blocked`
+(on `main` it means `transaction_conflict` only). `isRateLimited()` is any 429;
+Cloud `rate_limited` should honor `Retry-After`, which the client does not
+expose, so use direct HTTP when the exact delay matters. A rebuilt write that
+depends on what it read should re-read state on each attempt. Use
+`serverMessage`, `serverDetails` and `rawBody` for diagnostics, preserve
+unfamiliar `code` strings, and never classify errors by parsing text.
+
+---
+
+## Shortest path
+
+```ts
+const pathParams = defineParams({ from: param.i64(), to: param.i64() });
+
+function introductionPath(p = pathParams) {
+  return readBatch()
+    .varAs(
+      "path",
+      g().shortestPath(NodeRef.param("from"), NodeRef.param("to"), 6, {
+        label: "KNOWS",
+        direction: ShortestPathDirection.Both,
+      }),
+    )
+    .returning(["path"]);
+}
+
+const body = introductionPath().toQueryJson(pathParams, { from: 1n, to: 42n });
+// response: { path: [1, 7, 42] } (node IDs, source first), or { path: [] }
+```
+
+Unweighted BFS; each endpoint must resolve to exactly one node.
+
+---
+
+## Cypher or SQL instead of the DSL
+
+The server runs openCypher and SQL natively. Send supported statements directly
+and write the DSL only for what they cannot express (`MERGE`, variable-length
+paths, `shortestPath`, `UNION`, `FOREACH`, SQL upserts and outer joins, vector
+and text search, index management).
+
+```ts
+// main only
+const result = await client.cypher(
+  "MATCH (u:User) OPTIONAL MATCH (u)-[:WORKS_AT]->(c:Company) RETURN u.name AS name, c.name AS employer",
+);
+// { columns: ["name", "employer"], rows: [["Ada", "Acme"], ["Bob", null]] }
+
+// 3.2.0: same route over HTTP
+const response = await fetch(`${baseUrl}/v2/cypher`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ query: "MATCH (u:User {userId: $id}) RETURN u.name AS name", parameters: { id: "u-42" } }),
+});
+```
+
+`POST /v2/sql` takes `{ query, parameters, mappings, query_name }`, where
+`parameters` may be a list binding each `?` in order. Both routes have an
+`/explain` variant that plans without executing.
 
 ---
 

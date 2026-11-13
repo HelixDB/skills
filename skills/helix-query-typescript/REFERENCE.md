@@ -1,8 +1,9 @@
 # Helix Query Authoring — TypeScript DSL Reference
 
-Exhaustive builder catalog for the published
-`@helix-db/helix-db@3.2.0` TypeScript DSL. Use when `SKILL.md` points
-you at a category or when you need a signature confirmed.
+Exhaustive builder catalog for the `@helix-db/helix-db` TypeScript DSL
+(verified against 3.2.0 and the SDK source on `main`; items marked "main only"
+are not in 3.2.0). Use when `SKILL.md` points you at a category or when you need
+a signature confirmed.
 
 The public surface is defined under
 [`sdks/typescript/src`](https://github.com/HelixDB/helix-db/tree/main/sdks/typescript/src).
@@ -17,7 +18,9 @@ import { g, sub, readBatch, writeBatch, NodeRef, EdgeRef, Predicate, SourcePredi
          Projection, BindingProjection, BindingTarget, RepeatConfig, IndexSpec, Order,
          EmitBehavior, AggregateFunction, CompareOp, BatchCondition, DateTime,
          RangeIndexDirection, VectorDistanceMetric, QueryRequest, defineParams, param,
-         stringifyJson, i64, f32, f64, bytes, dateTime } from "@helix-db/helix-db";
+         ShortestPathDirection, parseIndexDdlReceipt, parseIndexOperationStatus,
+         Client, HelixError, stringifyJson, i64, f32, f64, bytes, dateTime } from "@helix-db/helix-db";
+// main only: SearchConsistency
 ```
 
 A `prelude` object re-exports the common DSL surface for convenience.
@@ -34,6 +37,8 @@ empty  -- n,nWhere,nWithLabel[Where],inject,addN,createIndexIfNotExists,dropInde
 empty  -- e,eWhere,eWithLabel[Where]                                         └─> edges
 empty  -- vectorSearchNodes[With], textSearchNodes[With]                     └─> nodes
 empty  -- vectorSearchEdges[With], textSearchEdges[With]                     └─> edges
+empty  -- shortestPath, getIndexOperation, retryIndexOperation,
+          abortIndexOperation                                                └─> terminal
 nodes  -- out, in, both, has, hasLabel, hasKey, where, dedup, within, without,
           limit, skip, range, as, store, select, inject, bind, orderBy[Multiple],
           repeat, union, choose, coalesce, optional, path, simplePath,
@@ -44,14 +49,18 @@ nodes  -- count, exists, id, label, values, valueMap, project, projectBindings,
 nodes("write") -- addE, setProperty, removeProperty, drop, dropEdge,
           dropEdgeLabeled, dropEdgeById                                      ↻ nodes
 edges  -- outN, inN, otherN                                                  └─> nodes
-edges  -- has, hasLabel, hasKey, where, edgeHas, edgeHasLabel, dedup, within,
-          without, limit, skip, range, as, store, select, orderBy[Multiple],
+edges  -- has, hasLabel, hasKey, where, edgeHas, edgeHasLabel, dedup, limit,
+          skip, range, as, store, bind, orderBy, vectorSearch[With],
           textSearch[With]                                                   ↻ edges
-edges  -- count, exists, id, label, edgeProperties                          └─> terminal
+edges("write") -- setProperty, removeProperty, drop                         ↻ edges
+edges  -- count, exists, id, label, values, valueMap, project,
+          projectBindings, edgeProperties                                    └─> terminal
 ```
 
 `ReadBatch.varAs` accepts only a read traversal. `WriteBatch.varAs` accepts
-either mode.
+either mode. The TypeScript types also let you call `within`, `without`,
+`select`, `orderByMultiple` and `dropEdgeById` on an edge stream; the Rust DSL
+does not expose them there, so keep edge streams to the list above for parity.
 
 ---
 
@@ -283,10 +292,13 @@ Predicate.gtParam(...)   Predicate.gteParam(...)   Predicate.ltParam(...)   Pred
 
 ### `SourcePredicate` — used in `nWhere` / `eWhere`
 
-Use index-friendly predicate shapes at the source:
+`SourcePredicate` is an alias of `Predicate` (same constructors). Prefer
+index-friendly shapes on top-level properties (equality and range comparisons,
+combined with `and`), and scope the source to a label with `nWithLabelWhere` so
+a label-scoped index applies; an unlabeled `nWhere` cannot use one:
 
 ```text
-SourcePredicate.eq / neq / gt / gte / lt / lte / between / hasKey / startsWith / and / or
+SourcePredicate.eq / neq / gt / gte / lt / lte / between / isIn / hasKey / startsWith / and / or
 ```
 
 The v3 wire format serializes predicates as expression trees, for example
@@ -366,7 +378,9 @@ Cross-entry references: `NodeRef.var(name)`, `EdgeRef.var(name)`, `NodeRef.param
 .orderByMultiple([[prop1, Order.Desc], [prop2, Order.Asc]])
 ```
 
-Use `Order.Asc` or `Order.Desc`.
+Use `Order.Asc` or `Order.Desc`. Rows missing the property sort **first** for
+`Asc` and **last** for `Desc`, the opposite of Cypher/SQL defaults; add
+`.where(Predicate.isNotNull(prop))` before ordering to drop them.
 Dotted paths such as `metadata.score` are valid for fallback ordering, but current
 range indexes do not accelerate nested paths.
 
@@ -390,10 +404,17 @@ Each arm is a `SubTraversal` from `sub()`:
 .union([subA, subB, ...])
 .choose(condition: Predicate, thenTraversal: SubTraversal, elseTraversal?: SubTraversal | null)
 .coalesce([subA, subB, ...])   // first non-empty wins
-.optional(subA)                // pass through if subA is empty
+.optional(subA)                // subA's rows, or the input row itself when subA is empty
 ```
 
-`SubTraversal` supports: `out`, `in`, `both`, `outE`, `inE`, `bothE`, `outN`, `inN`, `otherN`, `has`, `hasLabel`, `hasKey`, `where`, `dedup`, `within`, `without`, `edgeHas`, `edgeHasLabel`, `limit`, `skip`, `range`, `as`, `store`, `select`, `orderBy`, `orderByMultiple`, `path`, `simplePath`.
+- `choose` without `elseTraversal` **drops** rows that fail the condition. For a
+  per-row value (Cypher `CASE`), use `Expr.case(...)` in a projection.
+- `optional` keeps the input row as the current element when the branch is
+  empty, so `.optional(sub().out("WORKS_AT")).values(["name"])` returns the
+  *user's* name for users without an employer. For OPTIONAL MATCH semantics,
+  bind both sides and project bindings (see [Row bindings](#row-bindings-multi-hop-correlation)).
+
+`SubTraversal` supports: `out`, `in`, `both`, `outE`, `inE`, `bothE`, `outN`, `inN`, `otherN`, `has`, `hasLabel`, `hasKey`, `where`, `dedup`, `within`, `without`, `edgeHas`, `edgeHasLabel`, `limit`, `skip`, `range`, `as`, `store`, `select`, `bind`, `orderBy`, `orderByMultiple`, `path`, `simplePath`.
 
 ---
 
@@ -417,8 +438,10 @@ Each arm is a `SubTraversal` from `sub()`:
 - `.emitIf(pred)` — emit only matching elements (sets emit to `After`)
 - `.maxDepth(n)` — safety cap (default 100)
 
-Default `emit` is `EmitBehavior.None` (only the final result). Bound every
-repeat with `times` or `until`.
+Default `emit` is `EmitBehavior.None` (only the final iteration's rows). `emitAfter`
+emits each iteration's output (Gremlin postfix `.emit()`); `emitBefore` emits each
+iteration's input, starting with the seed; `emitAll` does both, so a row reached
+at depth 1 is emitted twice. Bound every repeat with `times` or `until`.
 
 ---
 
@@ -472,9 +495,14 @@ values captured at **different hops** of one path, tag elements with
 ```
 
 `.bind()` does not change the stream — each path keeps its own row-local
-bindings, so hops inside `union` / `optional` / `choose` can still reference
-earlier captures. Available on `Traversal` (node and edge streams) and on
-`SubTraversal` inside branches supports `bind` and binding projection.
+bindings, so hops inside `union` / `optional` / `coalesce` can still reference
+earlier captures. `bind` is available on `Traversal` (node and edge streams) and
+on `SubTraversal`. After a `bind`, `orderBy`, `choose`, `repeat`, `values`,
+`valueMap`, `project`, `id`, `label` and `edgeProperties` are rejected with
+`invalid_after_bind_operation`: order before binding and finish with
+`projectBindings`, `projectDistinctBindings`, `count` or `exists`. A binding that
+was never set on a row (an empty `optional` branch) leaves its alias out of that
+row's object.
 
 `BindingProjection` constructors:
 
@@ -515,6 +543,23 @@ g().nWithLabel("Service")
     ], "workload_id"),
   ]);
 ```
+
+OPTIONAL MATCH (`MATCH (u:User) OPTIONAL MATCH (u)-[:WORKS_AT]->(c:Company)
+RETURN u.name, c.name AS employer`):
+
+```ts
+g().nWithLabel("User")
+  .bind("user")
+  .optional(sub().out("WORKS_AT").hasLabel("Company").bind("employer"))
+  .projectBindings([
+    BindingProjection.binding("user", "name", "name"),
+    BindingProjection.binding("employer", "name", "employer"), // key absent when no employer
+  ]);
+```
+
+Without the bindings, `optional` would leave the user as the current element and
+`employer` would silently become the user's own name. `out` does not check the
+target's label, so keep `hasLabel` when the pattern names one.
 
 The binding projection is part of the normal direct `QueryRequest`. See
 `../helix-query-json-dynamic/REFERENCE.md` for its JSON wire shape.
@@ -593,18 +638,65 @@ Range indexes default to ascending physical order. Use `RangeIndexDirection.Desc
 
 `createVectorIndexNodes(...)` serializes to the same `create_index` operation
 as `createIndexIfNotExists(IndexSpec.nodeVector(...))`.
+
+A unique equality index (`IndexSpec.nodeUniqueEquality`) rejects a write that
+would duplicate a value with `unique_constraint_violation` (409,
+`retryable: false`), from the moment its build starts. Use it as the race-safe
+key of an upsert.
+
+### Index lifecycle
+
+Index DDL is asynchronous. Each `createIndexIfNotExists` / `dropIndex` entry
+returns one receipt object (a scalar, not an array):
+
+```text
+{ kind: "accepted", operation_id, index_id, generation }   // new build/drop queued
+{ kind: "existing_operation", operation_id }                // same request already in flight
+{ kind: "already_active", index_id, generation }            // identical index is active; nothing to wait for
+```
+
+```text
+g().getIndexOperation(operationId)     -> Traversal<"terminal", M>        // read batch
+g().retryIndexOperation(operationId)   -> Traversal<"terminal", "write">  // after fixing a blocker
+g().abortIndexOperation(operationId)   -> Traversal<"terminal", "write">  // discard a constructing build
+parseIndexDdlReceipt(value): IndexDdlReceipt
+parseIndexOperationStatus(value): IndexOperationStatus
+```
+
+`IndexOperationStatus.status` is `queued`, `running`, `blocked`, `succeeded` or
+`aborted`, with `operation_kind`, `family`, `stage`, `attempt` and `progress`. A
+`blocked` status adds `blocker_code` (`invalid_source_data`,
+`uniqueness_violation`, `oversized_entity`, `manifest_limit`,
+`object_store_configuration_unavailable`, `invariant_violation`) and an optional
+`message`; it does not resume on its own. Queries cannot rely on the index until
+the build `succeeded`. Lifecycle errors: `index_busy` (another lifecycle change
+is in progress), `index_build_blocked` (a write would overflow a blocked build's
+queue; fix the blocker and retry or abort the build first),
+`index_operation_not_abortable`, `index_operation_not_found`. An index request
+with several operations commits each one as it runs, so read state before
+resending a partly failed batch. See EXAMPLES.md §17 for a polling loop.
 Index properties are top-level only in the current runtime. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
 
 ---
 
-## Reserved / no-op builders
+## Fold, path and sack steps
 
-Emit the corresponding steps but have no effect in the current interpreter. Safe to include for forward-compatible queries.
+These execute; they are not no-ops.
 
 ```text
-.fold()   .unfold()   .path()   .simplePath()
-.withSack(initial)   .sackSet(prop)   .sackAdd(prop)   .sackGet()
+.fold()              // collect the stream into one folded value ([] when empty)
+.unfold()            // expand a folded value back into a stream
+.path()              // keep each row's traversal path in the output
+.simplePath()        // drop rows whose path revisits an element
+.withSack(initial)   // set a per-row sack value
+.sackSet(prop)       // sack = the row's property (cleared when missing)
+.sackAdd(prop)       // sack += numeric property (non-numeric or overflow fails)
+.sackGet()           // expose the sack in the output
 ```
+
+After `path()` or `sackGet()` (or with unprojected bindings) each row returns as
+`{ "bindings": {...}, "current": <element>, "path"?: [...], "sack"?: value }`
+instead of `{"$id": N}`.
 
 ---
 
@@ -636,18 +728,22 @@ objects use their structured `snake_case` schema form.
 ## Direct Requests
 
 ```text
-type QueryOptions = { queryName?: string | null }
+type QueryOptions = { queryName?: string | null; searchConsistency?: SearchConsistency } // searchConsistency: main only
 
 QueryRequest.read(batch: ReadBatch, queryName?: string | null)
 QueryRequest.write(batch: WriteBatch, queryName?: string | null)
-req.insertParameterValue(name, value)   req.insertParameterType(name, ty)
-req.withParameterValue(name, value)      req.withParameterType(name, ty)
+req.insertUntypedParameter(name, value: JsonValue)                 req.withUntypedParameter(name, value)
+req.insertTypedParameter(name, type: QueryParamType, value)        req.withTypedParameter(name, type, value)
 req.setQueryName(name)                   req.clearQueryName()
 req.withQueryName(name)
+req.withSearchConsistency(SearchConsistency.Eventual)  // main only; throws on a write request
 req.toJsonString()   req.toJsonBytes()
 // req.requestType -> "read" | "write" (lowercase on the wire)
 // req.queryName -> string | null         (serialized as top-level query_name)
 ```
+
+A request is either all untyped or all typed: mixing `insertUntypedParameter`
+and `insertTypedParameter` (or adding a duplicate name) throws `TypeError`.
 
 Most code reaches requests through
 `batch.toQueryJson(params, values, { queryName })` or
@@ -674,15 +770,26 @@ Client.server(url?: string | null)
   .withDatabaseId(id?: string | null)     // x-helix-database-id: <id> on every request (null/undefined clears it)
   .query<R = unknown>(request)             // direct POST /v2/query
 
+// main only: native Cypher and SQL (POST /v2/cypher, /v2/sql and their /explain routes)
+client.cypher(query, parameters = {}, queryName?): Promise<{ columns: string[]; rows: unknown[][] }>
+client.explainCypher(query, parameters = {}, queryName?)
+client.sql(query, parameters: unknown[] | Record<string, unknown> = [], mappings: SqlMappings = {}, queryName?)
+client.explainSql(query, parameters = [], mappings = {}, queryName?)
+
 // Advanced server-only request headers:
 client.requestBuilder<R>()
   .writerOnly()                            // X-Helix-Require-Writer: true
-  .warmOnly()                              // X-Helix-Warm: true
-  .shouldAwaitDurability(b: boolean)       // X-Helix-Await-Durable: true|false
-  .query(request)
+  .warmOnly()                              // X-Helix-Warm: true (reads only)
+  .shouldAwaitDurability(b: boolean)       // X-Helix-Await-Durable: true|false (writes only)
+  .query(request)                          // main only: .cypher(...) / .sql(...) take the same options
 
 await request.send(): Promise<R>           // 200 -> parsed JSON; Cloud warm 204 -> undefined; any other status -> HelixError
 ```
+
+With 3.2.0, call the Cypher/SQL routes with `fetch` and the same headers; the
+body is `{ "query", "parameters", "query_name" }` (SQL adds `mappings`, and
+`parameters` may be a list binding each `?` in order). Cypher and SQL failures
+return `{ "error": "<category>", "msg", "details": { "detail", "phase", "span" } }`.
 
 The Cloud service returns `204 No Content` after a successful warm fanout, and
 `send()` resolves `undefined` for it. Partial target failure is still a
@@ -700,7 +807,11 @@ const client = new Client(process.env.HELIX_URL)
   .withDatabaseId(process.env.HELIX_DATABASE_ID);
 ```
 
-Prefer `.shouldAwaitDurability(true)` on writes. Under concurrent writers, not awaiting durability raises the chance of HTTP 409 write conflicts; awaiting it reduces them (but does not eliminate them, so callers still own retry). Leaving it off is fine for low-concurrency or read paths.
+Writes wait for durability by default; leave `shouldAwaitDurability` unset.
+`.shouldAwaitDurability(false)` returns once the write is applied on the writer,
+so a crash before its WAL upload loses it; use it only when that loss is
+acceptable. It has no effect on conflicts. `.shouldAwaitDurability(true)` on a
+read is rejected with `400 invalid_request_option`.
 
 ```text
 import { Client, HelixError } from "@helix-db/helix-db";
@@ -715,26 +826,25 @@ type FindUsersResponse = { users: UserRow[] };
 const response = await client.query<FindUsersResponse>(request).send();
 ```
 
-Only empty declared returns use inferred shapes. At-most-one empties are
-`null`; collection, fold, and mutation empties are `[]`; scalar terminals keep
-`0` and `false`; an empty returns list produces `{}`. Populated values retain
-their existing representation, including the one-element array for an
-at-most-one traversal.
+The response is an object keyed by returned variable name. Every row-stream
+return is an array and an empty one is `[]`, including at-most-one lookups
+(`n(id)`, `limit(1)`) and skipped `varAsIf` entries. Only `count` (`number`),
+`exists` (`boolean`) and index DDL / lifecycle entries (one object) are scalars.
+An empty returns list produces `{}`. Unprojected node and edge streams return
+`{ "$id": number }` per element (search hits add `$distance` or `$score`).
 
 Type the complete top-level response by returned name:
 
 ```ts
 type FindUserResponse = {
-  user: UserRow[] | null;
+  user: UserRow[];      // at most one row; read user[0]
   friends: UserRow[];
   count: number;
 };
 
 const response = await client.query<FindUserResponse>(request).send();
+const user = response.user[0]; // undefined when not found
 ```
-
-Do not replace `null` with `[]` before contract validation; they represent
-different semantic cardinalities.
 
 Build the `QueryRequest` with `batch.toQueryRequest(...)`. Stored routes,
 registration, and query bundles are not supported.
@@ -745,21 +855,65 @@ registration, and query bundles are not supported.
 
 - `HelixError` — raised by `Client`/`send()`. `kind` distinguishes network,
   remote, serialization, URL, invalid-request, embedded-unavailable, and
-  embedded failures. Remote errors expose `statusCode`, optional open-string
-  `code`, `serverMessage`, structured `serverDetails`, and `rawBody` while
-  retaining `details` as the diagnostic compatibility field. Canonical Helix
-  `error`/`msg` (`error` is the code), legacy Helix `error`/`code`, defensive
-  generic-remote `code`/`message`/`details`, and embedded `error`/`msg` pairs are
-  preserved. Generic-remote decoding is not the Cloud gateway contract.
-  `isConflict()` classifies HTTP 409 and `isRateLimited()` classifies HTTP 429.
-  `retryable` and `isRetryable()` report the body's `retryable` flag when the
-  server sends one; a missing flag means unknown.
-  The client does not expose `Retry-After`; use direct HTTP when the exact Cloud
-  delay is required. Reconcile a `query_timeout` write before resubmitting.
-  Preserve unknown codes and never parse diagnostic text for control flow; see
-  `../../docs/error-handling.md`.
+  embedded failures. Remote errors expose `statusCode`, open-string `code` (the
+  body's `error` field), `serverMessage` (`msg`), `retryable`, structured
+  `serverDetails`, and `rawBody`, with `details` as the diagnostic compatibility
+  field.
+  - `isRetryable()` — true only when the body says `"retryable": true`. Use it
+    for retry decisions.
+  - `isConflict()` — 3.2.0: any HTTP 409, **including**
+    `unique_constraint_violation`. On `main`: `transaction_conflict` only. Do not
+    use it as a retry signal.
+  - `isRateLimited()` — any HTTP 429. `isIndexBackpressure()` (main only) —
+    `code === "index_backpressure"`.
+  - The client does not expose `Retry-After`; use direct HTTP when the exact
+    Cloud delay is required. Preserve unknown codes; never parse `msg` for
+    control flow.
 - `QueryError` — invalid parameter values, unknown parameters, serialization,
   or unsupported bytes parameters.
+
+### Error classes
+
+The envelope is `{ "error": "<code>", "msg": "<diagnostic>", "retryable"?: boolean }`;
+`retryable` is present only when the class settles it. Every code belongs to one
+class, and the class sets the status:
+
+| Class | HTTP | `retryable` | A failed write | Codes |
+| --- | ---: | --- | --- | --- |
+| Invalid request | 400 | absent | committed nothing | `invalid_request`, `invalid_query_json`, `invalid_request_body`, `invalid_request_option`, `unbound_parameter`, `invalid_node_id`, `active_text_mutation_limit_exceeded`, `invalid_vector_dimension`, `unsupported_unique_index_value_type`, other `invalid_*` value codes |
+| Planning | 400 | absent | committed nothing | `invalid_after_bind_operation`, `read_only_traversal_in_write_batch`, `duplicate_*`, `invalid_search_*`, `invalid_repeat_*`, `invalid_shortest_path_count`, `unbound_context`, other planner codes |
+| Not found | 404 | absent | committed nothing | `node_not_found`, `edge_not_found`, `index_not_found`, `index_operation_not_found` |
+| Timeout | 408 | absent | **may have committed** | `query_deadline_exceeded` |
+| Retryable conflict | 409 | `true` | committed nothing | `transaction_conflict`, `request_read_view_changed`, `stale_index_generation` |
+| Conflict with state | 409 | `false` | committed nothing | `unique_constraint_violation`, `index_already_exists`, `index_definition_conflict`, `index_busy`, `index_operation_not_abortable`, `index_build_blocked` |
+| Index backpressure | 429 | `true` | committed nothing | `index_backpressure` |
+| Resource limit | 429 | absent | committed nothing | `query_memory_limit_exceeded` |
+| Internal | 500 | absent | **may have committed** | `storage_error`, `internal_error`, `invalid_query`, `response_serialization_error`, `*_exhausted`, other internal codes |
+| Unavailable | 503 | absent | committed nothing | `writer_mode_required`, `reader_mode_required`, `database_closed`, `index_lifecycle_unavailable`, `migration_required`, `writer_migration_required`, `query_cancelled_by_reader_retirement` |
+| Commit outcome unknown | 503 | `false` | **may have committed** | `writer_fenced_commit_outcome_unknown` |
+
+- Retry with bounded backoff and jitter only when `isRetryable()` is true. For a
+  write that depends on what it read, rebuild it from fresh state.
+- `unique_constraint_violation`: report the duplicate or choose another key; from
+  an upsert's create branch, re-run the upsert once (it then takes the update
+  branch).
+- `index_busy`: wait for the running operation (`getIndexOperation`).
+  `index_build_blocked`: fix the build's `blocker_code`, then
+  `retryIndexOperation` or `abortIndexOperation`, before resending the write.
+- 408, 500 and `writer_fenced_commit_outcome_unknown`: a write may have
+  committed. Reconcile by reading it back before resubmitting.
+- `query_memory_limit_exceeded`: reduce the work; unchanged it fails again.
+- `invalid_request_body`: body over 16 MiB (2 MiB on Helix Cloud). `invalid_query_json`:
+  malformed JSON, unknown fields, or nesting deeper than 255 levels.
+
+The Helix Cloud gateway adds its own codes: `tenant_id_required` /
+`tenant_id_not_allowed` (400), `unauthorized` (401), `tenant_disabled` (402),
+`forbidden` (403), `query_timeout` (408, reconcile writes), `payload_too_large`
+(413), `rate_limited` (429, honor `Retry-After`), `backend_unavailable` /
+`rate_limit_unavailable` (503, back off), `failover_wait_unavailable` (503, not
+sent; retry after `Retry-After`), `write_outcome_unknown` (503, reconcile). Full
+reference: https://docs.helix-db.com/database/helix-db/query-guides/error-handling
+and https://docs.helix-db.com/database/helix-cloud/operate/error-handling.
 
 ---
 
@@ -804,6 +958,10 @@ JSON utilities. Use `stringifyJson` or `toJsonString` instead of raw
 | `SourcePredicate::eq(...)` | `SourcePredicate.eq(...)` |
 | `Predicate::eq_param(...)` | `Predicate.eqParam(...)` |
 | `vector_search_nodes_with(...)` | `vectorSearchNodesWith(...)` |
+| `shortest_path(src, dst, depth)` / `shortest_path_with(src, dst, label, dir, depth)` | `shortestPath(src, dst, depth, { label, direction })` |
+| `Expr::case(vec![(pred, expr)], Some(else))` | `Expr.case([[pred, expr]], elseExpr)` |
+| `get_index_operation` / `retry_index_operation` / `abort_index_operation` | `getIndexOperation` / `retryIndexOperation` / `abortIndexOperation` |
+| `with_typed_parameter(name, ty, value)?` | `withTypedParameter(name, type, value)` |
 | `#[query] fn` + fn params | `defineParams(...)` + a normal builder function |
 | `QueryRequest::read(b).with_query_name("route").to_json_string()` | `batch.toQueryJson(params, values, { queryName: "route" })` |
 | `Client::new(Some(url))?` / `.with_api_key(...)` | `new Client(url)` / `.withApiKey(...)` |

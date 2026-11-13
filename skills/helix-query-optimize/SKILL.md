@@ -1,18 +1,21 @@
 ---
 name: helix-query-optimize
-description: Review and improve HelixDB v3 query performance against the current planner and database execution model. Use for exact numeric equality, bitmap equality reads, bounded runtime membership, adjacent-filter canonicalization, batched unions, pre-materialization intersections, ordered range drivers, dedicated count programs, saturating windows, correctness fallbacks, bounded traversals, and vector/BM25 prefiltering. Examples use direct v3 SDK requests and the nested JSON AST. When the target is Helix Cloud, always use helix-mcp first and base the review on live observability evidence.
+description: Find and fix slow HelixDB queries. Use when a query is slow, latency or p99 is high, a query does a full scan, an index is not used, a count or ordered page is slow, a vector or BM25 search is slow or underfills, or the user asks to optimize, explain or review a query or choose an index. Covers anchors, label-scoped and unique indexes, waiting for async index builds, count and ordered-range plans, search prefiltering, consistency and limits, and Cypher/SQL explain. Works for the Rust, TypeScript, Python and Go SDKs and raw JSON. When the target is Helix Cloud, always use helix-mcp first and base the review on live observability evidence.
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.2.2
+  version: 3.3.0
 ---
 
 # HelixDB v3 Query Optimization
 
 Optimize the logical query shape and let the planner select the physical program.
-The planner work changes no public query AST or DSL syntax. The published v3
-SDKs all serialize the same direct operation tree, so the same rules apply to
-Rust, TypeScript, Python, Go, and raw JSON.
+The planner work changes no public query AST or DSL syntax. The v3 SDKs (Rust
+`helix-db` 3.0.0, TypeScript `@helix-db/helix-db` 3.2.0, Python `helix-db` 0.3.4,
+Go `sdks/go` v0.3.1) all serialize the same direct operation tree, so the same
+rules apply to Rust, TypeScript, Python, Go, and raw JSON. Behavior described
+here is checked against Docker `ghcr.io/helixdb/helixdb:v0.0.16` (the Helix CLI
+3.7.0 default).
 
 ## Required Helix Cloud evidence
 
@@ -82,13 +85,45 @@ materialize more elements.
 | Workload | Index |
 |---|---|
 | equality and membership | node or edge equality |
+| one owner per value (upsert keys, external IDs) | node unique equality |
 | range predicates and large ordered result sets | node or edge range |
 | nearest-neighbor search | node or edge vector |
 | full-text relevance | node or edge text |
 
 Do not expect an equality index to accelerate an arbitrary range, substring, or
-full-text query. Create indexes through a write request and wait for the returned DDL
-operation to become active before relying on indexed performance.
+full-text query.
+
+### Index builds are asynchronous
+
+Creating an index returns a receipt, not a finished index. The planner uses an
+index only after its build succeeds, so measure nothing until then.
+
+```rust
+// write: {"index": {"kind": "accepted", "operation_id": "…", "index_id": "42", "generation": "1"}}
+write_batch()
+    .var_as("index", g().create_index_if_not_exists(IndexSpec::node_equality("User", "status")))
+    .returning(["index"]);
+
+// read, repeated with backoff until op.status == "succeeded"
+read_batch()
+    .var_as("op", g().get_index_operation(operation_id))
+    .returning(["op"]);
+```
+
+- Receipt `kind`: `accepted` (new build; poll its `operation_id`),
+  `existing_operation` (the same build is already running; poll that
+  `operation_id`), `already_active` (nothing to wait for).
+- `status` moves `queued` → `running` → `succeeded`. `blocked` carries a
+  `blocker_code` (`invalid_source_data`, `uniqueness_violation`,
+  `oversized_entity`, ...) and never resumes on its own: fix the data, then run
+  `retry_index_operation(operation_id)` as a write, or `abort_index_operation`.
+- `index_busy` (409, not retryable) means another lifecycle operation on the
+  index is in flight; wait for it. `index_build_blocked` (409, not retryable)
+  rejects writes that would overflow a blocked build's queue until it is retried
+  or aborted.
+
+TypeScript: `createIndexIfNotExists`, `getIndexOperation`, `retryIndexOperation`,
+`abortIndexOperation`; Go: `CreateIndexIfNotExists`, `GetIndexOperation`, ...
 
 ## 3. Keep label scope
 
@@ -167,10 +202,10 @@ g()
 Avoid expanding a large subgraph, applying several broad filters, and limiting only
 at the end.
 
-A guaranteed upper bound of one changes only the empty response shape to
-`null`; populated values remain one-element arrays. Before adding or moving
-`limit(1)`, confirm the caller can decode `null`. Collections, folds, and
-mutations remain `[]` when empty, while scalar `0` and `false` remain scalars.
+Adding or moving `limit(1)` does not change the response shape: every row
+stream, including an at-most-one lookup, returns an array and `[]` when empty.
+Only `count()` (`0`) and `exists()` (`false`) return scalars. There is no
+`first()` builder; take the first element client-side.
 
 ## 9. Project Narrowly
 
@@ -196,6 +231,34 @@ underfill top-k; BM25 prefiltering refills to `k` when enough candidates match.
 Project `$distance` for vector results or `$score` for text results before traversing
 away from the ranked hit stream.
 
+Search limits (checked server-side):
+
+- A whole-index vector or text search returns at most 800 hits; a larger `k` is
+  clamped.
+- A traversal-scoped vector search fails when `min(k, unique candidates)` exceeds
+  800; a traversal-scoped text search returns at most `min(candidates, k, 800)`.
+- More than 1,000,000 unique candidates fails either search. Narrow the
+  candidate stream first.
+
+Search consistency is a request option for reads:
+
+- `strong` (default): every committed vector/text write is searchable, including
+  work the index worker has not published yet. When a search's answer lies
+  behind too much unpublished work it fails with `index_backpressure` (429,
+  `retryable: true`).
+- `eventual`: each search includes a bounded amount of unpublished work and
+  serves the rest as last published, so it is never rejected with
+  `index_backpressure`, but it can return a hit that has since changed tenant,
+  label or indexed property. Use it for latency-sensitive reads that tolerate
+  that; keep `strong` when every hit must match current tenant scope.
+
+The published SDK packages cannot set it yet; send
+`"search_consistency": "eventual"` in a direct HTTP request (SDK source on
+`main`: Rust `.with_search_consistency(SearchConsistency::Eventual)?`,
+TypeScript `toQueryRequest({ searchConsistency: SearchConsistency.Eventual })`,
+Go `.WithSearchConsistency(helix.SearchConsistencyEventual)`, Python
+`to_query_request(search_consistency=SearchConsistency.EVENTUAL)`).
+
 ## 11. Use Range Indexes As Ordered Drivers
 
 For a compatible ordered range index, the planner can build/intersect equality
@@ -209,6 +272,13 @@ may still require materialization and sorting.
 
 Deep offset pagination still does work proportional to the skipped prefix. Prefer a
 cursor predicate on the ordered property where possible.
+
+Elements missing the sort property sort first for `Asc` and last for `Desc`
+(the opposite of SQL and Cypher defaults). Filter them out with
+`has_key`/`hasKey` when a page must start with real values.
+
+`order_by` never changes a count. Drop it from count-only routes; the planner
+ignores it there anyway.
 
 ## 12. Let `count()` Select A Count Program
 
@@ -244,11 +314,28 @@ proven plan over an unverified index read.
 
 ## 15. Make Writes Idempotent Where Required
 
-`addN`/`add_n` creates new data. For an upsert:
+`addN`/`add_n` creates new data, and `add_e` creates one edge per source and
+target pair on every run. For an upsert, use one write batch:
 
-1. Load the existing object by an equality-indexed unique property.
-2. Conditionally update when the named result is non-empty.
-3. Conditionally create when it is empty.
+1. Load the existing object by its key into a variable.
+2. `var_as_if(VarNotEmpty(var), update)`.
+3. `var_as_if(VarEmpty(var), create)`.
+
+Back the key with a unique equality index
+(`IndexSpec::node_unique_equality("User", "email")`; TypeScript
+`IndexSpec.nodeUniqueEquality`, Go `helix.NodeUniqueEqualityIndex`). Lookups
+become owner point reads, and two concurrent creates cannot both commit: the
+loser fails with `unique_constraint_violation` (409, `retryable: false`).
+Re-run the upsert once on that error; it then takes the update branch. A plain
+equality index does not prevent duplicates.
+
+Writes wait for durability by default. Skipping the wait
+(`should_await_durability(false)`, `X-Helix-Await-Durable: false`) lowers write
+latency but a crash can lose the write; it does not reduce conflicts. Sending
+`true` on a read is `400 invalid_request_option`. Branch retries on the error's
+`retryable` field: `transaction_conflict` (409) and `index_backpressure` (429)
+are retryable; `unique_constraint_violation`, `index_busy` and
+`index_build_blocked` (409) are not.
 
 On multigraphs, identify the exact edge or use a label-scoped drop. Avoid a broad
 source/target deletion when parallel edges may exist.
@@ -279,6 +366,17 @@ The v3 SDKs build `QueryRequest` values and execute them directly:
 Stored routes, registration, `defineQueries`, and `queries.json` bundles are not part
 of the v3 SDK contract. Authoring with Rust `#[query]` still produces a direct request.
 
+## Cypher and SQL
+
+The server runs Cypher (`POST /v2/cypher`) and SQL (`POST /v2/sql`) natively, and
+plans them against the same indexes. To see which index a statement uses, send the
+same body (`{"query": "...", "parameters": {...}}`) to `POST /v2/cypher/explain` or
+`POST /v2/sql/explain`: it plans without running and reports the selected access
+paths, estimated cardinalities, sorts and warnings. An equality on a labeled node
+(`MATCH (u:User {email: $email})`) reads an equality index; a range or ordered
+`LIMIT` reads a range index; arithmetic or function calls on the property keep
+the label scan. See https://docs.helix-db.com/database/helix-db/query-guides/cypher
+
 ## Checklist
 
 - [ ] Helix Cloud review fetched the live active index inventory before deciding index usability
@@ -286,20 +384,22 @@ of the v3 SDK contract. Authoring with Rust `#[query]` still produces a direct r
 - [ ] source is the narrowest practical indexed set
 - [ ] label scope is present for label-scoped indexes
 - [ ] index family matches the predicate or search
-- [ ] index creation has completed before performance is measured
+- [ ] index build polled to `succeeded` (`get_index_operation`) before performance is measured
+- [ ] upsert keys use a unique equality index
 - [ ] numeric equality preserves exact cross-type semantics, normalized zero, and non-indexable NaN
 - [ ] equality unions/intersections remain one logical set expression where possible
 - [ ] every union arm is independently indexable, or its fallback is acknowledged
 - [ ] runtime membership stays bounded and preserves authoritative fallbacks
 - [ ] related filters are contiguous; no predicate is moved across an operation boundary
 - [ ] expansion is bounded near its source
-- [ ] any new at-most-one bound preserves the caller's nullable response contract
+- [ ] callers decode every row return as an array (`[]` when empty)
 - [ ] projection includes only required fields
 - [ ] tenant-scoped search passes the tenant value at search time
 - [ ] vector and BM25 candidate filters run before traversal-scoped search
 - [ ] `$distance` or `$score` is projected before leaving the hit stream
+- [ ] search `k` and candidate counts stay within 800 / 1,000,000; `eventual` consistency only where stale hits are acceptable
 - [ ] ordered range routes use a matching range index, filter before the limit, and avoid a redundant sort
-- [ ] count-only routes end in `count()` without unnecessary projection/materialization
+- [ ] count-only routes end in `count()` without unnecessary projection/materialization or `order_by`
 - [ ] limit/skip/range windows preserve semantic order and saturate rather than wrap
 - [ ] unique, range, null, dynamic-membership, late-bound, and identity-sensitive fallbacks remain authoritative
 - [ ] recursive depth and bulk batch sizes are bounded

@@ -2,7 +2,8 @@
 
 ## Prompt
 
-Translate these Cypher tasks into Helix Rust DSL queries:
+Run or translate these Cypher tasks for Helix (Rust DSL where a DSL route is
+needed):
 
 ```cypher
 UNWIND $memberships AS membership
@@ -23,26 +24,45 @@ DETACH DELETE u
 
 ## Focus Areas
 
+- which statement runs natively (the delete) and which must be translated
+  (`FOREACH` and `MERGE` are rejected)
 - array expansion for per-item writes
-- relationship creation per element
-- null checks
-- filter then delete
+- relationship MERGE without duplicate edges or failed batches
+- null checks and filter-then-delete
 
 ## Gold Expectations
 
-- use `for_each_param(...)` for the array-expansion flow
-- perform per-item node lookups and edge writes inside that iteration
-- use `Predicate::is_null("deletedAt")` for the delete filter
-- call `drop()` after narrowing the target set
+- the delete runs natively on `POST /v2/cypher`; as a DSL route it narrows with
+  `Predicate::is_null("deletedAt")` (a missing property counts as null) and calls
+  `drop()`, which always removes incident edges
+- the membership task uses `for_each_param("memberships", body)`; each object's
+  `userId` and `groupId` fields are parameters inside the body
+- the body creates the edge only when both nodes exist and the edge does not:
+  read `u`'s `MEMBER_OF` targets, keep the group `without` them, and guard
+  `add_e` with `var_as_if(VarNotEmpty(..))`
+- does not use a bare `add_e`: it duplicates edges on re-runs, and an empty
+  group fails the whole batch
 
 ## Gold Translation Sketch
 
 ```text
-// array-driven relationship creation
-write_batch()
-    .for_each_param("memberships", /* per-item lookup and add_e(...) work */)
+// array-driven relationship merge
+write_batch().for_each_param(
+    "memberships",
+    write_batch()
+        .var_as("u", g().n_with_label("User").where_(Predicate::eq_param("userId", "userId")))
+        .var_as("grp", g().n_with_label("Group").where_(Predicate::eq_param("groupId", "groupId")))
+        .var_as("linked", g().n(NodeRef::var("u")).out(Some("MEMBER_OF")))
+        .var_as("missing", g().n(NodeRef::var("grp")).without("linked"))
+        .var_as_if(
+            "created",
+            BatchCondition::VarNotEmpty("missing".to_string()),
+            g().n(NodeRef::var("u"))
+                .add_e("MEMBER_OF", NodeRef::var("missing"), Vec::<(&str, PropertyInput)>::new()),
+        ),
+)
 
-// filter then delete
+// filter then delete (or send the Cypher natively)
 write_batch()
     .var_as(
         "targets",
@@ -55,8 +75,8 @@ write_batch()
 
 ## Scoring Checklist
 
-- [ ] Uses `for_each_param(...)` for the `UNWIND` translation
-- [ ] Performs per-item graph work rather than trying to fake array expansion with a scalar traversal
-- [ ] Uses `Predicate::is_null` for the null check
-- [ ] Filters before deleting
-- [ ] Uses `drop()` for the delete path
+- [ ] Sends or offers the delete natively
+- [ ] Uses `for_each_param(...)` for the `UNWIND` + `FOREACH` translation
+- [ ] Checks for an existing edge before `add_e`
+- [ ] Guards against a missing group so the batch cannot fail
+- [ ] Uses `Predicate::is_null` for the null check and `drop()` after filtering

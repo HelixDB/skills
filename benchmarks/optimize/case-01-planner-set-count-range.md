@@ -26,7 +26,7 @@ The caller only needs the number of matching rows in that ordered 50-row window.
 
 - same-index equality bitmap union
 - multi-index intersection before row materialization
-- ordered range driver filtering before limit
+- ordering is irrelevant to a count; range driver only for the row-returning variant
 - dedicated count program instead of ID materialization
 - exact numeric/NaN/null semantics
 - unique verification and late-bound dynamic equality
@@ -38,8 +38,9 @@ The caller only needs the number of matching rows in that ordered 50-row window.
 
 - Keep `status == open OR status == queued` as one logical source expression so same-index points can use a batched bitmap union.
 - Intersect the status union with the `(Order, region)` equality bitmap before loading rows.
-- Use the descending `createdAt` range index as the ordered driver, apply equality filters before satisfying `limit(50)`, and avoid a redundant sort.
-- End in `.count()`, not `.id()` plus client-side length, so the planner can select a dedicated count program.
+- Drop `order_by("createdAt", Order::Desc)`: ordering never changes a count, so the size of the ordered 50-row window is `min(50, matches)` and the range index is not needed for this answer (the planner ignores an order in a count's trailing window anyway).
+- State that the descending `createdAt` range index matters only if the caller later needs the rows themselves: it then drives the ordered scan, applies equality filters before satisfying `limit(50)`, and avoids a redundant sort.
+- End in `.limit(50).count()`, not `.id()` plus client-side length, so the planner can select a dedicated bitmap count clamped to 50.
 - Explain that count windows use normalized saturating arithmetic while preserving operator order.
 - State that exact cross-numeric equality does not round integers through `f64`; signed zero normalizes; NaN is non-reflexive/non-indexable.
 - State that null equality needs an authoritative scan, unique equality verifies the owner, range candidates are verified, and a genuinely late-bound parameter may use a dynamic equality program.
@@ -60,18 +61,34 @@ g().n_with_label_where(
         SourcePredicate::eq("region", "eu"),
     ]),
 )
-.order_by("createdAt", Order::Desc)
 .limit(50)
 .count()
+```
+
+Row-returning variant (where the range index is the ordered driver):
+
+```rust
+g().n_with_label_where(
+    "Order",
+    SourcePredicate::and(vec![
+        SourcePredicate::or(vec![
+            SourcePredicate::eq("status", "open"),
+            SourcePredicate::eq("status", "queued"),
+        ]),
+        SourcePredicate::eq("region", "eu"),
+    ]),
+)
+.order_by("createdAt", Order::Desc)
+.limit(50)
+.value_map(Some(vec!["$id", "createdAt"]))
 ```
 
 ## Scoring Checklist
 
 - [ ] Uses one same-index equality union for the two status values
 - [ ] Intersects status and region ID sets before row materialization
-- [ ] Selects the descending range index as the ordered driver
-- [ ] Applies equality filters before the 50-row limit
-- [ ] Avoids an unnecessary in-memory sort
+- [ ] Drops `order_by` from the count-only shape
+- [ ] Explains the range index as the ordered driver only for the row-returning variant, filtering before the 50-row limit without an in-memory sort
 - [ ] Replaces ID materialization/client length with `.count()`
 - [ ] Mentions dedicated bitmap/range/streaming count alternatives and normalized saturating windows
 - [ ] Correctly covers exact cross-numeric equality, normalized zero, and non-indexable NaN
