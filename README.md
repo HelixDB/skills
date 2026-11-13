@@ -14,9 +14,9 @@ These skills are for agents that need to:
 - translate from Cypher, Gremlin, SQL, and legacy HelixQL (HQL) into Helix query code
 - optimize Helix query shape and index usage
 - build correct dynamic `POST /v2/query` payloads
-- inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the hosted read-only MCP server
-- execute authorized Helix Cloud queries through the separate Query MCP broker
-- run confirmation-gated tenant and database-key mutations through the separate Admin MCP server
+- inspect Helix Cloud query insights, latency, recommendations, usage, and cluster health through the Helix MCP server
+- execute authorized Helix Cloud queries through the same server's query tools
+- run confirmation-gated tenant and database-key mutations through the same server's admin tools
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
 - read and ask Helix Foundry ontologies, send pieces of JSON to Foundry API sources, and run confirmation-gated Foundry syncs, generations, revisions, document uploads and loads
 - set up a Helix Foundry ontology end to end: connect data, send pieces to an API source or upload documents, write its goal, generate, review and load it
@@ -43,9 +43,8 @@ Available now:
 - `helix-query-python`
 - `helix-memory-system`
 
-Planned next:
-
-- `helix-query-from-sql`
+SQL input is covered by `helix-query-from-cypher`: the server runs SQL natively at
+`POST /v2/sql`, so there is no separate SQL skill.
 
 ## Install
 
@@ -69,11 +68,21 @@ gemini extensions install https://github.com/HelixDB/skills
 
 ## Helix Cloud queries
 
+Helix Cloud has one MCP server, `https://mcp.helix-db.com/mcp`, with one OAuth
+audience. The tools it lists depend on who connects: a signed-in user gets
+discovery and observability plus the query, admin and Foundry tools their
+permissions allow; a service credential (`hlxs_`) gets query, admin and Foundry
+tools for its project grants but no discovery or observability; an agent
+registration gets `helix_get_started` and query tools on its own sandbox; a
+Foundry send token gets `helix_foundry_send_pieces` alone. The former
+`admin-mcp.helix-db.com` and `query-mcp.helix-db.com` servers are retired.
+
 When the target is Helix Cloud, every query-authoring skill uses
 `helix-mcp` first. The agent resolves the live database and reads relevant
 active indexes, insights, latency, and recommendations before authoring,
-translating, debugging, or optimizing a query. `helix-mcp` remains read-only;
-explicit agent-side Cloud execution uses the separate `helix-query-mcp` broker.
+translating, debugging, or optimizing a query. `helix-mcp` covers those
+read-only tools; explicit agent-side execution uses `helix-query-mcp`, and
+tenant or key changes use `helix-admin-mcp`, all on the same server.
 
 Every MCP skill also tells agents to report problems through `helix_feedback`: a
 bug, a missing capability or a confusing result, one call per problem, without the
@@ -90,12 +99,14 @@ them against. To stand one up locally — no Cloud login required:
    ```bash
    helix init local
    ```
-4. Set `tag = "v0.0.5"` in the generated `[local.dev]` block in `helix.toml`, then run `helix start dev` (`helix run` is an alias). The explicit tag also works with CLI versions that default to an older image.
+4. Run `helix start dev` (`helix run` is an alias). CLI 3.7.0 writes and runs
+   `ghcr.io/helixdb/helixdb:v0.0.16`; if an older project pins an older `tag` in
+   `[local.dev]`, update it to `v0.0.16`.
 5. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
 
-The `ghcr.io/helixdb/helixdb:v0.0.5` runtime is in-memory by default; `--disk`
-uses a CLI-managed MinIO service for persistence. Direct Docker runs also support
-native-volume storage through `HELIX_DATA_DIR`; see the
+The local runtime is in-memory by default; `--disk` uses a CLI-managed SeaweedFS
+sidecar for persistence (data from older MinIO-based CLIs is not readable).
+Direct Docker runs also support native-volume storage through `HELIX_DATA_DIR`; see the
 [CLI examples](skills/helix-cli/EXAMPLES.md). The skills
 produce direct `POST /v2/query` requests for a running instance reachable at a
 server URL. Cloud CLI query execution instead uses a WorkOS session and the
@@ -108,7 +119,8 @@ the non-interactive/agent path.
 
 `helix-foundry-mcp` reads a workspace's Foundry ontologies, their versions, loads
 and graph, asks Foundry's query agent questions with cited answers, and sends pieces
-of JSON data to an API source. `helix-foundry-actions-mcp` runs the changes a user
+of JSON data to an API source, and records an agent's reads, questions and sends
+as workflow runs (`workflow_run_id`). `helix-foundry-actions-mcp` runs the changes a user
 asks for (create an ontology or an API source, sync a connector, generate or revise
 a draft, upload and organize documents, settle a review, make a version or load
 current, create a load), each through a one-time confirmation. Connectors with
@@ -149,8 +161,9 @@ onboarding needs you signed in.
 
 ### `helix-mcp`
 
-Use this skill when an agent needs to inspect authorized Helix Cloud resources
-and observability data through the hosted read-only MCP server.
+Use this skill when an agent needs to discover authorized Helix Cloud resources
+and read observability data through the Helix MCP server's read-only tools, or
+recover from MCP sign-in and missing-tool problems.
 
 It teaches agents to:
 
@@ -169,7 +182,8 @@ It teaches agents to:
 
 - use the v3 mental model: a runtime orchestrator, not a compiler (no `helix compile`/`helix check`, no `.hx` workflow)
 - run the local dev loop (`helix init local` → `start` → `query` → `stop`) with Docker/Podman, including in-memory vs `--disk` persistence
-- send dynamic queries to `POST /v2/query` via `helix query` (`--file`/`--json`/`-e` TypeScript DSL/`--ts-file`)
+- run every command with the global `--json` (no prompts, JSON errors with candidates) and ask the user to run the interactive `helix auth login`
+- send dynamic queries to `POST /v2/query` via `helix query` (`--file`/`--body`/`-e` TypeScript DSL/`--ts-file`), Cypher via `helix cypher`, and check setups with `helix doctor`
 - operate on Helix Cloud with a WorkOS session (`auth`, `workspace`, `project`, `cluster`, `database`, `service-credential`, `api`)
 - run Cloud `query`/`shell` through the broker without application keys or direct gateway URLs
 - read stable links in `helix.toml`; there is no global workspace-selection file
@@ -178,15 +192,17 @@ It points to the `helix-query-*` skills for the query bodies themselves; see its
 
 ### `helix-query-mcp`
 
-Use this skill for explicitly requested Helix Cloud reads and durable-confirmation-gated writes. It
-teaches independent query permissions, exact v3 payload binding, no-retry execution, and the
-untrusted-data boundary.
+Use this skill for explicitly requested Helix Cloud reads and durable-confirmation-gated writes
+through the MCP server's query tools, and for an agent's `helix_get_started` sandbox. It teaches the
+`{database, query_json}` argument contract, checking `status_code`, independent query permissions,
+exact v3 payload binding, no-retry execution, and the untrusted-data boundary.
 
 ### `helix-admin-mcp`
 
 Use this skill only for explicitly requested tenant create/delete or application database-key
-create/revoke operations. It teaches typed durable confirmations, raw-secret-once handling, and the
-excluded Cloud lifecycle surfaces.
+create/revoke operations through the MCP server's admin tools. It teaches each operation's target
+and payload, typed durable confirmations, raw-secret-once handling, and the excluded Cloud
+lifecycle surfaces.
 
 ### `helix-foundry-mcp`
 
@@ -264,14 +280,14 @@ It teaches agents to:
 
 ### `helix-query-from-cypher`
 
-Use this skill when an agent needs to port Neo4j or Cypher queries into Helix Rust DSL.
+Use this skill when an agent needs to run or port Neo4j, Cypher or SQL queries on Helix.
 
 It teaches agents to:
 
-- translate `MATCH` into explicit anchors and traversals
-- map `WHERE` to `Predicate` logic
-- map `RETURN`, `DISTINCT`, ordering, and limits into explicit output shaping
-- handle `OPTIONAL MATCH`, `MERGE`, `CASE`, `UNWIND`, `FOREACH`, multi-hop traversal, null checks, and timestamps as Helix-native translations rather than literal rewrites
+- send supported Cypher (`POST /v2/cypher`) and SQL (`POST /v2/sql`) to the server as they are, and check plans with the `/explain` routes
+- hand-translate into the v3 DSL only what the profile rejects (`MERGE`, variable-length paths, `FOREACH`, search)
+- keep Cypher semantics when translating: `OPTIONAL MATCH` via bind + `optional` + `project_bindings`, `CASE` via `Expr::case`, null ordering, and target labels via `has_label`
+- replace `MERGE` with a unique equality index plus a conditional create
 
 ### `helix-query-from-gremlin`
 
@@ -286,13 +302,14 @@ It teaches agents to:
 
 ### `helix-query-from-hql`
 
-Use this skill when an agent needs to migrate legacy HelixQL (HQL) `.hx` queries into the v3 Rust or TypeScript DSL.
+Use this skill when an agent needs to migrate legacy HelixQL (HQL) `.hx` queries into the v3 DSL (Rust or TypeScript, with name mappings for Go and Python).
 
 It teaches agents to:
 
 - map every HQL construct (`N<T>`/`E<T>`, `Out`/`In`/`OutE`/`FromN`/`ToN`, `WHERE`/`EQ`/`IS_IN`, projections, `GROUP_BY`/`AGGREGATE_BY`, `ORDER`/`RANGE`, `AddN`/`AddE`/`UPDATE`/`DROP`, `SearchV`/`SearchBM25`) to its Rust and TypeScript builder
 - handle the Rust-vs-TypeScript spelling differences (`in_`/`in`, `where_`/`where`, `::`/`.`, `Some()`/`null`)
-- flag HQL features with no DSL equivalent (`Upsert`, `RerankRRF`/`RerankMMR`, shortest-path, `Embed`, advanced math, `EXISTS`/count-in-`WHERE`, schema defaults, `#[model]`/`#[mcp]`) and move that logic to application code
+- map `Upsert` to a one-batch conditional create (`var_as_if`) backed by a unique index, and unweighted shortest paths to `shortest_path`
+- flag HQL features with no DSL equivalent (`RerankRRF`/`RerankMMR`, weighted shortest paths, `Embed`, advanced math, `EXISTS`/count-in-`WHERE`, schema defaults, `#[model]`/`#[mcp]`) and move that logic to application code
 - verify each migration by compiling, diffing the Rust vs TypeScript JSON AST for parity, and running against the same data
 
 ### `helix-query-optimize`
