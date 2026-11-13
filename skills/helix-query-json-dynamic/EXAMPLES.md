@@ -355,8 +355,9 @@ nodes return only `$id`):
 
 ## Upsert by a unique key
 
-Create the unique index once (it rejects duplicates from the moment its build
-starts):
+Create the unique index once (while it builds it rejects only values already
+claimed by a scanned entity or a newer write; an unscanned duplicate blocks the
+build instead):
 
 ```json
 {

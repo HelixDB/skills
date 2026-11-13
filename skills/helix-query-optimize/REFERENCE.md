@@ -73,8 +73,11 @@ receipt, never a finished index:
 after `succeeded`: the planner does not choose an index whose build has not
 activated. A `blocked` build names a `blocker_code`; repair the data, then
 `retry_index_operation(operation_id)`, or `abort_index_operation(operation_id)`.
-A unique index checks writes from the moment its build starts, so duplicates in
-existing data block the build rather than the writes.
+While a unique index builds, a write is rejected only if its value is already
+claimed, by an entity the build has scanned or by a write since the build
+started. A duplicate of a value held only by a not-yet-scanned entity is written,
+and the build blocks (`uniqueness_violation`) when its scan reaches that entity;
+duplicates in existing data block the build rather than the writes.
 
 | Error | HTTP | `retryable` | Meaning |
 | --- | ---: | --- | --- |

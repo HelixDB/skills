@@ -647,8 +647,11 @@ Range indexes default to ascending physical order. Use `RangeIndexDirection::Des
 Index properties are top-level only in the current runtime. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
 
 A unique equality index rejects a write that would duplicate a value with
-`unique_constraint_violation` (409, `retryable: false`), from the moment its
-build starts. It is the race-safe key for an upsert.
+`unique_constraint_violation` (409, `retryable: false`). While the build runs it
+rejects only a value already claimed, by an entity the build has scanned or by a
+write since the build started; a duplicate of a value held only by a
+not-yet-scanned entity is written, and the build blocks (`uniqueness_violation`)
+when its scan reaches that entity. It is the race-safe key for an upsert.
 
 ### Index lifecycle
 
@@ -822,7 +825,8 @@ For the JSON wire encoding, see `../helix-query-json-dynamic/REFERENCE.md` (opti
 ### `Client` (sending requests)
 
 ```text
-use helix_db::{Client, HelixError, QueryErrorCode};
+use helix_db::{Client, HelixError};
+use helix_db::QueryErrorCode;   // main only; 3.0.0 has none: parse `error` from RemoteError { details }
 
 Client::new(url: Option<&str>) -> Result<Self, HelixError>   // default "http://localhost:6969"
     .with_api_key(api_key: Option<&str>) -> Self              // Authorization: Bearer <key>
@@ -964,7 +968,7 @@ HTTP 429. Known codes parse as `QueryErrorCode`; unknown codes stay available as
 strings.
 
 ```rust
-use helix_db::QueryErrorCode;
+use helix_db::QueryErrorCode; // main only (3.0.0: see below)
 
 match client.query::<serde_json::Value>(request).send().await {
     Ok(response) => Ok(response),

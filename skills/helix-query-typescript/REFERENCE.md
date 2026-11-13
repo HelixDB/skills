@@ -641,8 +641,11 @@ as `createIndexIfNotExists(IndexSpec.nodeVector(...))`.
 
 A unique equality index (`IndexSpec.nodeUniqueEquality`) rejects a write that
 would duplicate a value with `unique_constraint_violation` (409,
-`retryable: false`), from the moment its build starts. Use it as the race-safe
-key of an upsert.
+`retryable: false`). While the build runs it rejects only a value already claimed,
+by an entity the build has scanned or by a write since the build started; a
+duplicate of a value held only by a not-yet-scanned entity is written, and the
+build blocks (`uniqueness_violation`) when its scan reaches that entity. Use it as
+the race-safe key of an upsert.
 
 ### Index lifecycle
 

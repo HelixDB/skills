@@ -437,8 +437,10 @@ Poll until `IndexOperationSucceeded`; queries cannot use the index before then.
 `IndexOperationBlocked` carries `BlockerCode` (`uniqueness_violation`,
 `invalid_source_data`, `oversized_entity`, ...) and does not resume on its own:
 fix the data, then `RetryIndexOperation`, or `AbortIndexOperation`. A unique
-index rejects duplicate writes with `unique_constraint_violation` from the
-moment its build starts. Related errors: `index_busy` (another lifecycle
+index rejects duplicate writes with `unique_constraint_violation`; while it
+builds, only values already claimed (by an entity the build has scanned, or a
+write since the build started) are rejected, and a duplicate of a not-yet-scanned
+entity's value blocks the build when the scan reaches it. Related errors: `index_busy` (another lifecycle
 operation on the index is running), `index_build_blocked` (a write would
 overflow a blocked build's queue; fix and retry or abort the build first).
 

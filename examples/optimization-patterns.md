@@ -171,6 +171,10 @@ This enforces exact candidate membership. Source vector search followed by
 
 ## Traversal-scoped Full Text Search prefilter
 
+Traversal `text_search_with` is SDK `main` only. With helix-db 3.0.0, bind the
+candidates, then use `g().text_search_nodes_with(..).within("<var>")`, which filters
+after top-k and can underfill.
+
 ```rust
 g().n_with_label("Document")
     .where_(Predicate::eq_param("tenantId", "tenantId"))

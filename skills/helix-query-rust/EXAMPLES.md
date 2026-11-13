@@ -157,6 +157,8 @@ pub fn document_search(
             g().n_with_label("Document")
                 .where_(Predicate::eq_param("tenantId", "tenantId"))
                 .where_(Predicate::eq("published", true))
+                // main only. 3.0.0: bind these candidates, then
+                // g().text_search_nodes_with(..).within("<var>") (can return fewer than k).
                 .text_search_with(
                     "Document",
                     "body",
@@ -679,7 +681,7 @@ rejected with `400 invalid_request_option` before execution.
 ## 19. Handle Structured Remote Errors
 
 ```rust
-use helix_db::QueryErrorCode;
+use helix_db::QueryErrorCode; // main only (3.0.0: see below)
 
 match client.query::<serde_json::Value>(request).send().await {
     Ok(response) => Ok(response),

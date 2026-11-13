@@ -35,6 +35,8 @@ read_batch()
         g().n_with_label("Document")
             .where_(Predicate::eq_param("tenantId", "tenantId"))
             .where_(Predicate::eq("published", true))
+            // SDK main only. helix-db 3.0.0: bind these candidates, then
+            // g().text_search_nodes_with(..).within("<var>") (can return fewer than k).
             .text_search_with(
                 "Document",
                 "body",

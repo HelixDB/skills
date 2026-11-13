@@ -143,7 +143,8 @@ For BM25 routes, check:
 - does a traversal define the eligible node or edge IDs?
 - if so, are candidates built before traversal-scoped text search?
 
-Example:
+Example (Rust SDK `main` only; with helix-db 3.0.0 bind the candidates, then
+`g().text_search_nodes_with(..).within("<var>")`, which can underfill top-k):
 
 ```text
 g().n_with_label("Document")

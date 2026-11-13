@@ -634,6 +634,8 @@ pub fn hybrid_recall(
             "memoryKeyword",
             g().n_with_label("Memory")
                 .where_(current_user_memory_predicate("now", "userId"))
+                // main only. helix-db 3.0.0: bind these candidates, then
+                // g().text_search_nodes_with(..).within("<var>") (can return fewer than k).
                 .text_search_with(
                     "Memory",
                     "content",
@@ -675,6 +677,7 @@ pub fn hybrid_recall(
             "chunkKeyword",
             g().n_with_label("Chunk")
                 .where_(live_user_chunk_predicate("userId"))
+                // main only; 3.0.0 alternative as for memoryKeyword above.
                 .text_search_with(
                     "Chunk",
                     "content",

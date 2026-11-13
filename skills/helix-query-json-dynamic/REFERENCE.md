@@ -342,8 +342,10 @@ element (`"current"`):
 ```
 
 A unique equality index rejects a duplicate write with
-`unique_constraint_violation` (`409`, `retryable: false`) from the moment its
-build starts; it is the race-safe key for an upsert.
+`unique_constraint_violation` (`409`, `retryable: false`); it is the race-safe key
+for an upsert. While the build runs, only values already claimed (by an entity the
+build has scanned, or a write since the build started) are rejected; a duplicate
+of a not-yet-scanned entity's value blocks the build when the scan reaches it.
 
 Receipt (`create_index`, `drop_index`), with IDs as decimal strings:
 

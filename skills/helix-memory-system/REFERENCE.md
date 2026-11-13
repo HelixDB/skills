@@ -263,7 +263,9 @@ expiresAt IS NULL OR expiresAt > now
 
 For vector and BM25, build this candidate stream first and call traversal-scoped
 `vectorSearchWith`/`vector_search_with` or
-`textSearchWith`/`text_search_with`; Helix then ranks only visible, live IDs. If
+`textSearchWith`/`text_search_with` (Rust `text_search_with` is SDK `main` only; with
+helix-db 3.0.0 bind the candidates, then `g().text_search_nodes_with(..).within("<var>")`,
+which can return fewer than `k`); Helix then ranks only visible, live IDs. If
 a route cannot express a future-time or ACL condition, enforce it in application
 code before context packing. Never return records that fail scope or lifecycle
 policy because they appeared in a tenant-scoped search result.
@@ -443,7 +445,7 @@ Never include embedding arrays in normal responses.
 | `.where(Predicate.isNull("deletedAt"))` | `.where_(Predicate::is_null(...))` | post-source filter |
 | `.vectorSearchNodesWith(label, prop, p.vec, p.k, p.tenant_id)` | `.vector_search_nodes_with(label, prop, PropertyInput::param("vec"), Expr::param("k"), Some(PropertyInput::param("tenant_id")))` | tenant arg last |
 | `.vectorSearchWith(label, prop, p.vec, p.k, p.tenant_id)` | `.vector_search_with(...)` | exact vector membership over the current node/edge stream |
-| `.textSearchWith(label, prop, p.q, p.k, p.tenant_id)` | `.text_search_with(...)` | exact BM25 over the current node/edge stream |
+| `.textSearchWith(label, prop, p.q, p.k, p.tenant_id)` | `.text_search_with(...)` (Rust SDK `main` only) | exact BM25 over the current node/edge stream |
 | `.addN("Memory", { ... })` | `.add_n("Memory", vec![("k", ...)])` | TS takes an object map |
 | `.addE("OWNS", NodeRef.var("mem"), { tenant_id: p.tenant_id })` | `.add_e("OWNS", NodeRef::var("mem"), vec![("tenant_id", ...)])` | put tenant scope on edges |
 | `.setProperty("lastAccessedAt", Expr.datetime())` | `.set_property("lastAccessedAt", Expr::datetime())` | typed DateTime |

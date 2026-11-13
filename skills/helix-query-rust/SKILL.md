@@ -146,6 +146,9 @@ For exact vector or BM25 prefiltering, build the candidate node or edge stream
 first, then call `.vector_search[_with](...)` or `.text_search[_with](...)` on
 that stream. Source-level vector and text search methods rank the whole tenant
 partition; filtering after them can return fewer than `k` eligible hits.
+Traversal `.text_search[_with]` is SDK `main` only; with helix-db 3.0.0 bind the
+candidate nodes with `var_as`, then use `g().text_search_nodes_with(..).within("<var>")`,
+which filters after top-k and can return fewer than `k`.
 
 ### 7. Use Traversal Controls Deliberately
 
@@ -196,7 +199,7 @@ The DSL is larger than the canonical examples below suggest. Before reaching for
 | Category | Primary builders | Notes |
 |---|---|---|
 | Sources | `g().n(...)`, `n_where`, `n_with_label`, `n_with_label_where`, `e`, `e_where`, `e_with_label`, `e_with_label_where`, `vector_search_nodes_with`, `text_search_nodes_with`, `vector_search_edges_with`, `text_search_edges_with` | Anchor narrowly — indexed ID first, then label scope. `n_where` has no label and cannot use label-scoped indexes; prefer `n_with_label_where`. `SourcePredicate` is an alias of `Predicate`. |
-| Traversal | `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`, `out_n`, `in_n`, `other_n`, `vector_search[_with]`, `text_search[_with]` | Edge-valued forms (`*_e`) switch the stream type. Traversal-scoped search ranks only the current node/edge IDs. |
+| Traversal | `out`, `in_`, `both`, `out_e`, `in_e`, `both_e`, `out_n`, `in_n`, `other_n`, `vector_search[_with]`, `text_search[_with]` (main only) | Edge-valued forms (`*_e`) switch the stream type. Traversal-scoped search ranks only the current node/edge IDs. |
 | Filters | `has`, `has_label`, `has_key`, `where_`, `dedup`, `within`, `without`, `edge_has`, `edge_has_label` | `Predicate::*` + `Predicate::*_param` for parameterized comparisons. `within`/`without` are node-stream only. |
 | Limits | `limit`, `skip`, `range` | All accept `usize` or `Expr`. |
 | Variables | `as_` / `store`, `select`, `inject` | Cross-query refs via `NodeRef::var`, `EdgeRef::var`, `NodeRef::param`, `EdgeRef::param`. `NodeRef::var` needs an unprojected node variable. IDs are integers (`i64` params). |

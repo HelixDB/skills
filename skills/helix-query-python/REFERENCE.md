@@ -398,8 +398,10 @@ A query cannot use the index until the build succeeds. `blocked` carries
 `blocker_code` (`invalid_source_data`, `uniqueness_violation`,
 `oversized_entity`, `manifest_limit`, `object_store_configuration_unavailable`,
 `invariant_violation`) and does not resume on its own. A unique index rejects
-duplicate writes with `unique_constraint_violation` from the moment its build
-starts.
+duplicate writes with `unique_constraint_violation`; while it builds, only values
+already claimed (by an entity the build has scanned, or a write since the build
+started) are rejected, and a duplicate of a not-yet-scanned entity's value blocks
+the build when the scan reaches it.
 
 ## Predicates And Expressions
 

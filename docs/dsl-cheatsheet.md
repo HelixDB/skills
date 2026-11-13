@@ -338,7 +338,9 @@ read_batch()
 ```
 
 For exact FTS prefiltering, build candidates first and call `text_search` or
-`text_search_with` on the node or edge stream:
+`text_search_with` on the node or edge stream (Rust SDK `main` only; with helix-db
+3.0.0 bind the candidate nodes, then `g().text_search_nodes_with(..).within("<var>")`,
+which can return fewer than `k`):
 
 ```text
 g().n_with_label("Document")
