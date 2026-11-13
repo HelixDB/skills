@@ -10,7 +10,7 @@ metadata:
 # Helix Admin MCP
 
 Use the Admin MCP server only when the user explicitly requests an in-scope resource mutation.
-Interactive principals use WorkOS OAuth. Headless automation may use a project-scoped service
+Interactive principals sign in through Helix's browser OAuth. Headless automation may use a project-scoped service
 credential. Application database keys do not authenticate MCP.
 
 ## Tools and operations

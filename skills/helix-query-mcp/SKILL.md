@@ -9,7 +9,7 @@ metadata:
 
 # Helix Query MCP
 
-Use the Query MCP server for Cloud data access. Interactive principals use WorkOS OAuth; headless
+Use the Query MCP server for Cloud data access. Interactive principals use Helix's browser OAuth; headless
 automation may use an explicitly project-scoped service credential. Never ask for an application
 database key or use a direct gateway URL.
 

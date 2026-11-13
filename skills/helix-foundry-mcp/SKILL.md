@@ -16,7 +16,7 @@ to read what Foundry holds, to ask its query agent questions, and to send pieces
 data to an API source. They change nothing else, and asking spends from the
 workspace's question budget.
 
-Interactive clients sign in with WorkOS OAuth and act with the user's permissions.
+Interactive clients sign in through Helix's browser OAuth and act with the user's permissions.
 Headless runs may send a scoped service key, or, to send pieces only, an API
 source's send token (see API sources). Never ask for a database key, a connector
 credential or a send token, and never put an MCP credential in a query or a report.

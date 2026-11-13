@@ -13,7 +13,7 @@ Use these tools only when the user explicitly asks for one of the actions below.
 Resolve what the action targets, and read its current state, with helix-foundry-mcp
 first.
 
-Interactive clients sign in with WorkOS OAuth and act with the user's permissions.
+Interactive clients sign in through Helix's browser OAuth and act with the user's permissions.
 Headless runs may send a scoped service key, which can run fewer actions (see
 Permissions).
 

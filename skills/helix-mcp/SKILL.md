@@ -9,7 +9,7 @@ Use the hosted Helix MCP tools to inspect Helix Cloud resources and
 observability data. This surface is read-only. It cannot execute database
 queries or change Cloud resources.
 
-Interactive clients authenticate with WorkOS OAuth. Explicitly scoped service credentials may be
+Interactive clients authenticate through Helix's browser OAuth. Explicitly scoped service credentials may be
 used by headless MCP automation. Neither is an application database key, and no MCP credential should
 ever be copied into a query, source file, or report.
 
