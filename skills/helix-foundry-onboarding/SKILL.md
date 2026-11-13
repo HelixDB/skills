@@ -4,7 +4,7 @@ description: Set up a Helix Foundry ontology end to end through the hosted Helix
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.5.0
+  version: 1.5.1
 ---
 
 # Helix Foundry onboarding
@@ -46,9 +46,12 @@ and the load.
 Stop at the first check that fails:
 
 1. **The tools are there**: `helix_list_workspaces`, the `helix_foundry_*` tools and
-   `helix_prepare_foundry_operation`. If not, point the user to the sign-in commands
-   in the HelixDB skills README, or to
-   https://docs.helix-db.com/database/helix-cloud/connect/mcp.
+   `helix_prepare_foundry_operation`. If not, have the user add the Helix MCP server
+   and sign in in their own terminal, then reconnect:
+   `claude mcp add --transport http helix https://mcp.helix-db.com/mcp` and `/mcp` in
+   Claude Code, or `codex mcp add helix --url https://mcp.helix-db.com/mcp && codex
+   mcp login helix`. A 401 or an expired session needs the same sign-in again; a 503
+   `temporarily_unavailable` needs only a retry later.
 2. **You act as the user.** A service key gets no `helix_list_workspaces`, and can't
    sync, generate or create ontologies, and a send token (`hx_ev_`) lists only
    `helix_foundry_send_pieces`: ask the user to sign in instead.
@@ -122,8 +125,8 @@ None is required on its own. Call `helix_foundry_list_connectors`,
 `document_sets` and `other_document_sets`) to see what the workspace has. From what
 you know of the user's business, work out with them whether to connect sources, send
 pieces to an API source, upload documents, or a mix: the systems it runs on
-(payments, sign-in, product analytics, code, issues, meetings and bookings, its own
-database, file storage), data its own apps or agents produce that no connector
+(payments, sign-in, product analytics, code, issues, meetings and bookings, team chat,
+wikis and docs, its own database, file storage), data its own apps or agents produce that no connector
 reaches (orders, agent runs, events of its product), and files that hold or explain
 its data (exports, a glossary, policies, runbooks, specs). Match the systems to the
 kinds Foundry offers, note what is already there, and ask the user to confirm the

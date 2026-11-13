@@ -17,12 +17,13 @@ Helix stores and searches the graph. Extraction, chunking, embedding, connector 
 
 ## Tenant Rules
 
-Use **`tenant_id`** as the canonical tenant property.
+This spec uses **`tenant_id`** as the tenant property. It is a convention, not a Helix
+requirement: a partitioned vector or text index accepts any property name as its
+`tenant_property`. Keep an existing repo's name if it already has one.
 
-Reasons:
+Reasons to pick one name and keep it:
 
-- tenant-partitioned Helix text indexes currently require the tenant property name to be `tenant_id`
-- vector and text searches use the same partition key
+- vector and text searches over a label use the same partition key, so hybrid recall passes one tenant value to both
 - row-level isolation is application-enforced, so every query and write must carry tenant scope
 
 Rules:
@@ -205,7 +206,13 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 
 ### Index Bootstrap
 
-Create these from a **write** batch before generation/retrieval:
+Create these from a **write** batch before generation/retrieval, then wait for each build.
+Creation is asynchronous: each `createIndexIfNotExists` returns a receipt, `accepted` or
+`existing_operation` (both with an `operation_id`) or `already_active`. Poll
+`getIndexOperation(operation_id)` in a read batch until `status` is `succeeded`; `queued` and
+`running` mean keep waiting, `blocked` (with a `blocker_code`) means fix the cause (for a unique
+index, duplicate existing values) and run `retryIndexOperation`, and `aborted` means create it
+again. Searching a vector or text index before it is active fails with `index_not_found`.
 
 - `IndexSpec.nodeUniqueEquality("Tenant", "tenant_id")`
 - `IndexSpec.nodeUniqueEquality("User", "userKey")`
@@ -239,7 +246,7 @@ Create these from a **write** batch before generation/retrieval:
 - `IndexSpec.nodeEquality("Session", "tenant_id")`
 - `IndexSpec.nodeEquality("Session", "userId")`
 
-The `tenant_property` on vector/text indexes must be the property name (`tenant_id`), and query-time `tenantValue` must be the tenant value. Tenant-scoped search against a tenant-partitioned index without a tenant value returns no useful results.
+The `tenant_property` on vector/text indexes is the property name (`tenant_id` here), and query-time `tenantValue` is the tenant value. Tenant-scoped search against a tenant-partitioned index without a tenant value returns no useful results.
 
 ## Current Scoped Memory Filter
 

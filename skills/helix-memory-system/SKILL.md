@@ -1,10 +1,10 @@
 ---
 name: helix-memory-system
-description: Design and operate an advanced AI agent memory system with the published HelixDB v3 SDKs using hybrid graph plus exact traversal-prefiltered vector and BM25 search. Use for long-term memory, profiles, RAG, recall, extraction, deduplication, consolidation, versioning, forgetting, categorisation, or ingestion. TypeScript-first (`@helix-db/helix-db@3.2.0`); a Rust v3 variant is in EXAMPLES.rust.md. To give agents memory of a business's own systems and documents without building one, use Helix Foundry (helix-foundry-mcp).
+description: Design and operate an advanced AI agent memory system with the published HelixDB v3 SDKs using hybrid graph plus exact traversal-prefiltered vector and BM25 search. Use when building an app or agent feature that remembers what users tell it, such as long-term memory, profiles, RAG, recall, extraction, deduplication, consolidation, versioning, forgetting, categorisation, or ingestion, on a local or Helix Cloud database. TypeScript-first (`@helix-db/helix-db@3.2.0`); a Rust v3 variant is in EXAMPLES.rust.md. To give agents memory of a business's own systems and documents without building one, use Helix Foundry (helix-foundry-mcp).
 license: MIT
 metadata:
   author: HelixDB
-  version: 3.0.4
+  version: 3.1.0
 ---
 
 # Helix Memory System
@@ -29,11 +29,12 @@ Do **not** use this skill for generic query syntax questions. For builder/method
 
 1. Inspect the target repo for existing labels, edges, properties, indexes, and route style. Reuse exact casing if present.
 2. **Default to the TypeScript v3 DSL** (`@helix-db/helix-db@3.2.0`) so the app can keep query generation near service code. Use `EXAMPLES.rust.md` only if the runtime is Rust or the team explicitly ships Rust queries.
-3. Decide the tenancy boundary before modeling anything. The canonical tenant property is **`tenant_id`** because tenant-partitioned Helix text indexes currently require that name. Attach `tenant_id` to every tenant-owned node and edge.
+3. Decide the tenancy boundary before modeling anything. A tenant-partitioned vector or text index takes any property name as its `tenant_property`; this skill uses **`tenant_id`** by convention. Pick one name, use it for every partitioned index (hybrid recall passes one tenant value to both vector and BM25), and attach it to every tenant-owned node and edge. If the repo already partitions by another name, keep that name.
 4. Decide the memory visibility boundary separately from tenancy. In most apps, `tenant_id` partitions indexes while `userId`, `containerId`, `projectId`, or an app ACL decides which memories can be recalled. Default examples use `userId` as the second-level scope.
 5. Reuse the canonical model below before inventing labels. Adapt names, not the shape.
 6. Confirm how embeddings are produced. **Default to OpenAI `text-embedding-3-small`** for production and benchmarkable memory systems: `1536` dimensions, stored as `F32` arrays. The application computes embeddings client-side and passes numeric arrays (`param.array(param.f32())`). Helix does **not** embed text on the dynamic-query path; there is no `Embed()`/`SearchV` in the current DSL. Keep embedding model and dimension fixed for each vector index. Deterministic hash embeddings are acceptable only for local UI demos or smoke tests, not for quality benchmarks.
-7. Identify the application workers outside Helix: extractor, chunker, embedder, memory writer, relationship classifier, decay/expiry sweeper, profile summariser, optional query rewriter, optional reranker, and connector sync jobs.
+7. Create indexes before relying on them, then wait for them. Index creation is asynchronous: `createIndexIfNotExists` returns a receipt (`accepted` or `existing_operation` with an `operation_id`, or `already_active`), and a build becomes usable only when `getIndexOperation(operation_id)` reports `succeeded`. Until then vector and BM25 search fail with `index_not_found` and equality lookups scan. A unique index rejects duplicates from the moment its build starts, but existing duplicates block the build (`blocked`, with a `blocker_code`): fix the data, then `retryIndexOperation`. Run the bootstrap and wait step (`EXAMPLES.md` §1) at deploy time, not per request.
+8. Identify the application workers outside Helix: extractor, chunker, embedder, memory writer, relationship classifier, decay/expiry sweeper, profile summariser, optional query rewriter, optional reranker, and connector sync jobs.
 
 ## The Memory Model At A Glance
 
@@ -145,7 +146,7 @@ Relationship: UPDATES the previous next-April timing memory and invalidates the 
 - **Derive:** link inferred facts with `DERIVES` edges to supporting memories and mark them as inferred with confidence metadata.
 - If `content` changes, re-embed and update `embedding` in the same write. Content and vector must never drift.
 - Keep lifecycle validity (`validFrom`, `validTo`, `deletedAt`) separate from real-world event time (`eventStartAt`, `eventEndAt`, `temporalText`). Updating a memory because a fact changed should invalidate the old record even if both facts refer to future or past dates.
-- **Await durability on writes.** Updating/versioning is read-then-write and often runs concurrently across sessions, which raises the chance of HTTP 409 write conflicts. Await durability on the write to reduce conflicts (`.shouldAwaitDurability(true)` in TypeScript, `.should_await_durability(true)` in Rust, `helix.AwaitDurability(true)` in Go). Recognize a real conflict from the stable `transaction_conflict` code (with HTTP 409 for remote calls), never by parsing the diagnostic message. Reload authoritative memory state before rebuilding the mutation, then replay with bounded backoff only when it is idempotent or otherwise safe. See the language skill and `../../docs/error-handling.md`.
+- **Handle write conflicts.** Updating/versioning is read-then-write and often runs concurrently across sessions, so expect HTTP 409 `transaction_conflict`. Writes already wait for durability by default (only an explicit `shouldAwaitDurability(false)` / `x-helix-await-durable: false` skips the wait), and the durability setting does not prevent conflicts. Recognize a conflict from the stable `error` code `transaction_conflict` (409), never by parsing the `msg` text. Reload authoritative memory state, rebuild the mutation, and replay with bounded backoff only when it is idempotent or otherwise safe. Other codes a memory writer meets: `unique_constraint_violation` (a unique key already exists: treat as a duplicate and reinforce), `index_not_found` (404: an index is missing or still building), `index_backpressure` (429: back off and retry). Remote errors arrive as `{"error": "<code>", "msg": "..."}`.
 
 ### 3. Deletion / Forgetting
 
@@ -182,12 +183,27 @@ Run multiple recall paths and fuse app-side:
 5. Expand top memories through `MENTIONS`, `IN_CATEGORY`, `EXTENDS`, `UPDATES`, and `RELATES_TO`, bounded by depth and tenant filters.
 6. Pack context without embeddings and include source/citation metadata when available.
 
+## Run It On Helix Cloud
+
+The queries are the same locally and on Helix Cloud; only the execution path differs:
+
+| Who runs the query | Path | Credential |
+| --- | --- | --- |
+| The memory service in production | SDK against the database's gateway URL (its `connectionEndpoint` in `helix database get tenant:<id> --json`), with `Client.server(url).withApiKey(key)`; with the TypeScript SDK on a shared gateway also `.withDatabaseId(id)` | An application database key from `helix database create` or `helix database key create --database tenant:<id> --access read-write`, kept in the app's secret store |
+| A developer or agent at a shell | `helix query tenant:<id> --file request.json --json` (backend broker; no key) | The user's `helix auth login` session |
+| An agent over MCP | `helix_execute_read_query` / `helix_prepare_write_query` + `helix_execute_write_query` (helix-query-mcp) | The user's OAuth sign-in or a service credential with `query-read`/`query-write` |
+
+Use the database key only in the application. Never give it to the CLI or an MCP client, and never
+commit it. Bootstrap indexes once per database from a deploy step (any path works), and check
+`helix database indexes tenant:<id> --json` or `helix_list_database_indexes` for the active set.
+
 ## Anti-Patterns
 
 Do not:
 
 - use the deprecated `.hx` dialect (`Embed()`, `SearchV`, `SearchBM25`, `AddV`) for new dynamic/TS/Rust DSL work
-- use `userId` as the text-index tenant property; use `tenant_id` for tenant-partitioned text/vector indexes
+- partition a label's vector and text indexes by different tenant properties; hybrid recall passes one tenant value to both
+- rely on a vector, text or unique index before its build reports `succeeded`
 - assume `tenant_id` alone is a safe recall boundary for org/team tenants; filter by `userId`, `containerId`, project ACLs, or an explicit shared-memory flag
 - attach `tenant_id` only to `Memory`; every tenant-owned node and edge needs it
 - mutate, delete, categorise, or reinforce by `memoryId` without also checking `tenant_id`
@@ -212,7 +228,7 @@ Before finishing:
 
 - `readBatch()` vs `writeBatch()` is correct
 - every tenant-owned node and edge has `tenant_id`
-- vector/text indexes use `tenant_property = "tenant_id"`, and searches pass `tenantValue = tenant_id`
+- vector/text indexes share one `tenant_property` (`tenant_id` here), searches pass that tenant's value as `tenantValue`, and every index operation reported `succeeded` before traffic
 - vector and BM25 recall build user/ACL and lifecycle candidates before traversal-scoped search
 - every memory read filters `tenant_id`, user/container visibility, `deletedAt IsNull`, current/latest state, and expiry validity
 - every write route accepts and filters by `tenant_id`

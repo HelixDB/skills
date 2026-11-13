@@ -4,7 +4,7 @@ description: Run explicitly requested, confirmation-gated Helix Foundry actions 
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.7.0
+  version: 1.8.0
 ---
 
 # Helix Foundry actions
@@ -13,9 +13,10 @@ Use these tools only when the user explicitly asks for one of the actions below.
 Resolve what the action targets, and read its current state, with helix-foundry-mcp
 first.
 
+These tools are on the one Helix MCP server, `https://mcp.helix-db.com/mcp`.
 Interactive clients sign in with WorkOS OAuth and act with the user's permissions.
-Headless runs may send a scoped service key, which can run fewer actions (see
-Permissions).
+Headless runs may send a scoped service key (`hlxs_`), which can run fewer actions
+(see Permissions). Agent registrations and send tokens get none of these tools.
 
 ## Tools
 
@@ -25,7 +26,9 @@ Permissions).
   once.
 - `helix_foundry_complete_document_upload`: after `upload_document` and the upload of
   its bytes, checks them and adds the document. It needs no confirmation of its own,
-  and completing twice is no error.
+  and completing twice is no error. Pass an open workflow run's id as
+  `workflow_run_id` to record the upload under that run (helix-foundry-mcp,
+  Workflows); leave it empty otherwise.
 - `helix_feedback`: reports a problem to the Helix team (see Feedback).
 
 Sending pieces to an API source is not an operation: `helix_foundry_send_pieces`
@@ -257,6 +260,12 @@ headless run needs one, say so instead of trying another route.
 | `already_exists` | That sync, generation or revision is already running, the database already has an ontology, a document set or API source has that name (the message names the source), or the confirmation was already used | Read the state; don't prepare again. For an API source, use the one it names |
 | `resource_exhausted` | The workspace's hourly generation limit, or its most API sources (20) | Stop and tell the user |
 | `backend_unavailable`, `internal_error` | Helix failed | Check the outcome with the read tools; don't execute again |
+
+Before any tool runs: HTTP 401 or an expired OAuth session means re-authenticate
+(`/mcp` in Claude Code, `codex mcp login helix`); HTTP 503 `temporarily_unavailable`
+means retry later with the same credential. A tool that isn't listed is one this
+identity isn't granted (see Permissions); after a role change, reconnect the server
+so the client lists tools again.
 
 ## Feedback
 
