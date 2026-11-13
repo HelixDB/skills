@@ -81,7 +81,7 @@ func FindUsers(tenantID string, limit int64) helix.Request {
   `helix.WriteQuery("create_user")`; `helix.ReadQuery("")` serializes
   `query_name: null`. `WithQueryName(...)` is only for low-level
   `NewReadQueryRequest` / `NewWriteQueryRequest`.
-- Read builders reject write traversals; write builders accept both.
+- Read builders reject write traversals at validation; write builders accept both.
 - Pass explicit names to `.Returning(...)`. Zero-arg `.Returning()` serializes
   `"returns":[]` and the server answers `{}`; use it only for intentional empty
   responses.
@@ -179,7 +179,8 @@ and `Optional`; it supports `Out`, `In`, `Both`, `Where`, `Limit`, `Count` and
   `VectorSearchEdgesWithin[With]`, `TextSearchNodesWithin[With]` or
   `TextSearchEdgesWithin[With]`. Source-level search ranks the whole tenant
   partition; a later `Where` post-filters and can return fewer than `k`.
-- Pass the tenant partition used for the candidates. Project `$distance`
+- Keep tenant scope whenever the index is scoped, passing the partition used
+  for the candidates. Project `$distance`
   (vector) or `$score` (text) before navigating away.
 - Limits: whole-index vector search returns at most 800 hits; prefiltered vector
   search fails when `min(k, unique candidates)` exceeds 800; more than 1,000,000

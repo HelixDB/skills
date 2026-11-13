@@ -144,7 +144,8 @@ return shape, order and pagination; pick `read_batch` or `write_batch`.
 
 SDK naming: Rust snake_case (`use helix_db::dsl::prelude::*;`); TypeScript
 camelCase (`g().nWithLabel(..).in(..).where(..)`, `BindingProjection.binding`,
-`Expr.case`); Python snake_case (`g().n_with_label(..).in_(..).where(..)`); Go
+`Expr.case`); Python snake_case (`g().n_with_label(..).in_(..).where(..)`,
+`BindingProjection.binding`); Go
 PascalCase (`helix.G().NWithLabel(..).In(..).Where(..)`, `helix.Sub()`,
 `helix.ProjectNamedBinding`, `helix.ExprCase`,
 `helix.Repeat(..).WithTimes(n).EmitAfter()`). Exact names: the per-SDK skills.

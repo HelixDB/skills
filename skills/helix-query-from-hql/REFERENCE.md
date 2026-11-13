@@ -58,7 +58,7 @@ no `/v3`); `pip install helix-db` (import `helixdb`).
 | `N<T>(id)` | `g().n(NodeRef::id(id))` | `g().n(NodeRef.id(id))` | Narrowest anchor. HQL UUIDs become an indexed property (e.g. `externalId`). |
 | `N<T>(id)` from a param | `g().n(NodeRef::param("user_id"))` | `g().n(NodeRef.param("userId"))` | |
 | `N<T>` (all of a label) | `g().n_with_label("User")` | `g().nWithLabel("User")` | |
-| `N<T>({field: value})` (indexed) | `g().n_with_label_where("T", SourcePredicate::eq_param("field", "field"))` | `g().nWithLabelWhere("T", SourcePredicate.eqParam("field", "field"))` | `.eq("field", value)` for a constant. |
+| `N<T>({field: value})` (indexed) | `g().n_with_label_where("T", SourcePredicate::eq_param("field", "field"))` | `g().nWithLabelWhere("T", SourcePredicate.eqParam("field", "field"))` | `SourcePredicate` is an alias of `Predicate`; `.eq("field", value)` for a constant. |
 | `E<T>(id)` | `g().e(EdgeRef::id(id))` | `g().e(EdgeRef.id(id))` | |
 | `E<T>` by indexed property | `g().e_with_label_where("T", SourcePredicate::eq(..))` | `g().eWithLabelWhere("T", SourcePredicate.eq(..))` | Label-scoped, like nodes. |
 | `V<T>(id)` | `g().n(NodeRef::id(id))` | `g().n(NodeRef.id(id))` | No separate vector source; similarity lookup is under Search. |

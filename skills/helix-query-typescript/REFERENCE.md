@@ -757,6 +757,7 @@ type FindUserResponse = {
   count: number;
 };
 
+const request = findUser().toQueryRequest(params, values); // returns user, friends, count
 const response = await client.query<FindUserResponse>(request).send();
 const user = response.user[0]; // undefined when not found
 ```

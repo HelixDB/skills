@@ -394,7 +394,8 @@ async with async_client:
     response = await async_client.query(request, timeout=2.0)
     response = await async_client.execute(request, writer_only=True)
 
-# header control or raw bytes
+# header control or raw bytes (sync twin: client.request_builder(); both also have
+# .warm_only(), and both clients have .with_api_key(...))
 response = await async_client.request_builder() \
     .writer_only() \
     .should_await_durability(False) \

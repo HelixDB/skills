@@ -121,7 +121,7 @@ return fewer than `k`. Whole-index vector search returns at most 800 hits; trave
 vector search fails when `min(k, unique candidates)` exceeds 800; scoped text returns at
 most `min(candidates, k, 800)`; more than 1,000,000 unique candidates fails. Reads default
 to `strong` consistency (includes committed but unpublished vector/text writes);
-`eventual` (main) bounds that work and can return a hit that has since changed tenant,
+`eventual` (`searchConsistency` (main); 3.2.0: JSON body) bounds that work and can return a hit that has since changed tenant,
 label or property. Writes always search strongly.
 
 **Semantics that differ from Cypher/Gremlin:**

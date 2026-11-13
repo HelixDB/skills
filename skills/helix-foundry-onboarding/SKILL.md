@@ -136,7 +136,7 @@ minutes).
    - **`structured`** (mappings): structured JSON (amounts, statuses, dates, ids linking to other
      sources) mapped to properties and links.
    - **`extraction`**: pieces whose value is a text body (notes, messages, transcripts, tickets); a
-     model reads each. Needs a `text_field` sent as a string. Suits a few hundred pieces a month:
+     model reads each. Needs a `text_field`: the top-level field holding that text, sent as a string. Suits a few hundred pieces a month:
      ~1 cent per piece per reading ontology, keeps only the newest 500, and work no person started
      spends at most $5 a month per source by default. For more, use `structured`.
 3. `create_event_source`, target `workspace:<workspace_id>`, `{"name", "description": "<what each
@@ -153,7 +153,7 @@ minutes).
 
    For apps or agents sending later, give `token_url`: the user makes a send token there and puts it
    in the sender's config (helix-foundry-mcp `REFERENCE.md` has the `.mcp.json` form); never ask for
-   it. If `send_url` was returned, apps without an MCP client POST to it from their server with that
+   it. If `create_event_source` or `helix_foundry_list_connectors` returns `send_url`, apps without an MCP client POST to it from their server with that
    token as bearer and a `client_token` per send (helix-foundry-mcp `REFERENCE.md`, Send over HTTP:
    curl and statuses). Without `send_url`, apps send through the MCP.
 5. It counts once `helix_foundry_list_connectors` shows its `events` table with rows (~1 minute
