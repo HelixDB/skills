@@ -643,7 +643,8 @@ question, send and upload the agent makes under the run's id, then the agent's a
 Foundry then assesses the finished run: whether what the ontology gave was
 `essential`, `helpful`, `marginal`, `unused` or `misleading` to the answer, its
 claims, and the ontology's gaps. Use a workflow only when the user set one up or asks
-you to record your work in Foundry.
+you to record your work in Foundry. Every workflow tool also takes the ontology's
+`workspace_id` and `ontology_id`.
 
 1. Find the workflow with `helix_foundry_list_workflows` (`workspace_id`,
    `ontology_id`, `page_token`). A user who manages ontologies can make one with

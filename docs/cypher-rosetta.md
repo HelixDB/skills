@@ -16,10 +16,10 @@ they are; translate only:
 - constructs rejected with `unsupported_feature`: `MERGE`, variable-length
   relationships, `shortestPath`/`allShortestPaths`, `UNION`, `CALL` and
   `EXISTS`/`COUNT`/`COLLECT` subqueries, map projections, list and pattern
-  comprehensions, pattern predicates, `any`/`all`/`none`/`single`, `FOREACH`,
-  `LOAD CSV`, schema commands, multiple or mutated labels, and functions
-  outside the profile (`timestamp`, `date`, `datetime`, `reduce`, `round`,
-  `sqrt`, `split`, `replace`, `startNode`, `endNode`, ...)
+  comprehensions, pattern predicates, `any`/`all`/`none`/`single`/`reduce`,
+  `FOREACH`, `LOAD CSV`, `DROP`, multiple or mutated labels, and functions
+  outside the profile (`timestamp`, `date`, `datetime`, `round`, `sqrt`,
+  `split`, `replace`, `startNode`, `endNode`, ...)
 - work only the DSL does: vector and text search, index management, typed
   parameters, conditional write batches (`var_as_if`), `for_each_param`
 

@@ -111,7 +111,7 @@ and `retry_index_operation`; `aborted` needs the index created again.
 
 ```rust
 let receipts = client
-    .query::<serde_json::Value>(bootstrap_memory_indexes())
+    .query::<serde_json::Value>(bootstrap_memory_indexes()?)
     .send()
     .await?;
 for receipt in receipts.as_object().into_iter().flat_map(|vars| vars.values()) {

@@ -44,9 +44,13 @@ OnEdges -- count, exists, id, label, values, value_map, project,
 OnEdges(WriteEnabled) -- drop, set_property, remove_property            ↻ OnEdges
 ```
 
+**Main only:** traversal-scoped `text_search[_with]` (node and edge streams) and
+edge-stream `.drop()`; helix-db 3.0.0 has neither.
+
 Edge streams have no `within`, `without`, `select`, `inject`, `order_by_multiple`,
 `repeat`, branching, or `drop_edge_by_id`. Delete the edges in a stream with
-`.drop()`; delete edges by ID with the source form `g().drop_edge_by_id(...)`.
+`.drop()` (main only); delete edges by ID with the source form
+`g().drop_edge_by_id(...)` (works in 3.0.0, e.g. on an edge variable via `EdgeRef::var`).
 
 `ReadBatch::var_as` accepts only `Traversal<_, ReadOnly>` — mixing a mutation builder into a read batch is a compile error. `WriteBatch::var_as` accepts either.
 
@@ -148,6 +152,7 @@ traversal.vector_search_with(label, property,
     query_vector: impl Into<PropertyInput>,
     k: impl Into<StreamBound>,
     tenant_value: Option<PropertyInput>) -> Self
+// text_search / text_search_with on a traversal: main only (not in 3.0.0)
 traversal.text_search(label, property, query_text: impl Into<String>, k: usize,
     tenant_value: Option<PropertyValue>) -> Self
 traversal.text_search_with(label, property,
@@ -549,10 +554,12 @@ Node-state mutations (`Traversal<OnNodes, _>` → `Traversal<OnNodes, WriteEnabl
 Edge-state mutations (`Traversal<OnEdges, _>` → `Traversal<OnEdges, WriteEnabled>`):
 
 ```text
-.set_property(name, value)    .remove_property(name)    .drop()
+.set_property(name, value)    .remove_property(name)    .drop()   // .drop() main only
 ```
 
-To delete a node's outgoing `FOLLOWS` edges: `.out_e(Some("FOLLOWS")).drop()`.
+To delete a node's outgoing `FOLLOWS` edges: `.out_e(Some("FOLLOWS")).drop()`
+(main only; with 3.0.0 store the edge stream in a variable and use
+`g().drop_edge_by_id(EdgeRef::var(name))`).
 
 - `add_e` always creates one edge per (source row, target node) pair; it is not
   idempotent, so re-running it duplicates edges. Guard it with a lookup

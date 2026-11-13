@@ -701,7 +701,8 @@ const body = introductionPath().toQueryJson(pathParams, { from: 1n, to: 42n });
 // response: { path: [1, 7, 42] } (node IDs, source first), or { path: [] }
 ```
 
-Unweighted BFS; each endpoint must resolve to exactly one node.
+Unweighted BFS; a missing endpoint returns `[]`, and an endpoint that resolves
+to several nodes fails the request.
 
 ---
 

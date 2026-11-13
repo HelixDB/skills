@@ -54,7 +54,8 @@ stay committed.
 | `unique_constraint_violation` | Do not resend unchanged. Report a duplicate, pick another key, or, from an upsert's create branch, re-run the upsert once (it now takes the update branch). |
 | `index_busy` | Another lifecycle operation on the index is running. Wait for it (`get_index_operation`), then decide. |
 | `index_build_blocked` | A write would overflow a blocked index build's queue. Fix what the build's `blocker_code` names, then `retry_index_operation`, or `abort_index_operation`; resending the write before that fails again. |
-| `index_already_exists`, `index_definition_conflict` | Send `"if_not_exists": true` (the SDKs' `create_index_if_not_exists` always does), or drop the conflicting definition first. |
+| `index_already_exists` | Send `"if_not_exists": true` (the SDKs' `create_index_if_not_exists` always does). |
+| `index_definition_conflict` | The index exists with a different definition; `if_not_exists` does not help. Match the existing definition, or drop it first. |
 | `index_operation_not_abortable` | Only a build that is still constructing can be aborted. Read its status; if it succeeded, drop the index instead. |
 | `index_not_found` | Create the index (and wait until its build succeeds), or change the query. |
 | `query_deadline_exceeded`, `writer_fenced_commit_outcome_unknown`, 500 codes | A write may have committed. Reconcile (read back by an application key) before resubmitting; never auto-retry a non-idempotent write. |

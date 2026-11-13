@@ -903,7 +903,8 @@ class, and the class sets the status:
 - 408, 500 and `writer_fenced_commit_outcome_unknown`: a write may have
   committed. Reconcile by reading it back before resubmitting.
 - `query_memory_limit_exceeded`: reduce the work; unchanged it fails again.
-- `invalid_request_body`: body over 16 MiB (2 MiB on Helix Cloud). `invalid_query_json`:
+- `invalid_request_body`: body over 16 MiB (Helix Cloud rejects bodies over 2 MiB
+  with `413 payload_too_large` instead). `invalid_query_json`:
   malformed JSON, unknown fields, or nesting deeper than 255 levels.
 
 The Helix Cloud gateway adds its own codes: `tenant_id_required` /

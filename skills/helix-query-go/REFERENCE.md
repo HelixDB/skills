@@ -430,7 +430,7 @@ helix.G().GetIndexOperation(operationID)    // read
 helix.G().RetryIndexOperation(operationID)  // write
 helix.G().AbortIndexOperation(operationID)  // write
 helix.UnmarshalIndexDdlReceipt(raw)         // -> IndexDdlAccepted | IndexDdlExistingOperation | IndexDdlAlreadyActive
-helix.UnmarshalIndexOperationStatus(raw)    // -> IndexOperationQueued | Running | Blocked | Succeeded | Aborted
+helix.UnmarshalIndexOperationStatus(raw)    // -> *IndexOperationQueued | *Running | *Blocked | *Succeeded | *Aborted (pointers; receipts are values)
 ```
 
 Poll until `IndexOperationSucceeded`; queries cannot use the index before then.
@@ -575,7 +575,7 @@ every 409, including `unique_constraint_violation`; branch on `Code`.
 
 | Class | HTTP | `retryable` | A failed write | Codes |
 | --- | ---: | --- | --- | --- |
-| Invalid request / planning | 400 | absent | committed nothing | `invalid_request`, `invalid_query_json`, `invalid_request_body`, `invalid_request_option`, `unbound_parameter`, `invalid_node_id`, `invalid_after_bind_operation`, `duplicate_*`, `invalid_*` |
+| Invalid request / planning | 400 | absent | committed nothing | `invalid_request`, `invalid_query_json`, `invalid_request_body`, `invalid_request_option`, `unbound_parameter`, `invalid_node_id`, `invalid_after_bind_operation`, `duplicate_*`, other `invalid_*` (not `invalid_query`, `invalid_configuration`, `invalid_index_model`: 500) |
 | Not found | 404 | absent | committed nothing | `node_not_found`, `edge_not_found`, `index_not_found`, `index_operation_not_found` |
 | Timeout | 408 | absent | may have committed | `query_deadline_exceeded` |
 | Retryable conflict | 409 | `true` | committed nothing | `transaction_conflict`, `request_read_view_changed`, `stale_index_generation` |

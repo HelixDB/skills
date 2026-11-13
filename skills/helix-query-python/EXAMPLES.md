@@ -215,7 +215,7 @@ upsert_request = upsert_user().to_query_request(
 )
 try:
     result = client.query(upsert_request)
-except HelixError as error:
+except HelixError as error:  # code / is_retryable(): main only; 0.3.4 see §11
     if error.code != "unique_constraint_violation" and not error.is_retryable():
         raise
     result = client.query(upsert_request)
@@ -420,7 +420,7 @@ def run_with_retry(client, request, attempts=5):
     for attempt in range(attempts):
         try:
             return client.query(request)
-        except HelixError as error:
+        except HelixError as error:  # is_retryable(): main only
             # transaction_conflict, request_read_view_changed, stale_index_generation,
             # index_backpressure: the request committed nothing, resend it.
             if not error.is_retryable() or attempt == attempts - 1:
@@ -434,8 +434,9 @@ Do not retry on the status alone: 409 also carries
 `query_deadline_exceeded` (408), 500s, `writer_fenced_commit_outcome_unknown`
 and a `Network` failure after sending a write as an unknown outcome: read back by
 key before resubmitting. Helix Cloud's gateway reports its own timeout as
-`query_timeout`. If the installed package's `HelixError` has no `code` /
-`retryable`, `json.loads(error.details)` gives the server body. The SDK does not
+`query_timeout`. `HelixError.code`, `retryable` and `is_retryable()` are
+**main only**; with 0.3.4, `json.loads(error.details)` gives the server body
+(read its `error` and `retryable`). The SDK does not
 expose `Retry-After`; use direct HTTP when the exact Cloud delay is required.
 
 ## 12. Inspect Request JSON In A Test

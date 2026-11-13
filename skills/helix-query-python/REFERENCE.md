@@ -215,8 +215,8 @@ g().shortest_path(NodeRef.param("from_id"), NodeRef.param("to_id"), 6, label="FO
 ```
 
 `shortest_path` is an unweighted BFS. It returns the node IDs on the path,
-source first, or `[]` when there is none within `max_depth`; each endpoint must
-resolve to exactly one node.
+source first, or `[]` when there is none within `max_depth` or an endpoint is
+missing; an endpoint that resolves to several nodes fails the request.
 
 These source methods search the whole selected tenant partition. For an exact
 vector or BM25 prefilter, start with a node or edge traversal and use:
@@ -497,14 +497,14 @@ serialization, URL, request, or embedded failures:
 | Attribute | Meaning |
 | --- | --- |
 | `kind` | `Network`, `Remote`, `Serialization`, `InvalidUrl`, `InvalidRequest`, embedded kinds |
-| `code` | The body's `error` field (open string; keep unknown codes) |
-| `details` | Diagnostic (`msg`) |
+| `code` (**main only**) | The body's `error` field (open string; keep unknown codes) |
+| `details` | Diagnostic (`msg`); the raw response body in 0.3.4 |
 | `status_code` | HTTP status for remote failures |
-| `retryable` / `is_retryable()` | The server's `retryable` hint; `is_retryable()` is `True` only when it is `true` |
-| `is_index_backpressure()` | `code == "index_backpressure"` |
+| `retryable` / `is_retryable()` (**main only**) | The server's `retryable` hint; `is_retryable()` is `True` only when it is `true` |
+| `is_index_backpressure()` (**main only**) | `code == "index_backpressure"` |
 
-If the installed package lacks `code` / `retryable`, `details` holds the raw
-body; `json.loads(error.details)` and read `error` and `retryable`. Never parse
+With 0.3.4 (no `code` / `retryable`), `details` holds the raw remote body;
+`json.loads(error.details)` and read `error` and `retryable`. Never parse
 the diagnostic text to classify a failure.
 
 Every code has one class, and the class sets the status and `retryable`

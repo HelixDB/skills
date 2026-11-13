@@ -130,7 +130,8 @@ or `[]` when nothing matches — unwrap client-side).
 `g().n(NodeRef::var("a")).add_e("T", NodeRef::var("b"), vec![..])` (the `add_e` step is on the From node, To is
 the 2nd arg; it always creates a new edge, and an empty To fails the whole batch). `::UPDATE({f:v})` →
 `.set_property("f", v)` (one call per field). `DROP N<T>(id)` → `.drop()` (also removes its edges). Drop only
-edges by traversing to them: `.out_e(Some("E")).drop()` / `.outE("E").drop()`. All writes need
+edges by traversing to them: `.out_e(Some("E")).drop()` / `.outE("E").drop()` (SDK `main`; crates.io 3.0.0 has
+no edge-stream `drop()`, so stage the edges and use `g().drop_edge_by_id(EdgeRef::var(..))`). All writes need
 `write_batch`/`writeBatch`.
 
 `UpsertN`/`UpsertE`/`UpsertV` → **one atomic write batch**: read the match into a variable, then
@@ -189,8 +190,8 @@ write batch.
 `ShortestPathBFS` → `g().shortest_path(source, target, max_depth)` (outgoing, any label) or
 `g().shortest_path_with(source, target, Some("E"), ShortestPathDirection::Both, max_depth)`; TypeScript
 `g().shortestPath(source, target, maxDepth, { label, direction })`. It is an unweighted BFS that returns the
-node IDs from source to target inclusive, or `[]` when no path exists within `max_depth`. Each endpoint must
-resolve to exactly one node. `ShortestPathDijkstras` / `ShortestPathAStar` (weighted) have no DSL form.
+node IDs from source to target inclusive, or `[]` when no path exists within `max_depth` or an endpoint is
+missing; an endpoint that resolves to several nodes fails the request. `ShortestPathDijkstras` / `ShortestPathAStar` (weighted) have no DSL form.
 
 ## Go and Python targets
 
@@ -292,7 +293,8 @@ const body = activeFollowing().toQueryJson(activeFollowingParams, { userId: 42n,
 
 ## Running Migrated Queries
 
-Failures return `{"error": "<code>", "msg": "...", "retryable": true|false}`. Branch on `retryable`, not on the
+Failures return `{"error": "<code>", "msg": "..."}`, plus `"retryable": true|false` on 409, 429
+`index_backpressure` and 503 `writer_fenced_commit_outcome_unknown`. Branch on `retryable`, not on the
 HTTP status. HTTP 409 has two classes: `transaction_conflict`, `request_read_view_changed` and
 `stale_index_generation` (`retryable: true`) can be resent; `unique_constraint_violation`, `index_busy`,
 `index_build_blocked`, `index_already_exists`, `index_definition_conflict` and `index_operation_not_abortable`

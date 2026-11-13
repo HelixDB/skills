@@ -239,7 +239,7 @@ busy index fails with `index_busy` (both HTTP 409, `retryable: false`).
 | HQL | Rust DSL | TypeScript DSL | Notes |
 | --- | --- | --- | --- |
 | `ShortestPathBFS` (out, any label) | `g().shortest_path(NodeRef::param("from"), NodeRef::param("to"), 6)` | `g().shortestPath(NodeRef.param("from"), NodeRef.param("to"), 6)` | Unweighted BFS. Returns the node IDs from source to target inclusive, or `[]` when there is no path within `max_depth`. |
-| `ShortestPathBFS<E>` (labeled / undirected) | `g().shortest_path_with(src, dst, Some("E"), ShortestPathDirection::Both, 6)` | `g().shortestPath(src, dst, 6, { label: "E", direction: ShortestPathDirection.Both })` | Direction `Out` (default), `In`, or `Both`. Each endpoint must resolve to exactly one node. |
+| `ShortestPathBFS<E>` (labeled / undirected) | `g().shortest_path_with(src, dst, Some("E"), ShortestPathDirection::Both, 6)` | `g().shortestPath(src, dst, 6, { label: "E", direction: ShortestPathDirection.Both })` | Direction `Out` (default), `In`, or `Both`. A missing endpoint returns `[]`; one that resolves to several nodes fails the request. |
 | `ShortestPathDijkstras` / `ShortestPathAStar` | **NONE** | **NONE** | Weighted; see §Unsupported. |
 
 Go: `helix.G().ShortestPath(src, dst, maxDepth, helix.ShortestPathOptions{Label: "E", Direction: helix.ShortestPathBoth})`.

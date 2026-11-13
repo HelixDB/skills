@@ -119,8 +119,9 @@ function decodeHelixError(status: number, body: string) {
   return { status, code, message, details, retryable, rawBody: body };
 }
 
-function mayResendUnchanged(error: { retryable?: boolean }): boolean {
-  return error.retryable === true;
+function mayResendUnchanged(error: { status: number; code?: string; retryable?: boolean }): boolean {
+  // Cloud `429 rate_limited` is refused before dispatch: resend after `Retry-After`.
+  return error.retryable === true || (error.status === 429 && error.code === "rate_limited");
 }
 ```
 

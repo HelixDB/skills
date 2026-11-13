@@ -1,8 +1,8 @@
 # Helix CLI reference (3.7.0)
 
 Global options on every command: `--json` (result JSON on stdout, errors as `{"error": {...}}` on
-stderr, never prompts), `--quiet`, `-v`/`--verbose`, `-h`/`--help`, `-V`/`--version`. `helix
-<command> --help` prints that command's flags.
+stderr, never prompts), `--quiet`, `-v`/`--verbose`, `-h`/`--help`. `helix -V`/`--version`
+prints the CLI version (top level only). `helix <command> --help` prints that command's flags.
 
 ## Project setup
 
@@ -77,8 +77,9 @@ helix cypher [INSTANCE] (-e|--query STATEMENT | -f|--file FILE) [--parameters JS
   the request's lowercase `request_type`. Query bundles are unsupported.
 - `cypher` targets a local instance only (`POST /v2/cypher`); `--parameters` must be a JSON object;
   `--explain` shows the plan without executing.
-- The decoded response prints on stdout. A non-2xx response fails with message
-  `query failed with HTTP <status>` and the server body in `caused_by`. That body is
+- The decoded response prints on stdout. A non-2xx `query` response fails with message
+  `query failed with HTTP <status>` and the server body in `caused_by` (`cypher` instead puts it
+  in the message: `Cypher failed with HTTP <status>: <body>`). That body is
   `{"error": "<stable_code>", "msg": "<diagnostic>"}`: branch on `error` (for example
   `transaction_conflict` 409, `index_not_found` 404, `unique_constraint_violation`), never on `msg`,
   and keep unknown codes. A CLI query is never retried for you. Do not replay a Cloud write after a

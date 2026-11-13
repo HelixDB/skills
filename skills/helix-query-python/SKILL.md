@@ -205,7 +205,7 @@ client = Client("http://localhost:6969")  # Cloud: Client(url, api_key="...")
 
 try:
     response = client.query(request)
-except HelixError as error:
+except HelixError as error:  # code / retryable / is_retryable(): main only (0.3.4: see below)
     if error.is_retryable():
         ...  # back off with jitter, then resend the whole request
     elif error.code == "unique_constraint_violation":
@@ -220,7 +220,9 @@ The body of every failure is `{"error": "<code>", "msg": "...", "retryable": boo
 `retryable` appears only when the class settles it. `HelixError.code` is
 `error`, `details` is the diagnostic, `status_code` the HTTP status,
 `retryable` the hint, and `kind` separates `Network`, `Remote`,
-`Serialization`, `InvalidRequest` and embedded failures.
+`Serialization`, `InvalidRequest` and embedded failures. `code`, `retryable`
+and `is_retryable()` are **main only**; 0.3.4 has `kind`, `details` and
+`status_code`.
 
 - HTTP 409 has two classes. `transaction_conflict`, `request_read_view_changed`,
   `stale_index_generation` are `retryable: true`. `unique_constraint_violation`,
@@ -233,9 +235,8 @@ The body of every failure is `{"error": "<code>", "msg": "...", "retryable": boo
   `query_timeout`), 500s, 503 `writer_fenced_commit_outcome_unknown`, and a
   `Network` failure after a write was sent may have committed: reconcile first.
 - Never parse `details` to classify a failure. Preserve unknown codes.
-- If the installed package's `HelixError` has no `code`/`retryable`, its
-  `details` holds the raw body: `json.loads(error.details)` and read `error`
-  and `retryable`.
+- With 0.3.4 (no `code`/`retryable`), a remote error's `details` holds the raw
+  body: `json.loads(error.details)` and read `error` and `retryable`.
 
 `REFERENCE.md` has the full class table. Public reference:
 https://docs.helix-db.com/database/helix-db/query-guides/error-handling
@@ -389,7 +390,8 @@ when `min(k, unique candidates)` exceeds 800; prefiltered text returns at most
 
 `g().shortest_path(source, target, max_depth, label=None, direction=ShortestPathDirection.OUT)`
 runs an unweighted BFS and returns the node IDs on the path, source first, or
-`[]` when none is found within `max_depth`. Each endpoint must resolve to one node.
+`[]` when none is found within `max_depth` or an endpoint is missing. An endpoint
+that resolves to several nodes fails the request.
 
 ## Validation Checklist
 

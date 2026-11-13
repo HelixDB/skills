@@ -566,7 +566,8 @@ const body = deleteUser().toQueryJson(deleteUserParams, { userId: 42n });
 > binding (or Rust `.returning(Vec::<&str>::new())` / TypeScript
 > `.returning([])` for no payload) instead. Dropping a node removes its
 > connected edges. To drop only edges, traverse to them and drop the edge stream:
-> `g().n(NodeRef::param("user_id")).out_e(Some("Follows")).drop()` / `.outE("Follows").drop()`.
+> `g().n(NodeRef::param("user_id")).out_e(Some("Follows")).drop()` / `.outE("Follows").drop()` (SDK `main`;
+> crates.io 3.0.0 has no edge-stream `drop()`: stage the edges and use `g().drop_edge_by_id(EdgeRef::var(..))`).
 
 ---
 

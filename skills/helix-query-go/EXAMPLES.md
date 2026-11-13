@@ -531,14 +531,14 @@ func EnsureUserEmailIndex(ctx context.Context, client *helix.Client) error {
 		if err != nil {
 			return err
 		}
-		switch s := status.(type) {
-		case helix.IndexOperationSucceeded:
+		switch s := status.(type) { // statuses decode as pointers
+		case *helix.IndexOperationSucceeded:
 			return nil
-		case helix.IndexOperationBlocked:
+		case *helix.IndexOperationBlocked:
 			// Fix the data the blocker names, then run RetryIndexOperation in a
 			// write query, or AbortIndexOperation to discard the build.
 			return fmt.Errorf("index build %s blocked: %s %s", operationID, s.BlockerCode, s.Message)
-		case helix.IndexOperationAborted:
+		case *helix.IndexOperationAborted:
 			return errors.New("index build was aborted")
 		}
 		select {

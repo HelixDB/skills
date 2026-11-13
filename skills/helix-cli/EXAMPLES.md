@@ -69,7 +69,7 @@ Agent: Please run `helix auth login` in your terminal and tell me when it says "
 helix auth status --json
 helix workspace list --json
 helix project list --workspace acme --json
-helix database list --project app --json            # each row has its tenant:<id> reference
+helix database list --project app --json   # rows {"kind":"tenant"|"dedicated","id",...}: tenant:<id> / cluster:<id>
 
 # Either query a typed reference with no helix.toml at all:
 helix query tenant:tenant_123 --file request.json --json

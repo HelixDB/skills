@@ -251,7 +251,7 @@ Delete:
 
 ```text
 g().n(NodeRef::var("target")).drop()
-g().n(NodeRef::var("user")).out_e(Some("FOLLOWS")).drop()   // edges in a stream
+g().n(NodeRef::var("user")).out_e(Some("FOLLOWS")).drop()   // edges in a stream (SDK main only)
 g().drop_edge_by_id(EdgeRef::var("target"))                  // edges by ID
 ```
 

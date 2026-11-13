@@ -160,7 +160,8 @@ Semantics that differ from Cypher and Gremlin:
   `sackGet` execute; they are not no-ops (see `REFERENCE.md`).
 - `g().shortestPath(source, target, maxDepth, { label, direction })` is an
   unweighted BFS returning the path's node IDs (`[]` when none within
-  `maxDepth`); each endpoint must resolve to exactly one node.
+  `maxDepth` or when an endpoint is missing); an endpoint that resolves to
+  several nodes fails the request.
 
 ### 7. Prefer Explicit Write Branching Over Invented MERGE Semantics
 

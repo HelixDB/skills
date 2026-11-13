@@ -75,10 +75,10 @@ Rejected before anything runs (`400`, `error: "unsupported_feature"` with
 | `shortestPath`, `allShortestPaths` | `shortest_path` | `shortest_path_with` (one unweighted BFS path) |
 | `UNION [ALL]` | `union` | two batch variables, or `union` of sub-traversals |
 | `CALL`, `EXISTS {}`/`COUNT {}` subqueries, map projections | `procedures_and_subqueries`, `map_projection_or_subquery` | separate batch variables |
-| list/pattern comprehensions, `WHERE (a)-->(b)`, `any`/`all`/`none`/`single` | `list_comprehension`, `pattern_comprehension`, `pattern_expression`, `quantified_list_expression` | traversal + `exists`/`count`, `within`/`without` |
+| list/pattern comprehensions, `WHERE (a)-->(b)`, `any`/`all`/`none`/`single`/`reduce` | `list_comprehension`, `pattern_comprehension`, `pattern_expression`, `quantified_list_expression` | traversal + `exists`/`count`, `within`/`without`; `reduce` → `order_by(..).limit(1)` |
 | `FOREACH` | `foreach` | `for_each_param` |
-| `LOAD CSV`, schema commands | `load_csv`, `schema_ddl` | application code; native index APIs |
-| `timestamp()`, `date()`, `datetime()`, `reduce`, `round`, `split`, `replace`, ... | `function` | `Expr::timestamp()`, `Expr::datetime()`, `order_by(..).limit(1)`, or application code |
+| `LOAD CSV`, `DROP` (`CREATE INDEX` is a `syntax_error`) | `load_csv`, `schema_ddl` | application code; native index APIs |
+| `timestamp()`, `date()`, `datetime()`, `round`, `split`, `replace`, ... | `function` | `Expr::timestamp()`, `Expr::datetime()`, or application code |
 | several labels, `SET n:L`, `CREATE (n)` with no label | `multiple_node_labels`, `label_mutation`, `node_label_required` | one label per node |
 
 Vector search, text search and index management have no Cypher or SQL syntax;

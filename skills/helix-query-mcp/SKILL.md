@@ -70,7 +70,7 @@ A non-JSON body comes back as `{"opaque_response": "..."}`.
   owning project; writes need `database.query.write` (`query-write`).
 - Project-management read/write is independent and grants no data access. Members have neither
   query permission by default.
-- Every denial, including a database outside the caller's grants, is `not_found`, so a caller can't
+- Every denial, including a database outside the caller's grants, is `notfound`, so a caller can't
   tell a hidden database from a missing one.
 
 ## Write confirmation
