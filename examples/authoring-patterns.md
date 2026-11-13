@@ -1,7 +1,7 @@
 # v3 Authoring Patterns
 
-Generic published `helix-db = "3.0.0"` Rust SDK examples. Each builder produces a
-direct `QueryRequest`; there is no route registration or bundle generation.
+Generic Rust SDK (`helix-db`; release set in `docs/source-canon.md`) examples.
+Each builder produces a direct `QueryRequest`; no route registration or bundles.
 
 ## Read By Indexed Identifier
 
@@ -22,11 +22,9 @@ read_batch()
     .returning(["user"])
 ```
 
-Why it is a good baseline:
-
-- starts from a narrow anchor
-- uses explicit projection
-- returns a stable named result
+- narrow, label-scoped anchor an equality index on `User.userId` can serve
+- explicit projection
+- stable named result: `[]` when no user matches, else a one-element array
 
 ## Create Or Update With Explicit Branching
 
@@ -57,11 +55,14 @@ write_batch()
     .returning(["updated", "created"])
 ```
 
-Why it is a good baseline:
+- explicit read-versus-write intent, no invented `MERGE` semantics
+- visible control flow, atomic in one write batch
 
-- makes read-versus-write intent obvious
-- does not invent unsupported `MERGE` semantics
-- keeps the control flow visible
+Back `userId` with `IndexSpec::node_unique_equality("User", "userId")`, or two
+concurrent requests can both see `existing` empty and create duplicates. With
+it, the second create fails with `unique_constraint_violation` (409,
+`retryable: false`): re-run the upsert once (it takes the update branch); do not
+retry it like `transaction_conflict`.
 
 ## Traverse From One Known Node
 
@@ -83,8 +84,6 @@ read_batch()
     .returning(["followers"])
 ```
 
-Why it is a good baseline:
-
-- loads the starting node explicitly
-- controls traversal breadth
-- uses a lightweight returned shape
+- explicit starting node
+- bounded traversal breadth
+- lightweight returned shape

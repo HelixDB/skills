@@ -1,6 +1,17 @@
 # Helix Go SDK Cheat Sheet
 
-Quick reference for direct HelixDB v3 queries in Go.
+Quick reference for direct HelixDB v3 queries in Go. Release set, published
+package gaps and shared contracts (empty `[]` returns, `{"$id"}` elements,
+durability, ordering, `Optional`, index receipts, search limits):
+`source-canon.md`. Errors: `error-handling.md`.
+
+```bash
+go get github.com/helixdb/helix-db/sdks/go@latest   # published v0.3.1
+```
+
+```go
+import helix "github.com/helixdb/helix-db/sdks/go" // no /v3 suffix
+```
 
 ## Core Shape
 
@@ -24,28 +35,28 @@ var out FindUsersResponse
 err = client.Exec(ctx, FindUsers("acme", 25), &out)
 ```
 
-Empty at-most-one returns decode from JSON `null` to a nil Go slice. Empty
-collections, folds, and mutations decode from `[]` to a non-nil empty slice;
-scalar `0` and `false` remain scalars. Populated values keep their existing
-shape. Do not normalize nil at-most-one slices to empty slices before contract
-validation. A zero-argument `.Returning()` produces `{}`.
+Decode row variables as slices and take `[0]` after a length check. A
+zero-argument `.Returning()` produces `{}`.
 
 ## Do
 
 - use `helix.ReadQuery("name")` or `helix.WriteQuery("name")`
-- declare params inline with `q.ParamString`, `q.ParamI64`, `q.ParamDateTime`, and related helpers
-- pass returned `ParamRef` values to predicates, limits, property inputs, and search inputs
-- parameterize request-specific values; `SourceEq("id", "foo")` and `PredEq("id", "foo")` inline the literal `"foo"`
+- declare params inline (`q.ParamString`, `q.ParamI64`, `q.ParamDateTime`, ...)
+  and pass the returned `ParamRef` to predicates, limits, property inputs and
+  search inputs; `SourceEq("id", "foo")` / `PredEq("id", "foo")` inline `"foo"`
 - execute with `client.Exec(ctx, request, &out)`
-- use `helix.MarshalRequest(req)` only for tests, parity fixtures, or debugging
+- use `helix.MarshalRequest(req)` only for tests, parity fixtures or debugging
 
 ## Do Not
 
-- do not use `.With(...)`
-- do not use `WithQueryName(...)`
-- do not use stored-query or bundle workflows in the v3 SDK
-- do not call JSON serialization in normal application code
-- do not call `.Returning()` with no names unless the `{}` response is intentional
+- use `.With(...)`, or `WithQueryName(...)` on `ReadQuery` / `WriteQuery` builders
+- pass a `ParamRef` to `.Has(...)` (fails to serialize) or to `PredStartsWith` /
+  `PredEndsWith` / `PredContains` (they take `string`); use
+  `.Where(helix.PredEq(...))` or `PredContainsExpr`
+- bind node IDs as strings; use `q.ParamI64` / `ParamTypeI64()`
+- use stored-query or bundle workflows in the v3 SDK
+- call JSON serialization in normal application code
+- call `.Returning()` with no names unless the `{}` response is intentional
 
 ## Common Builders
 
@@ -56,7 +67,15 @@ helix.G().Out("FOLLOWS").Dedup().Limit(100)
 helix.G().Project(helix.ProjectPropAs("$id", "id"), helix.ProjectPropAs("name", "name"))
 helix.G().AddN("User", helix.Props{helix.Prop("name", nameParam)})
 helix.G().SetProperty("updatedAt", updatedAtParam)
+helix.G().NWithLabel("Post").OrderBy("createdAt", helix.OrderDesc).Limit(20)
+helix.G().ShortestPath(helix.NodeVar("from"), helix.NodeVar("to"), 6)   // [] or node IDs
+helix.G().NWithLabel("User").Bind("u").Optional(helix.Sub().Out("WORKS_AT").Bind("c")).
+	ProjectBindings(helix.ProjectNamedBinding("u", "name", "name"), helix.ProjectNamedBinding("c", "name", "employer"))
+helix.G().CreateIndexIfNotExists(helix.NodeUniqueEqualityIndex("User", "email")) // async: poll GetIndexOperation
 ```
+
+On a `blocked` index build, fix the data, then `RetryIndexOperation` or
+`AbortIndexOperation`.
 
 ## Search
 
@@ -69,15 +88,22 @@ tenantInput := tenant.Input()
 helix.G().VectorSearchNodesWith("Document", "embedding", vector.Input(), limit.Bound(), &tenantInput)
 ```
 
-Use `[]float32` for vector parameters. Literal `[]float64` values are accepted and
-normalized by the SDK, but dynamic vector params should declare `ParamTypeF32()`.
+Use `[]float32` for vector parameters. Literal `[]float64` values are normalized
+by the SDK, but dynamic vector params should declare `ParamTypeF32()`.
+`WithSearchConsistency` is `main` only; with v0.3.1 send `"search_consistency"`
+over HTTP.
 
-## Conflicts
+## Errors
 
-`Client.Exec` returns query failures as `*helix.HelixError` with open-string
-`Code`, diagnostic `Details`, and remote `StatusCode`. HTTP 409 also wraps
-`helix.ErrConflict`, so `helix.IsConflict(err)` remains available; use
-`Code == helix.QueryErrorCode("transaction_conflict")` for the stable
-classification. Do not parse `Details`; reload current state before rebuilding,
-then replay only safe-to-replay work. See
-`docs/error-handling.md`.
+`Client.Exec` returns `*helix.HelixError` with open-string `Code` (body
+`error`), diagnostic `Details` and `StatusCode`. Branch on `Code`, never on
+`Details`. v0.3.1 `helix.IsConflict(err)` / `helix.ErrConflict` match every
+409, so never gate a retry on them; on `main`, use `helix.IsRetryable(err)`.
+
+## Cypher And SQL
+
+Native at `POST /v2/cypher`, `/v2/sql` and their `/explain` routes.
+`client.Cypher` / `client.SQL` are `main` only; with v0.3.1 POST
+`{"query", "parameters", "query_name"}` over HTTP. Hand-write the DSL for
+`MERGE`, variable-length paths, `shortestPath`, `UNION`, subqueries, `FOREACH`
+and search.

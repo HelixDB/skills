@@ -1,20 +1,13 @@
-# HQL → Rust DSL / TypeScript DSL — Worked Migrations
+# HQL → Rust DSL / TypeScript DSL: Worked Migrations
 
-Each scenario shows the legacy **HQL** source, the **goal**, then the **Rust DSL** and **TypeScript DSL**
-translations.
+Each scenario: HQL source, then Rust and TypeScript. Rules and contracts: `SKILL.md`; spellings: `REFERENCE.md`.
 
-- **Rust** assumes `use helix_db::dsl::prelude::*;`. Query bodies are shown as
-  `read_batch()`/`write_batch()` expressions using explicit parameter
-  references. Wrap a public builder in `#[query]` to return a named direct
-  `QueryRequest`.
-- **TypeScript** assumes `import { ... } from "@helix-db/helix-db";`. Builders are plain functions returning a
-  `ReadBatch`/`WriteBatch`. Produce a request with `builder().toQueryJson(params, values, { queryName: "route_name" })`
-  (or `.toQueryJson({ queryName: "route_name" })` with no params).
-
-Recurring spelling traps: Rust `.in_(Some("X"))` / `.where_(...)` vs TS `.in("X")` / `.where(...)`; `::`
-constructors in Rust vs `.` in TS; `Some()/None::<&str>` vs `"X"/null`; integer params are `bigint` (`1n`) in TS.
-
-See `../helix-query-rust/EXAMPLES.md` and `../helix-query-typescript/EXAMPLES.md` for non-migration patterns.
+- **Rust** assumes `use helix_db::dsl::prelude::*;` and shows `read_batch()`/`write_batch()` bodies with explicit
+  parameter references. Wrap in `#[query]` for a named callable returning `Result<QueryRequest, QueryError>`
+  (call with `?`).
+- **TypeScript** assumes `import { ... } from "@helix-db/helix-db";`. Builders return a `ReadBatch`/`WriteBatch`;
+  build a request with `builder().toQueryJson(params, values, { queryName: "route_name" })` (or
+  `.toQueryJson({ queryName: "route_name" })` with no params).
 
 ---
 
@@ -26,8 +19,6 @@ QUERY GetUser(user_id: ID) =>
     RETURN user
 ```
 
-**Goal:** fetch one user by id.
-
 ```rust
 read_batch()
     .var_as("user", g().n(NodeRef::param("user_id")))
@@ -35,7 +26,7 @@ read_batch()
 ```
 
 ```ts
-const getUserParams = defineParams({ userId: param.string() });
+const getUserParams = defineParams({ userId: param.i64() });
 
 function getUser(_ = getUserParams) {
   return readBatch()
@@ -43,10 +34,10 @@ function getUser(_ = getUserParams) {
     .returning(["user"]);
 }
 
-const body = getUser().toQueryJson(getUserParams, { userId: "u-42" });
+const body = getUser().toQueryJson(getUserParams, { userId: 42n });
 ```
 
-> HQL `ID` becomes `String` (Rust) / `param.string()` (TS). Anchoring on the param id is the narrowest anchor.
+> Response: `{"user": [{"$id": 42}]}`, or `{"user": []}` when the node does not exist. Project for properties.
 
 ---
 
@@ -58,14 +49,11 @@ QUERY GetByHandle(handle: String) =>
     RETURN user::{userID: ::ID, name, handle}
 ```
 
-**Goal:** look up a user by an indexed property and return a renamed-id shape.
-
 ```rust
 read_batch()
     .var_as(
         "user",
-        g().n_with_label("User")
-            .where_(Predicate::eq_param("handle", "handle"))
+        g().n_with_label_where("User", SourcePredicate::eq_param("handle", "handle"))
             .project(vec![
                 PropertyProjection::renamed("$id", "userID"),
                 PropertyProjection::new("name"),
@@ -83,8 +71,7 @@ function getByHandle(_ = getByHandleParams) {
     .varAs(
       "user",
       g()
-        .nWithLabel("User")
-        .where(Predicate.eqParam("handle", "handle"))
+        .nWithLabelWhere("User", SourcePredicate.eqParam("handle", "handle"))
         .project([
           PropertyProjection.renamed("$id", "userID"),
           PropertyProjection.new("name"),
@@ -97,11 +84,6 @@ function getByHandle(_ = getByHandleParams) {
 const body = getByHandle().toQueryJson(getByHandleParams, { handle: "alice" });
 ```
 
-> HQL `N<User>({handle: ...})` is an indexed lookup. For a constant value, anchor with a **source predicate**
-> (`g().n_where(SourcePredicate::eq("handle", value))` / `g().nWhere(SourcePredicate.eq(...))`, index-friendly).
-> For a parameter, `n_with_label(..).where(eq_param(..))` as above. HQL `::ID` is the virtual field `$id`;
-> `userID: ::ID` becomes `PropertyProjection::renamed("$id", "userID")`.
-
 ---
 
 ## 3. Multi-hop traversal with property selection
@@ -111,8 +93,6 @@ QUERY GetFollowing(user_id: ID) =>
     following <- N<User>(user_id)::Out<Follows>::Out<Follows>
     RETURN following::{name, handle}
 ```
-
-**Goal:** friends-of-friends, projected.
 
 ```rust
 read_batch()
@@ -128,7 +108,7 @@ read_batch()
 ```
 
 ```ts
-const getFollowingParams = defineParams({ userId: param.string() });
+const getFollowingParams = defineParams({ userId: param.i64() });
 
 function getFollowing(_ = getFollowingParams) {
   return readBatch()
@@ -144,11 +124,10 @@ function getFollowing(_ = getFollowingParams) {
     .returning(["following"]);
 }
 
-const body = getFollowing().toQueryJson(getFollowingParams, { userId: "u-42" });
+const body = getFollowing().toQueryJson(getFollowingParams, { userId: 42n });
 ```
 
-> Add `dedup()` for two-hop traversals — the same node is often reachable by multiple paths. HQL did not dedup
-> implicitly, so only add it if the intent is distinct results.
+> HQL does not dedup; add `dedup()` only when distinct results are intended (multi-hop paths repeat nodes).
 
 ---
 
@@ -160,8 +139,6 @@ QUERY GetCreator(creation_id: ID) =>
     RETURN creator
 ```
 
-**Goal:** from a `Creates` edge, get the source node.
-
 ```rust
 read_batch()
     .var_as("creator", g().e(EdgeRef::param("creation_id")).in_n())
@@ -169,7 +146,7 @@ read_batch()
 ```
 
 ```ts
-const getCreatorParams = defineParams({ creationId: param.string() });
+const getCreatorParams = defineParams({ creationId: param.i64() });
 
 function getCreator(_ = getCreatorParams) {
   return readBatch()
@@ -177,11 +154,10 @@ function getCreator(_ = getCreatorParams) {
     .returning(["creator"]);
 }
 
-const body = getCreator().toQueryJson(getCreatorParams, { creationId: "e-9" });
+const body = getCreator().toQueryJson(getCreatorParams, { creationId: 9n });
 ```
 
-> `::FromN` (edge → source) is `.in_n()` / `.inN()`; `::ToN` (edge → target) is `.out_n()` / `.outN()`. Easy to
-> invert — `From` is the *incoming* side from the edge's perspective.
+> `From` is the *incoming* side from the edge's perspective, hence `.in_n()`.
 
 ---
 
@@ -192,8 +168,6 @@ QUERY ActiveAdults(status: String, min_age: U8) =>
     users <- N<User>::WHERE(AND(_::{status}::EQ(status), _::{age}::GTE(min_age)))::ORDER<Desc>(_::{age})::RANGE(0, 20)
     RETURN users::{name, age, status}
 ```
-
-**Goal:** filter, sort, paginate, project.
 
 ```rust
 read_batch()
@@ -244,9 +218,6 @@ function activeAdults(_ = activeAdultsParams) {
 const body = activeAdults().toQueryJson(activeAdultsParams, { status: "active", minAge: 18n });
 ```
 
-> HQL widths (`U8`) collapse to `i64`/`param.i64()`. `RANGE(0,20)` maps 1:1 to `.range(0,20)`. Note the TS param
-> is a `bigint` (`18n`).
-
 ---
 
 ## 6. Membership filter (`IS_IN`) and string `CONTAINS`
@@ -256,8 +227,6 @@ QUERY SearchUsers(statuses: [String], term: String) =>
     users <- N<User>::WHERE(AND(_::{status}::IS_IN(statuses), _::{bio}::CONTAINS(term)))
     RETURN users::{name}
 ```
-
-**Goal:** combine an array-membership filter with a substring filter.
 
 ```rust
 read_batch()
@@ -306,8 +275,6 @@ QUERY UsersByCountry() =>
     RETURN users::GROUP_BY(country)
 ```
 
-**Goal:** count users per country.
-
 ```rust
 read_batch()
     .var_as("users", g().n_with_label("User").group_count("country"))
@@ -324,9 +291,7 @@ function usersByCountry() {
 const body = usersByCountry().toQueryJson();
 ```
 
-> HQL `GROUP_BY` returns count summaries → `group_count`/`groupCount`. HQL `AGGREGATE_BY` (which returns the full
-> grouped objects) → `group`/`group`. For numeric rollups like `AVG(score)` use
-> `.aggregate_by(AggregateFunction::Mean, "score")` (HQL `AVG` is `Mean`).
+> `AGGREGATE_BY` (full objects) → `group`; `AVG(score)` → `.aggregate_by(AggregateFunction::Mean, "score")`.
 
 ---
 
@@ -337,8 +302,6 @@ QUERY FindDocs(vector: [F64], k: I64) =>
     docs <- SearchV<Document>(vector, k)
     RETURN docs::{docID: ::ID, content}
 ```
-
-**Goal:** top-k nearest documents for a precomputed query vector, scoped to a tenant.
 
 ```rust
 read_batch()
@@ -391,11 +354,8 @@ function findDocs(_ = findDocsParams) {
 const body = findDocs().toQueryJson(findDocsParams, { vector: [0.1, 0.2, 0.3], k: 10n, tenantId: "acme" });
 ```
 
-> Use the **`_with`/`...With`** search variants for runtime params (vector, `k`, tenant). The plain
-> `vector_search_nodes`/`vectorSearchNodes` take concrete values (a literal `Vec<f32>`/`number[]`), so a param
-> name passed there would be treated as a literal. Two migration musts: the vector is **precomputed** (HQL
-> `Embed(...)` is unsupported — see scenario 15), and carry the tenant value if the original route was
-> tenant-scoped. Project `$distance` at the search step — it is gone after any further hop.
+> `_with`/`...With` variants take params; the plain ones take a literal `Vec<f32>`/`number[]`. The vector is
+> precomputed (`Embed` is unsupported, §15).
 
 ---
 
@@ -406,8 +366,6 @@ QUERY SearchDocs(keywords: String, k: I64) =>
     docs <- SearchBM25<Document>(keywords, k)
     RETURN docs
 ```
-
-**Goal:** full-text search over an indexed text property.
 
 ```rust
 read_batch()
@@ -439,8 +397,7 @@ function searchDocs(_ = searchDocsParams) {
 const body = searchDocs().toQueryJson(searchDocsParams, { keywords: "machine learning", k: 5n });
 ```
 
-> The property argument (`"content"`) must be the BM25-indexed text field. Pass `None`/`null` for tenant when the
-> route is not tenant-scoped.
+> `"content"` must be the BM25-indexed property. `None`/`null` tenant when the route is not tenant-scoped.
 
 ---
 
@@ -452,8 +409,6 @@ QUERY CreateFollow(name: String, target_id: ID) =>
     edge <- AddE<Follows>::From(user)::To(target_id)
     RETURN user, edge
 ```
-
-**Goal:** add a user and link it to an existing node.
 
 ```rust
 write_batch()
@@ -471,7 +426,7 @@ write_batch()
 ```
 
 ```ts
-const createFollowParams = defineParams({ name: param.string(), targetId: param.string() });
+const createFollowParams = defineParams({ name: param.string(), targetId: param.i64() });
 
 function createFollow(_ = createFollowParams) {
   return writeBatch()
@@ -483,11 +438,11 @@ function createFollow(_ = createFollowParams) {
     .returning(["user", "edge"]);
 }
 
-const body = createFollow().toQueryJson(createFollowParams, { name: "Alice", targetId: "u-7" });
+const body = createFollow().toQueryJson(createFollowParams, { name: "Alice", targetId: 7n });
 ```
 
-> `add_e` is a step on the **From** node; the **To** node is the second argument. Note this is a `write_batch`
-> because it mutates — using `read_batch` would fail to compile.
+> Both bindings return `[{"$id": N}]`. A missing `target_id` fails the whole batch; re-running creates a second
+> `Follows` edge.
 
 ---
 
@@ -499,8 +454,6 @@ QUERY RenameUser(user_id: ID, new_name: String) =>
     RETURN updated
 ```
 
-**Goal:** change one property on an existing node.
-
 ```rust
 write_batch()
     .var_as(
@@ -511,7 +464,7 @@ write_batch()
 ```
 
 ```ts
-const renameUserParams = defineParams({ userId: param.string(), newName: param.string() });
+const renameUserParams = defineParams({ userId: param.i64(), newName: param.string() });
 
 function renameUser(_ = renameUserParams) {
   return writeBatch()
@@ -519,11 +472,8 @@ function renameUser(_ = renameUserParams) {
     .returning(["updated"]);
 }
 
-const body = renameUser().toQueryJson(renameUserParams, { userId: "u-42", newName: "Alicia" });
+const body = renameUser().toQueryJson(renameUserParams, { userId: 42n, newName: "Alicia" });
 ```
-
-> One `set_property`/`setProperty` per field; chain calls for several. Omitted fields stay unchanged, matching
-> HQL `UPDATE` semantics.
 
 ---
 
@@ -535,8 +485,6 @@ QUERY DeleteUser(user_id: ID) =>
     RETURN "Removed"
 ```
 
-**Goal:** drop a node and its edges.
-
 ```rust
 write_batch()
     .var_as("dropped", g().n(NodeRef::param("user_id")).drop())
@@ -544,7 +492,7 @@ write_batch()
 ```
 
 ```ts
-const deleteUserParams = defineParams({ userId: param.string() });
+const deleteUserParams = defineParams({ userId: param.i64() });
 
 function deleteUser(_ = deleteUserParams) {
   return writeBatch()
@@ -552,14 +500,12 @@ function deleteUser(_ = deleteUserParams) {
     .returning(["dropped"]);
 }
 
-const body = deleteUser().toQueryJson(deleteUserParams, { userId: "u-42" });
+const body = deleteUser().toQueryJson(deleteUserParams, { userId: 42n });
 ```
 
-> HQL `RETURN "Removed"` (a literal) has no DSL form — return the dropped
-> binding (or Rust `.returning(Vec::<&str>::new())` / TypeScript
-> `.returning([])` for no payload) instead. Dropping a node removes its
-> connected edges. To drop only edges, traverse to them and use
-> `drop_edge_by_id`/`dropEdgeById` (multigraph-safe).
+> `RETURN "Removed"` has no form: return the dropped binding, or `.returning(Vec::<&str>::new())` /
+> `.returning([])`. Edges only: `g().n(NodeRef::param("user_id")).out_e(Some("Follows")).drop()` /
+> `.outE("Follows").drop()` (main).
 
 ---
 
@@ -572,8 +518,6 @@ QUERY CreateUsers(users: [{name: String}]) =>
     }
     RETURN NONE
 ```
-
-**Goal:** create one node per element of an array parameter.
 
 ```rust
 let body = write_batch()
@@ -595,11 +539,8 @@ function createUsers(_ = createUsersParams) {
 const body = createUsers().toQueryJson(createUsersParams, { users: [{ name: "Alice" }, { name: "Bob" }] });
 ```
 
-> `for_each_param`/`forEachParam` iterates the objects of an **array parameter** — it is not a general loop. The
-> body is its own batch that reads each element's fields by name. Use the HQL destructuring form (`FOR {name} IN`,
-> array-of-objects) for a clean mapping; an array-of-scalars `FOR name IN` does
-> not map directly. `RETURN NONE` maps to Rust
-> `.returning(Vec::<&str>::new())` or TypeScript `.returning([])`.
+> The body is its own batch reading each element's fields by name. Destructuring over objects (`FOR {name} IN`)
+> maps cleanly; an array-of-scalars `FOR name IN` does not map directly.
 
 ---
 
@@ -611,10 +552,7 @@ QUERY UsersWithFollowers() =>
     RETURN users::{name}
 ```
 
-**Goal:** users that have at least one follower.
-
-`Predicate` is property-only, so `WHERE(EXISTS(_::In<Follows>))` has **no inline predicate form**. Stage the set
-of followed users (targets of `Follows` edges) and intersect with `.within`, or filter app-side:
+No predicate form: stage the targets of `Follows` edges and intersect with `.within`, or filter app-side.
 
 ```rust
 read_batch()
@@ -638,14 +576,12 @@ function usersWithFollowers() {
 const body = usersWithFollowers().toQueryJson();
 ```
 
-> Flag this in the migration: HQL `EXISTS`/`!EXISTS` and count-based `WHERE` (e.g.
-> `WHERE(_::In<Follows>::COUNT::GT(100))`) are not predicates. Use `.within(var)` / `.without(var)` set ops where
-> they fit, otherwise compute the condition in application code. `.exists()` only produces a terminal boolean on
-> its own binding — it is not a filter.
+> Flag it in the migration. `!EXISTS` uses `.without(var)`; count-based `WHERE`
+> (`WHERE(_::In<Follows>::COUNT::GT(100))`) has no predicate form either.
 
 ---
 
-## 15. Inline embedding + reranking + upsert — UNSUPPORTED, split app/DSL
+## 15. Upsert + inline embedding + reranking — split DSL / app code
 
 ```helixql
 #[model("openai:text-embedding-ada-002")]
@@ -655,18 +591,67 @@ QUERY UpsertAndSearch(content: String, k: I64) =>
     RETURN hits
 ```
 
-**Goal:** embed text, upsert a document, then a reranked similarity search.
-
-Four HQL features here have **no DSL equivalent**: the `#[model]` macro, `Embed(...)`, `UpsertV`, and
-`::RerankRRF`. Translate only the supported core; do the rest in app code.
+`UpsertV` is one write batch; `#[model]`, `Embed(...)` and `::RerankRRF` move to app code.
 
 **App code (outside the DSL):**
 1. Embed `content` with your model → `vector` (replaces `Embed` and `#[model]`).
-2. Upsert = read-then-branch: query by `content`; if found, `set_property` the vector/fields, else `add_n` with
-   the vector (replaces `UpsertV`).
-3. After the search returns ranked hits, apply RRF/MMR fusion in the application (replaces `::RerankRRF`).
+2. After the search returns ranked hits, apply RRF/MMR fusion in the application (replaces `::RerankRRF`).
 
-**Supported DSL core — the similarity search with the app-provided vector:**
+**DSL request 1 — the upsert (write batch):**
+
+```rust
+write_batch()
+    .var_as(
+        "existing",
+        g().n_with_label_where("Document", SourcePredicate::eq_param("content", "content")),
+    )
+    .var_as_if(
+        "updated",
+        BatchCondition::VarNotEmpty("existing".to_string()),
+        g().n(NodeRef::var("existing"))
+            .set_property("embedding", PropertyInput::param("vector")),
+    )
+    .var_as_if(
+        "created",
+        BatchCondition::VarEmpty("existing".to_string()),
+        g().add_n(
+            "Document",
+            vec![
+                ("content", PropertyInput::param("content")),
+                ("embedding", PropertyInput::param("vector")),
+            ],
+        ),
+    )
+    .returning(["updated", "created"])
+```
+
+```ts
+const upsertDocParams = defineParams({ content: param.string(), vector: param.array(param.f64()) });
+
+function upsertDoc(_ = upsertDocParams) {
+  return writeBatch()
+    .varAs("existing", g().nWithLabelWhere("Document", SourcePredicate.eqParam("content", "content")))
+    .varAsIf(
+      "updated",
+      BatchCondition.varNotEmpty("existing"),
+      g().n(NodeRef.var("existing")).setProperty("embedding", PropertyInput.param("vector")),
+    )
+    .varAsIf(
+      "created",
+      BatchCondition.varEmpty("existing"),
+      g().addN("Document", { content: PropertyInput.param("content"), embedding: PropertyInput.param("vector") }),
+    )
+    .returning(["updated", "created"]);
+}
+
+const upsertBody = upsertDoc().toQueryJson(upsertDocParams, { content: "graph databases", vector: [0.1, 0.2, 0.3] });
+```
+
+> Two concurrent upserts can both see `existing` empty; `IndexSpec::node_unique_equality("Document", "content")`
+> makes the second fail with `unique_constraint_violation`, then re-run once. Index keys are limited to about
+> 64 KiB: for long text, store and look up a hash property (e.g. `contentHash`) instead of `content`.
+
+**DSL request 2 — the similarity search with the app-provided vector:**
 
 ```rust
 read_batch()
@@ -709,15 +694,49 @@ function searchSimilar(_ = searchSimilarParams) {
 const body = searchSimilar().toQueryJson(searchSimilarParams, { vector: [0.1, 0.2, 0.3], k: 10n });
 ```
 
-> Always tell the user which parts moved to app code and why, rather than inventing a DSL shape for an
-> unsupported feature. For a hybrid recall (vector + BM25 + app-side RRF) pattern, see the `helix-memory-system`
-> skill.
+> Tell the user which parts moved to app code and why. A strong (default) search sees the vector the upsert just
+> committed. Hybrid recall (vector + BM25 + app-side RRF): `helix-memory-system`.
 
 ---
 
-## Verifying these migrations
+## 16. Unweighted shortest path (`ShortestPathBFS`)
 
-Run the loop from `REFERENCE.md` §Verification: **compile** (`cargo build`/`tsc`), **AST parity** (diff raw batch JSON, or diff
-dynamic envelopes only after setting the same Rust `query_name` / TS `{ queryName }` — identical JSON means the two translations
-agree and match the wire format), then **run** both against the same dataset as the original HQL and compare row counts, ordering,
-and projected fields.
+```helixql
+QUERY Degrees(from_id: ID, to_id: ID) =>
+    path <- N<User>(from_id)::ShortestPathBFS<Follows>::To(to_id)
+    RETURN path
+```
+
+```rust
+read_batch()
+    .var_as(
+        "path",
+        g().shortest_path_with(
+            NodeRef::param("from_id"),
+            NodeRef::param("to_id"),
+            Some("Follows"),
+            ShortestPathDirection::Out,
+            6,
+        ),
+    )
+    .returning(["path"])
+```
+
+```ts
+const degreesParams = defineParams({ fromId: param.i64(), toId: param.i64() });
+
+function degrees(_ = degreesParams) {
+  return readBatch()
+    .varAs(
+      "path",
+      g().shortestPath(NodeRef.param("fromId"), NodeRef.param("toId"), 6, { label: "Follows" }),
+    )
+    .returning(["path"]);
+}
+
+const body = degrees().toQueryJson(degreesParams, { fromId: 1n, toId: 7n });
+```
+
+> Response: `{"path": [1, 4, 7]}`, or `{"path": []}`. HQL had no depth bound; pick a positive `max_depth` that
+> fits the graph. Undirected: `ShortestPathDirection::Both` / `{ direction: ShortestPathDirection.Both }`; any
+> label: `shortest_path(..)` / no `label`.

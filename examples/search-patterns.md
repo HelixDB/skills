@@ -1,7 +1,8 @@
 # v3 Search Patterns
 
-Generic published `helix-db = "3.0.0"` Rust SDK patterns for BM25, vector
-search, and bounded expansion. These builders serialize direct requests.
+Generic Rust SDK (`helix-db`; see `docs/source-canon.md`) patterns for BM25,
+vector search and bounded expansion, as direct requests. Search limits and
+consistency: `docs/source-canon.md`.
 
 ## Tenant-Scoped BM25 Search
 
@@ -34,6 +35,8 @@ read_batch()
         g().n_with_label("Document")
             .where_(Predicate::eq_param("tenantId", "tenantId"))
             .where_(Predicate::eq("published", true))
+            // Rust main only. helix-db 3.0.0: bind these candidates, then
+            // g().text_search_nodes_with(..).within("<var>") (can return fewer than k).
             .text_search_with(
                 "Document",
                 "body",
@@ -50,9 +53,10 @@ read_batch()
     .returning(["results"])
 ```
 
-The filters construct the exact candidate stream before BM25 ranking. Restricted
-search deduplicates those IDs and refills to `limit` when enough candidates match.
-Pass the same tenant partition used to construct candidates.
+The filters build the exact candidate stream before BM25 ranking. Restricted
+search deduplicates the IDs and refills to `limit` when enough match, up to
+`min(candidates, limit, 800)` rows. Pass the tenant partition used to build the
+candidates.
 
 ## Tenant-Scoped Vector Search
 
@@ -101,9 +105,13 @@ read_batch()
     .returning(["results"])
 ```
 
-The filters construct the exact candidate stream before vector ranking. The
-engine cannot return an ID outside that stream, although approximate index
-structures may accelerate ranking.
+No ID outside the candidate stream is returned, though approximate index
+structures may accelerate ranking. Fails when `min(limit, unique candidates)`
+exceeds 800 or above 1,000,000 unique candidates; a whole-index search (previous
+pattern) returns at most 800 hits. For slightly stale but never
+`index_backpressure`-rejected reads, request `SearchConsistency::Eventual` on the
+`QueryRequest` (Rust `main`; published packages: `"search_consistency": "eventual"`
+over HTTP).
 
 ## Fixed-Depth Expansion
 
@@ -120,7 +128,7 @@ read_batch()
             .repeat(
                 RepeatConfig::new(sub().both(Some("RELATED_TO")))
                     .times(3)
-                    .emit_all(),
+                    .emit_after(),
             )
             .without("seed")
             .dedup()
@@ -128,3 +136,7 @@ read_batch()
     )
     .returning(["expanded"])
 ```
+
+`emit_after()` returns nodes reached at depths 1 to 3. `both` walks back to the
+seed at depth 2, so `without("seed")` removes it (drop it if the seed should
+count). `emit_all()` would also emit the seed and each intermediate depth twice.

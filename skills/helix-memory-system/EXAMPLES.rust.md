@@ -59,7 +59,7 @@ fn live_user_chunk_predicate(user_param: &str) -> Predicate {
 
 ---
 
-## 1. Bootstrap indexes (run once)
+## 1. Bootstrap indexes (run once), then wait for them
 
 ```rust
 #[query]
@@ -95,7 +95,42 @@ pub fn bootstrap_memory_indexes() -> WriteBatch {
         .var_as("sessId",      g().create_index_if_not_exists(IndexSpec::node_unique_equality("Session", "sessionId")))
         .var_as("sessTenant",  g().create_index_if_not_exists(IndexSpec::node_equality("Session", "tenant_id")))
         .var_as("sessUser",    g().create_index_if_not_exists(IndexSpec::node_equality("Session", "userId")))
-        .returning(["memVector", "memText", "chunkVec", "chunkText"])
+        .returning([
+            "tenant", "userKey", "userTenant", "userId", "profileId", "profileTen", "profileUser",
+            "docId", "docTenant", "docUser", "docChecksum", "chunkId", "chunkTenant", "chunkUser", "chunkDoc",
+            "chunkVec", "chunkText", "memoryId", "memTenant", "memUser", "memLatest", "memVector", "memText",
+            "catKey", "catTenant", "entKey", "entTenant", "sessId", "sessTenant", "sessUser",
+        ])
+}
+```
+
+Each returned variable is a receipt. For `accepted` or `existing_operation`, poll its
+`operation_id` until `succeeded` before serving traffic; `already_active` needs no wait.
+`blocked` (with a `blocker_code`): fix the cause, then `retry_index_operation`; `aborted`:
+create the index again.
+
+```rust
+let receipts = client
+    .query::<serde_json::Value>(bootstrap_memory_indexes()?)
+    .send()
+    .await?;
+for receipt in receipts.as_object().into_iter().flat_map(|vars| vars.values()) {
+    let Some(operation_id) = receipt["operation_id"].as_str() else { continue };
+    loop {
+        let status = client
+            .query::<serde_json::Value>(QueryRequest::read(
+                read_batch()
+                    .var_as("op", g().get_index_operation(operation_id))
+                    .returning(["op"]),
+            ))
+            .send()
+            .await?;
+        match status["op"]["status"].as_str() {
+            Some("succeeded") => break,
+            Some("queued" | "running") => tokio::time::sleep(std::time::Duration::from_secs(1)).await,
+            other => return Err(format!("index operation {operation_id}: {other:?}").into()),
+        }
+    }
 }
 ```
 
@@ -599,6 +634,8 @@ pub fn hybrid_recall(
             "memoryKeyword",
             g().n_with_label("Memory")
                 .where_(current_user_memory_predicate("now", "userId"))
+                // main only. helix-db 3.0.0: bind these candidates, then
+                // g().text_search_nodes_with(..).within("<var>") (can return fewer than k).
                 .text_search_with(
                     "Memory",
                     "content",
@@ -640,6 +677,7 @@ pub fn hybrid_recall(
             "chunkKeyword",
             g().n_with_label("Chunk")
                 .where_(live_user_chunk_predicate("userId"))
+                // main only; 3.0.0 alternative as for memoryKeyword above.
                 .text_search_with(
                     "Chunk",
                     "content",

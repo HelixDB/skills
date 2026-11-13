@@ -1,15 +1,10 @@
 # Helix Query Authoring — TypeScript Examples
 
-Each numbered scenario corresponds 1:1 with `../helix-query-rust/EXAMPLES.md`.
-When moving between TypeScript and Rust, open the same scenario in each file, then
-serialize either builder for the canonical direct JSON request.
-
-All snippets assume `import { ... } from "@helix-db/helix-db";`. Query
-builders are plain functions returning a `ReadBatch` or `WriteBatch`. Build a
-direct request with
-`builder().toQueryRequest(params, values, { queryName: "route_name" })` and
-execute it with `await Client.server(url).query<R>(request).send()`. Use
-`toQueryJson` to inspect the exact `POST /v2/query` body.
+Scenarios are numbered 1:1 with `../helix-query-rust/EXAMPLES.md`; either builder
+serializes to the same direct JSON request. Snippets assume
+`import { ... } from "@helix-db/helix-db";`. Send with
+`await Client.server(url).query<R>(builder().toQueryRequest(params, values, { queryName: "route_name" })).send()`;
+`toQueryJson` shows the exact `POST /v2/query` body.
 
 ---
 
@@ -129,9 +124,9 @@ function nearestDocuments(p = nearestParams) {
 }
 ```
 
-The label, tenant, and publication predicates build the exact candidate stream
-before vector ranking. Source vector search followed by `where` can underfill
-top-k. Project `$distance` before any `.out`/`.in`/`.both`.
+The predicates build the exact candidate stream before ranking; source vector search
+followed by `where` can underfill top-k. Project `$distance` before any
+`.out`/`.in`/`.both`.
 
 ---
 
@@ -159,9 +154,8 @@ function documentSearch(p = docSearchParams) {
 }
 ```
 
-The label, tenant, and publication predicates build the candidate stream
-before BM25 ranking. This refills exactly to `k` when enough matching
-candidates exist; source text search followed by `where` does not.
+This returns exactly `k` hits when enough candidates match; source text search followed
+by `where` does not.
 
 ---
 
@@ -233,6 +227,9 @@ function userContent(p = contentParams) {
     .returning(["content"]);
 }
 ```
+
+Without the else branch, non-`premium` users would be dropped. For a per-row value use
+`Expr.case` (§10).
 
 ---
 
@@ -306,8 +303,7 @@ function totalRevenue() {
 
 ## Edge Endpoint Projection
 
-Use this when an edge list needs stable source/target resource ids. It keeps one
-output row per edge and avoids traversing to every endpoint node.
+One row per edge with source/target resource ids, without traversing to each endpoint.
 
 ```ts
 function listDescribesRelationships() {
@@ -327,18 +323,14 @@ function listDescribesRelationships() {
 }
 ```
 
-The direct request nests this projection under the `project` root. Endpoint
-helpers serialize their sources as `$from.resource_id` and `$to.resource_id`.
+Endpoint sources serialize as `$from.resource_id` and `$to.resource_id`.
 
 ---
 
 ## Row bindings: multi-hop correlation
 
-Use this when one output row must combine values captured at **different hops**
-of a single path — `.project(...)` only sees the final stream. Tag elements with
-`.bind(name)` as you pass them, then assemble rows with
-`.projectDistinctBindings(...)` (or `.projectBindings(...)` to keep duplicates).
-`coalesce` picks the first present non-null reference.
+One row combining values from **different hops** (`.project(...)` only sees the final
+stream). `coalesce` picks the first present non-null reference.
 
 ```ts
 function serviceTopology() {
@@ -367,8 +359,7 @@ function serviceTopology() {
 }
 ```
 
-This binding projection is part of a normal direct request and is
-available in the Python v3 SDK.
+Part of a normal direct request; also available in the Python v3 SDK.
 
 ---
 
@@ -383,20 +374,34 @@ const createUserParams = defineParams({
 
 function createUserAndLinkPost(p = createUserParams) {
   return writeBatch()
+    // Keep the variable a node stream: NodeRef.var() needs nodes, not a projection.
     .varAs(
       "newUser",
-      g()
-        .addN("User", {
-          userId: PropertyInput.param("userId"),
-          name: PropertyInput.param("name"),
-          createdAt: PropertyInput.expr(Expr.timestamp()),
-        })
-        .project([PropertyProjection.renamed("$id", "id")]),
+      g().addN("User", {
+        userId: PropertyInput.param("userId"),
+        name: PropertyInput.param("name"),
+        createdAt: PropertyInput.expr(Expr.timestamp()),
+      }),
     )
     .varAs("link", g().n(NodeRef.param("postId")).addE("CREATED_BY", NodeRef.var("newUser"), {}))
-    .returning(["newUser", "link"]);
+    // Project in a separate entry for the response.
+    .varAs(
+      "user",
+      g()
+        .n(NodeRef.var("newUser"))
+        .project([PropertyProjection.renamed("$id", "id"), PropertyProjection.new("name")]),
+    )
+    .returning(["user", "link"]);
 }
+
+type CreateUserResponse = {
+  user: { id: number; name: string }[];
+  link: { $id: number }[]; // unprojected edges return only their ID
+};
 ```
+
+`addE` creates one edge per (source, target) pair every run; an empty target stream fails
+the whole batch.
 
 ---
 
@@ -422,6 +427,10 @@ function upsertUser(p = upsertParams) {
 }
 ```
 
+Both entries are `{ "$id": number }[]`; the branch that did not run returns `[]`. Create
+`IndexSpec.nodeUniqueEquality("User", "userId")` (§17) so concurrent upserts cannot both
+create; the loser fails with `unique_constraint_violation`; re-run the upsert once.
+
 ---
 
 ## 14. Write: `forEachParam` over an array of objects
@@ -441,9 +450,10 @@ function bulkCreateUsers(p = bulkParams) {
 }
 ```
 
-Inside `body`, parameter names resolve against each object's fields.
-`param.array(param.object(param.value()))` records a structured array-of-object
-schema matching Rust `QueryParamType::Array(Box::new(QueryParamType::Object))`.
+Parameter names in `body` resolve against each object's fields.
+`param.array(param.object(param.value()))` matches Rust
+`QueryParamType::Array(Box::new(QueryParamType::Object))`. `created` holds only the last
+iteration.
 
 ---
 
@@ -484,7 +494,8 @@ function usersByExternalId() {
 }
 ```
 
-Dotted property lookup is exact-first and scan-only in the current runtime. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
+Dotted paths are exact-first and scan-only (REFERENCE.md, Nested properties); keep
+indexed or searchable fields top-level. Arrays are opaque: no `metadata.tags.0`.
 
 ---
 
@@ -514,9 +525,8 @@ const body = usersFiltered().toQueryJson(filteredParams, {
 });
 ```
 
-`statuses` records as an array-of-string schema and `since` as
-`"date_time"`. Pass a `DateTime`; the request normalizes to UTC RFC3339 with
-millisecond precision before serializing.
+`statuses` records as an array-of-string schema, `since` as `"date_time"` (UTC RFC3339,
+milliseconds).
 
 ---
 
@@ -543,13 +553,48 @@ function bootstrapIndexes() {
 }
 ```
 
-Drop an index with `g().dropIndex(IndexSpec....)`. The convenience methods (`createVectorIndexNodes`, etc.) produce identical wire output — prefer `createIndexIfNotExists` + `IndexSpec` for consistency with the dynamic JSON reference.
+Drop with `g().dropIndex(IndexSpec....)`. Convenience methods (`createVectorIndexNodes`,
+etc.) produce identical wire output; prefer `createIndexIfNotExists` + `IndexSpec`. Each
+entry returns a receipt; wait for the build before relying on the index:
+
+```ts
+async function waitForIndex(client: Client, receiptValue: unknown): Promise<void> {
+  const receipt = parseIndexDdlReceipt(receiptValue);
+  if (receipt.kind === "already_active") return;
+  const operationId = receipt.operation_id;
+  const statusRequest = readBatch()
+    .varAs("status", g().getIndexOperation(operationId))
+    .returning(["status"])
+    .toQueryRequest({ queryName: "index_operation_status" });
+  for (;;) {
+    const { status } = await client.query<{ status: unknown }>(statusRequest).send();
+    const operation = parseIndexOperationStatus(status);
+    if (operation.status === "succeeded") return;
+    if (operation.status === "aborted") throw new Error(`index operation ${operationId} aborted`);
+    if (operation.status === "blocked") {
+      // Fix what blocker_code names (e.g. duplicate values for uniqueness_violation), then
+      // run writeBatch().varAs("retry", g().retryIndexOperation(operationId)), or abort with
+      // g().abortIndexOperation(operationId).
+      throw new Error(`index build blocked: ${operation.blocker_code} ${operation.message ?? ""}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
+const created = await client
+  .query<Record<string, unknown>>(bootstrapIndexes().toQueryRequest({ queryName: "bootstrap_indexes" }))
+  .send();
+for (const receipt of Object.values(created)) await waitForIndex(client, receipt);
+```
+
+Repeating the create while the build runs returns `existing_operation` with the same
+`operation_id`.
 
 ---
 
 ## 18. Warm a read route
 
-Warming uses the *same* query; `.warmOnly()` sets the `X-Helix-Warm: true` header on the client. Build the request and let callers decide to warm:
+Warming sends the *same* query with `.warmOnly()` (`X-Helix-Warm: true`):
 
 ```ts
 import { Client } from "@helix-db/helix-db";
@@ -558,46 +603,98 @@ const client = new Client("http://localhost:6969");
 const request = userById().toQueryRequest(userByIdParams, { userId: "u-42" });
 
 // Helix Cloud returns 204 after a successful warm and send() resolves
-// undefined; the standalone runtime returns the normal 200 body.
+// undefined; a local server returns the normal 200 body.
 await client.requestBuilder<void>().warmOnly().query(request).send();
 ```
 
-Helix Cloud fans the read out to every eligible backend and discards the result
-bodies. Chain `.writerOnly().warmOnly()` to warm only the authoritative writer.
-The standalone `v0.0.5` runtime warms one process and returns the normal query
-body. Warming is strictly read-only; a `WriteBatch` with
-`X-Helix-Warm: true` is rejected with `400 Bad Request` before execution.
+Cloud warms every eligible backend and discards the bodies; `.writerOnly().warmOnly()`
+warms only the writer. A `WriteBatch` with `X-Helix-Warm: true` is
+`400 invalid_request_option`.
 
 ---
 
 ## 19. Handle Structured Remote Errors
 
 ```ts
-import { HelixError } from "@helix-db/helix-db";
+import { Client, HelixError, QueryRequest } from "@helix-db/helix-db";
+
+async function sendWithRetry<R>(client: Client, request: QueryRequest, attempts = 4): Promise<R> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await client.query<R>(request).send();
+    } catch (cause) {
+      // Only "retryable": true (transaction_conflict, request_read_view_changed,
+      // stale_index_generation, index_backpressure) may succeed unchanged.
+      if (!(cause instanceof HelixError) || !cause.isRetryable() || attempt >= attempts) throw cause;
+      await new Promise((resolve) => setTimeout(resolve, 50 * 2 ** attempt + Math.random() * 50));
+    }
+  }
+}
 
 try {
-  await client.query(request).send();
+  const request = upsertUser().toQueryRequest(upsertParams, { userId: "u-42", name: "Ada" }, { queryName: "upsert_user" });
+  await sendWithRetry(client, request);
 } catch (cause) {
-  if (cause instanceof HelixError && cause.isConflict() && cause.code === "transaction_conflict") {
-    // Reload state before rebuilding the write. Replay only if it is safe.
+  if (!(cause instanceof HelixError)) throw cause;
+  if (cause.code === "unique_constraint_violation") {
+    // 409 with retryable: false. Resending unchanged fails again: report the duplicate,
+    // or re-run an upsert once so it takes the update branch.
+  } else if (cause.statusCode === 408 || cause.statusCode === 500 || cause.code === "writer_fenced_commit_outcome_unknown") {
+    // The write may have committed. Read it back by its key before resubmitting.
   } else {
     throw cause;
   }
 }
 ```
 
-`isRateLimited()` and retryable 503 codes can drive bounded backoff.
-`isRetryable()` is true only when the body carries `"retryable": true`; a
-missing flag means unknown, not safe to replay. The
-published client does not expose `Retry-After`, so use direct HTTP when the
-exact Cloud delay is required. Reconcile a `query_timeout` write before
-resubmitting it. Use `serverMessage`, `serverDetails`, and `rawBody` for structured remote
-diagnostics. Canonical Helix failures still use `error` as the code and `msg` as
-the diagnostic; generic `code`/`message` decoding is defensive compatibility,
-not the gateway contract. Preserve unfamiliar `code` strings and never classify
-errors by parsing `details`. Never blindly retry a write after a general server
-failure because its commit outcome may be unknown.
+Never retry on `isConflict()` (3.2.0: true for every 409). A write that depends on what it
+read re-reads state on each attempt. Use `serverMessage`, `serverDetails` and `rawBody` for
+diagnostics, preserve unfamiliar `code` strings, and never classify errors by parsing text.
 
 ---
 
-The v3 SDK does not expose stored routes, registration, or query-bundle APIs.
+## Shortest path
+
+```ts
+const pathParams = defineParams({ from: param.i64(), to: param.i64() });
+
+function introductionPath(p = pathParams) {
+  return readBatch()
+    .varAs(
+      "path",
+      g().shortestPath(NodeRef.param("from"), NodeRef.param("to"), 6, {
+        label: "KNOWS",
+        direction: ShortestPathDirection.Both,
+      }),
+    )
+    .returning(["path"]);
+}
+
+const body = introductionPath().toQueryJson(pathParams, { from: 1n, to: 42n });
+// response: { path: [1, 7, 42] } (node IDs, source first), or { path: [] }
+```
+
+---
+
+## Cypher or SQL instead of the DSL
+
+Send supported statements natively (SKILL.md, Cypher and SQL):
+
+```ts
+// (main)
+const result = await client.cypher(
+  "MATCH (u:User) OPTIONAL MATCH (u)-[:WORKS_AT]->(c:Company) RETURN u.name AS name, c.name AS employer",
+);
+// { columns: ["name", "employer"], rows: [["Ada", "Acme"], ["Bob", null]] }
+
+// 3.2.0: same route over HTTP
+const response = await fetch(`${baseUrl}/v2/cypher`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ query: "MATCH (u:User {userId: $id}) RETURN u.name AS name", parameters: { id: "u-42" } }),
+});
+```
+
+`POST /v2/sql` takes `{ query, parameters, mappings, query_name }` (`parameters` may be a
+list binding each `?` in order). Both routes have an `/explain` variant that plans without
+executing.

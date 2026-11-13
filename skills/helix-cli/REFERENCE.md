@@ -1,88 +1,186 @@
-# Helix CLI reference
+# Helix CLI reference (3.7.0)
 
-## Local
+Global options: `--json` (result JSON on stdout, errors as `{"error": {...}}` on stderr, never
+prompts), `--quiet`, `-v`/`--verbose`, `-h`/`--help`. `helix -V`/`--version` (top level only)
+prints the CLI version; `helix <command> --help` prints that command's flags.
+
+## Project setup
 
 ```text
-helix init local [--name N] [--port P] [--disk | --storage-uri s3://...]
-helix add local --name N [--port P] [--disk | --storage-uri s3://...]
-helix start [INSTANCE] [--foreground] [--port P] [--disk | --storage-uri s3://...] [--persist]
-helix stop|restart|status [INSTANCE]
-helix logs [INSTANCE] [--follow]
-helix prune [INSTANCE] [--all] [--yes]
-helix delete INSTANCE [--yes]
+helix init [--path DIR] [--skills | --no-skills] local [--name N] [--port P]
+           [--disk | --storage-uri s3://...] [--s3-region R] [--s3-endpoint-url URL] [--s3-allow-http]
+helix init [--path DIR] [--skills | --no-skills] cloud [--name N] [--database REF]
+           [--project P] [--workspace W]
+helix add [--path DIR] local --name N [--port P] [--disk | --storage-uri s3://...] [S3 flags]
+helix add [--path DIR] cloud --name N [--database REF] [--project P] [--workspace W]
+helix chef                       # alias: cook; interactive app bootstrap with a coding agent
 ```
 
-`init local`, `add local`, and `start` accept `--s3-region REGION`,
-`--s3-endpoint-url URL`, and `--s3-allow-http` for an S3-compatible endpoint.
-Supply `--storage-uri` when selecting S3 storage; `start` can also override the
-options of an existing S3 instance. Credentials come from the standard AWS
-environment variables or the project-root `.env`, not `helix.toml`.
+- `init` refuses a directory with `helix.toml`. With no subcommand and no terminal it creates a
+  local `dev`. `--name` defaults: `init local` `dev`, `init cloud` `production`. `--skills`
+  installs the agent skills and the `helixdb-docs` MCP; without a terminal neither is installed
+  unless `--skills` is given.
+- `init cloud` resolves the database (needs the user's `helix auth login` session) and writes
+  `[project] id`/`workspace_id` and an `[enterprise.<name>]` block.
+- `add` needs an existing `helix.toml`; `add cloud` defaults to the linked project.
+- `REF`: a database ID, slug, name, or `tenant:<id>` / `cluster:<id>`.
 
-Pin `ghcr.io/helixdb/helixdb:v0.0.5` through the local block below, including
-when using an older CLI with a different default. `start` publishes the configured
-host port to container port 8080 and waits for `GET /healthz`.
+## Local runtime
 
-Storage is memory by default; `stop` and `restart` discard memory data.
-`--disk` starts CLI-managed MinIO and preserves its volume on stop; `prune`
-deletes it. `--storage-uri` uses an externally owned S3-compatible store whose
-data is not deleted by the CLI. `start --persist` saves the resolved port/storage
-settings. Direct Docker native volumes use `HELIX_DATA_DIR`; see `EXAMPLES.md`.
+```text
+helix start [INSTANCE] [--foreground] [--port P] [--disk | --storage-uri s3://...] [S3 flags]
+            [--image-version TAG|sha256:DIGEST] [--pull always|missing|never] [--persist]
+                                  # alias: run
+helix stop|restart [INSTANCE]
+helix status [INSTANCE]           # local containers and Cloud databases; all when omitted
+helix logs [INSTANCE] [-f|--follow]                  # local: container logs
+helix logs [INSTANCE] [--start RFC3339] [--end RFC3339]   # Cloud: recent query errors
+helix doctor [INSTANCE|tenant:<id>|cluster:<id>] [--url URL]
+helix explorer [INSTANCE] [--port P] [--no-open] [--image REF] [--stop]
+helix prune [INSTANCE] [-a|--all] [-y|--yes]
+helix delete INSTANCE [-y|--yes]
+```
+
+- `start` runs in the background by default and waits for `GET /healthz`; `--foreground` stops on
+  Ctrl-C. `--pull` defaults to `always` for `latest`, `missing` otherwise. `--persist` writes the
+  resolved port, storage and image back to `helix.toml`.
+- Storage is memory by default; `stop` and `restart` discard it. `--disk`: CLI-managed SeaweedFS
+  sidecar whose volume survives stops; `prune` (or `delete`) removes it and any MinIO volume left by
+  older CLIs (SeaweedFS can't read those). `--storage-uri`: external S3-compatible store whose data
+  the CLI never deletes. S3 credentials come from the standard AWS env vars or the project-root
+  `.env`.
+- `logs --follow` is local only. Cloud logs list query errors in a window (default: the hour before
+  `--end`, which defaults to now) and accept `--json`; local logs reject `--start`/`--end` and
+  `--json`.
+- `doctor` is read-only: CLI version, container runtime, image, then the server's
+  `GET /v2/diagnostics` (storage durability, S3 round trip, disk cache, memory, index publication,
+  index use). Exits 1 when a check fails; warnings exit 0. `--url` diagnoses any server without a
+  `helix.toml`.
+- `explorer` opens the graph Explorer (`ghcr.io/helixdb/helix-explorer:v0.1.0`; override with
+  `--image` or `HELIX_EXPLORER_IMAGE`) for a running local instance; `--stop` removes it.
+- `delete` removes the instance from `helix.toml` and its local runtime state; it refuses the last
+  instance.
 
 ## Query
 
 ```text
-helix query [INSTANCE] (--file P | --json J | -e TS | --ts-file P) [--compact]
-helix shell [INSTANCE] [--compact]
+helix query [INSTANCE|tenant:<id>|cluster:<id>] (-f|--file REQUEST.json | --body JSON | -e|--ts TS | --ts-file QUERY.ts)
+            [--host H] [--port P] [--warm]
+helix shell [INSTANCE|tenant:<id>|cluster:<id>]        # one v3 JSON request per line; :quit exits
+helix cypher [INSTANCE] (-e|--query STATEMENT | -f|--file FILE) [--parameters JSON] [--explain]
+             [--host H] [--port P]
 ```
 
-`--host`, `--port`, and read-only `--warm` are local query options. Cloud selects read/write broker
-RPC from lowercase `request_type`. Without `INSTANCE`, query and shell use local `dev`, then a sole
-linked instance; multiple candidates require an explicit instance. Query bundles are unsupported.
-
-Query failures use the stable `error` code and diagnostic `msg` inside the decoded
-query response. Preserve unknown codes and the HTTP status; see
-`../../docs/error-handling.md`. Cloud query execution follows the no-retry boundary
-in `SKILL.md`; direct SDK/HTTP retry guidance does not authorize a CLI replay.
+- Exactly one `query` input. `--body` is inline request JSON; `-e`/`--ts-file` evaluate the
+  TypeScript DSL (Node 20+). `--host`, `--port` and `--warm` (reads only) are local-only.
+- A Cloud target runs through the backend broker; the CLI picks the read or write call from the
+  request's lowercase `request_type`. Query bundles are unsupported.
+- `cypher` is local only (`POST /v2/cypher`); `--parameters` must be a JSON object; `--explain`
+  shows the plan without executing.
+- The decoded response prints on stdout. A non-2xx `query` fails with `query failed with HTTP
+  <status>` and the server body in `caused_by`; `cypher` puts it in the message
+  (`Cypher failed with HTTP <status>: <body>`). The body is
+  `{"error": "<stable_code>", "msg": "<diagnostic>"}`: branch on `error` (e.g.
+  `transaction_conflict` 409, `index_not_found` 404, `unique_constraint_violation`), never on
+  `msg`; keep unknown codes. The CLI never retries a query. Don't replay a Cloud write after a
+  timeout or ambiguous failure; read the state back first.
 
 ## Cloud
 
 ```text
-helix auth login|status|logout
-helix workspace list|get
-helix project list|get|create|delete|link
-helix cluster list|get|indexes
-helix database list|get|create|delete|indexes
-helix database key create|list|revoke
-helix service-credential create|list|get|update|revoke
-helix api get|post|patch|delete /v1/...
-helix init|add cloud [--database tenant:<id>|cluster:<id>] [--project ID] [--workspace ID]
+helix auth login [github|google|microsoft|sso [--email E]|password [--email E]]   # interactive only
+helix auth status|logout
+helix workspace [list | get [WORKSPACE]]
+helix project [list [--workspace W] | get [PROJECT] [--workspace W]
+              | create NAME [--slug S] [--workspace W] [--link]
+              | delete [PROJECT] [--workspace W] [-y] | link [PROJECT] [--workspace W]]
+helix cluster [list | get [CLUSTER] | indexes [CLUSTER]] [--workspace W] [--project P]
+helix database [list | get [REF] | indexes [REF]] [--workspace W] [--project P]
+helix database create NAME [--slug S] (--plan CODE | --cluster CLUSTER) [--workspace W] [--project P]
+helix database delete [REF] [-y] [--workspace W] [--project P]
+helix database key create --access read-only|read-write [--name N] [--database REF] [--workspace W] [--project P]
+helix database key list [--database REF] [--workspace W] [--project P]
+helix database key revoke KEY [--database REF] [-y] [--workspace W] [--project P]
+helix service-credential [list [--workspace W] | get CREDENTIAL [--workspace W]]
+helix service-credential create --name N --grant PROJECT_ID=PERMS... [--expires-at RFC3339] [--workspace W]
+helix service-credential update CREDENTIAL [--name N] [--grant PROJECT_ID=PERMS...]
+                                [--expires-at RFC3339 | --clear-expiry] [--workspace W]
+helix service-credential revoke CREDENTIAL [-y] [--workspace W]
+helix api get|delete /v1/PATH
+helix api post|patch /v1/PATH [--body JSON]          # body defaults to {}
 ```
 
-Database create is tenant-only. It creates a default read-write application key and returns the raw
-token once; the CLI displays but never stores or uses it. Dedicated cluster deletion is rejected.
-Additional application-key access values are `read-only` or `read-write`. Service-credential grants
-are repeatable `PROJECT=project-read,project-write,query-read,query-write`, with matching read required
-for write.
+- A group with no subcommand lists (`helix database` = `helix database list`). `indexes` (alias
+  `indices`) lists active indexes only.
+- `project link` and `project create --link` write the link into the current `helix.toml`, which
+  must exist.
+- `database create` always makes a tenant database: shared with `--plan`, or on a dedicated cluster
+  with `--cluster` (not both). Without a terminal, `--plan` must be non-empty for a shared tenant.
+  Cloud bills shared tenants to the workspace's pooled subscription and currently ignores the code
+  (it picks no size or price); a workspace without a subscription is refused whatever the code. Ask
+  the user which code to pass; don't invent one. The response holds the default read-write key's
+  token, shown once.
+- `database delete` deletes tenant databases only; dedicated cluster deletion is refused.
+- Service-credential `PERMS`: a comma list of `project-read`, `project-write`, `query-read`,
+  `query-write`; each `-write` requires its `-read`. `--grant` repeats per project; on `update` it
+  replaces all grants. The token prints once and authenticates the Helix MCP and HTTP APIs, never
+  `helix auth`.
+
+## Agent skills, metrics and the CLI itself
+
+```text
+helix skills install|list [--project]   # interactive (npx skills); refuses --json
+helix skills update [--project]         # non-interactive refresh; supports --json
+helix metrics full|basic|off|status
+helix update [--force] [--v1]           # --v1 installs CLI 2.3.5, the last v1-compatible release
+helix feedback [MESSAGE]                # opens a GitHub issue form in the browser
+```
+
+Skills install globally unless `--project`. `helix init --skills` and `helix chef` also add the docs
+MCP `helixdb-docs` (`https://docs.helix-db.com/mcp`) via `npx add-mcp`.
 
 ## `helix.toml`
 
 ```toml
 [project]
 name = "example"
-id = "project-id"             # optional stable link
-workspace_id = "workspace-id" # optional stable link
+id = "project-id"                # optional Cloud link
+workspace_id = "workspace-id"    # optional Cloud link
+container_runtime = "docker"     # or "podman"
+# queries = "db"                 # accepted, unused by v3 commands
 
 [local.dev]
 port = 6969
 image = "ghcr.io/helixdb/helixdb"
-tag = "v0.0.5"
-storage = "memory"
+tag = "v0.0.16"                  # tag or sha256 digest
+# pull = "missing"               # always | missing | never
+storage = "memory"               # memory | disk | s3
+
+[local.staging]
+storage = "s3"
+[local.staging.s3]
+bucket = "helix-db"
+prefix = "my-app/"               # default "db/"
+region = "us-east-1"             # default
+endpoint_url = "https://s3.example.com"   # optional
+allow_http = false
 
 [enterprise.production]
-database = "tenant:tenant-id"
-project_id = "project-id"     # optional
-workspace_id = "workspace-id" # optional
+database = "tenant:tenant-id"    # or "cluster:cluster-id"
+project_id = "project-id"        # optional
+workspace_id = "workspace-id"    # optional
 ```
 
-Cloud blocks reject gateway/auth/sync/source/query-bundle fields. `~/.helix/credentials` is a strict,
-mode-0600 WorkOS session file; do not edit it.
+`[project]`, `[enterprise.*]` and the top level reject unknown keys, so gateway/auth/sync/source/
+query-bundle fields fail to load. Instance names: ASCII letters, digits, `-` and `_`, at most 32.
+
+## Environment
+
+| Variable | Effect |
+| --- | --- |
+| `HELIX_HOME` | Credentials, config, update caches and metrics (default `~/.helix`) |
+| `HELIX_CACHE_DIR` | Disposable cache (default `HELIX_HOME`) |
+| `CLOUD_AUTHORITY` | Cloud API host override (default `api.prod.helix-db.com`); leave unset for production |
+| `HELIX_NO_UPDATE_CHECK`, `HELIX_DISABLE_UPDATE_CHECK` | Skip the update check (also skipped under `--json`) |
+| `HELIX_EXPLORER_IMAGE` | Explorer image for `helix explorer` |
+| `AWS_*`, project-root `.env` | Credentials for `--storage-uri` S3 storage |

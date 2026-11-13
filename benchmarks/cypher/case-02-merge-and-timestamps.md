@@ -17,18 +17,22 @@ RETURN u
 
 ## Focus Areas
 
-- upsert-style branching
-- create versus update branches
+- `MERGE` and `timestamp()` are outside the native profile
+- upsert branching in one write batch
+- a unique key so concurrent creates cannot duplicate
 - server-side timestamps
-- explicit write route choice
 
 ## Gold Expectations
 
-- use `write_batch()`
-- load an `existing` binding first
-- use `var_as_if` with `BatchCondition::VarEmpty` and `BatchCondition::VarNotEmpty`
-- assign branch-specific fields in the create and update paths
-- use the server-side timestamp helper rather than a client-supplied parameter for `createdAt` and `updatedAt`
+- `/v2/cypher` rejects `MERGE` (`unsupported_feature`, `merge`), so translate
+- a unique equality index on `User.userId` (`IndexSpec::node_unique_equality`),
+  created once and waited on until active
+- uses `write_batch()` with an `existing` read, then `var_as_if` on
+  `BatchCondition::VarNotEmpty` (update) and `BatchCondition::VarEmpty` (create)
+- assigns branch-specific fields, with `Expr::timestamp()` rather than
+  client-supplied time parameters
+- on `409 unique_constraint_violation` (`retryable: false`), re-run the upsert
+  once, not the same create
 
 ## Gold Translation Sketch
 
@@ -42,14 +46,22 @@ write_batch()
     .var_as_if(
         "updated",
         BatchCondition::VarNotEmpty("existing".to_string()),
-        // update name and updatedAt using the server-side timestamp helper
-        g().n(NodeRef::var("existing")),
+        g().n(NodeRef::var("existing"))
+            .set_property("name", PropertyInput::param("name"))
+            .set_property("updatedAt", Expr::timestamp()),
     )
     .var_as_if(
         "created",
         BatchCondition::VarEmpty("existing".to_string()),
-        // create node and set createdAt and updatedAt using the server-side timestamp helper
-        g().add_n("User", Vec::<(&str, PropertyInput)>::new()),
+        g().add_n(
+            "User",
+            vec![
+                ("userId", PropertyInput::param("userId")),
+                ("name", PropertyInput::param("name")),
+                ("createdAt", PropertyInput::from(Expr::timestamp())),
+                ("updatedAt", PropertyInput::from(Expr::timestamp())),
+            ],
+        ),
     )
     .returning(["updated", "created"])
 ```
@@ -60,4 +72,5 @@ write_batch()
 - [ ] Loads an existing binding first
 - [ ] Uses `var_as_if` branching
 - [ ] Separates create-path assignments from update-path assignments
-- [ ] Uses server-side timestamps instead of client-supplied time params
+- [ ] Uses `Expr::timestamp()` instead of client-supplied time params
+- [ ] Recommends a unique index on the merge key
