@@ -24,8 +24,7 @@ DETACH DELETE u
 
 ## Focus Areas
 
-- which statement runs natively (the delete) and which must be translated
-  (`FOREACH` and `MERGE` are rejected)
+- the delete runs natively; `FOREACH` and `MERGE` are rejected, so translate
 - array expansion for per-item writes
 - relationship MERGE without duplicate edges or failed batches
 - null checks and filter-then-delete
@@ -38,10 +37,10 @@ DETACH DELETE u
 - the membership task uses `for_each_param("memberships", body)`; each object's
   `userId` and `groupId` fields are parameters inside the body
 - the body creates the edge only when both nodes exist and the edge does not:
-  read `u`'s `MEMBER_OF` targets, keep the group `without` them, and guard
-  `add_e` with `var_as_if(VarNotEmpty(..))`
-- does not use a bare `add_e`: it duplicates edges on re-runs, and an empty
-  group fails the whole batch
+  read `u`'s `MEMBER_OF` targets, keep the group `without` them, guard `add_e`
+  with `var_as_if(VarNotEmpty(..))`
+- no bare `add_e`: it duplicates edges on re-runs, and an empty group fails the
+  whole batch
 
 ## Gold Translation Sketch
 

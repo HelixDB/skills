@@ -104,10 +104,10 @@ pub fn bootstrap_memory_indexes() -> WriteBatch {
 }
 ```
 
-Index creation is asynchronous. Each returned variable is a receipt: for `kind` `accepted` or
-`existing_operation`, poll its `operation_id` until the build is `succeeded` before serving
-traffic; `already_active` needs no wait. `blocked` (with a `blocker_code`) needs the cause fixed
-and `retry_index_operation`; `aborted` needs the index created again.
+Each returned variable is a receipt. For `accepted` or `existing_operation`, poll its
+`operation_id` until `succeeded` before serving traffic; `already_active` needs no wait.
+`blocked` (with a `blocker_code`): fix the cause, then `retry_index_operation`; `aborted`:
+create the index again.
 
 ```rust
 let receipts = client

@@ -1,11 +1,9 @@
 # HelixDB v3 JSON Wire Reference
 
-This reference describes the direct request produced by the published v3 SDKs.
-The source of truth is the `helix-ast` crate under
-[`HelixDB/helix-db`](https://github.com/HelixDB/helix-db/tree/main/crates/ast).
-The published transport schema is
-[`openapi.json`](https://docs.helix-db.com/openapi.json); use it for HTTP
-headers, status codes, body limits, and the raw-JSON parameter subset.
+The direct request the v3 SDKs produce. Source of truth: the `helix-ast` crate in
+[`HelixDB/helix-db`](https://github.com/HelixDB/helix-db/tree/main/crates/ast). HTTP
+headers, status codes, body limits and the raw-JSON parameter subset:
+[`openapi.json`](https://docs.helix-db.com/openapi.json).
 
 ## Envelope
 
@@ -52,35 +50,8 @@ least one entry.
 
 ## Batches and entries
 
-A batch contains entries in execution order and the variable names to return:
-
-```json
-{
-  "read": {
-    "entries": [
-      {
-        "query": {
-          "name": "users",
-          "root": {
-            "nodes_where": {
-              "predicate": {
-                "eq": {
-                  "left": { "property": "$label" },
-                  "right": { "constant": { "string": "User" } }
-                }
-              }
-            }
-          }
-        }
-      }
-    ],
-    "returns": ["users"]
-  }
-}
-```
-
-`name` is optional in the underlying AST but should be present for normal `varAs`
-entries. `condition` is also optional:
+Entries run in order. `name` is optional in the AST but should be present for normal
+`varAs` entries. `condition` is also optional:
 
 ```json
 {
@@ -97,7 +68,7 @@ entries. `condition` is also optional:
 }
 ```
 
-The other entry form repeats a body for each object in a top-level array parameter:
+`for_each` repeats a body for each object in a top-level array parameter:
 
 ```json
 {
@@ -124,62 +95,16 @@ Batch conditions serialize as `{"var_not_empty": "x"}`, `{"var_empty": "x"}`,
 `{"var_min_size": ["x", 2]}`, or the unit string `"prev_not_empty"`. A skipped
 entry returns `[]`.
 
-A `for_each` body runs once per element and rebinds its names each time, so
-returning a name from the body returns only the last iteration's value. Return
-something computed after the loop instead.
+A `for_each` body rebinds its names each iteration, so returning a name from the body
+returns only the last iteration's value; return something computed after the loop.
 
 ## Recursive operation encoding
 
-`AstNode` is an externally tagged, `snake_case` enum. A source has no `input`:
-
-```json
-{
-  "nodes": {
-    "reference": { "ids": [0, 1] }
-  }
-}
-```
-
-```json
-{
-  "nodes_where": {
-    "predicate": {
-      "eq": {
-        "left": { "property": "$label" },
-        "right": { "constant": { "string": "User" } }
-      }
-    }
-  }
-}
-```
-
-Unit variants serialize as plain strings: `"context"` (the input of a
+`AstNode` is an externally tagged, `snake_case` enum. A source has no `input`
+(`{"nodes": {"reference": {"ids": [0, 1]}}}`, `{"nodes_where": {"predicate": ...}}`); each
+following operation wraps the prior node under `input` (SKILL.md, Build nested operation
+trees). Unit variants serialize as plain strings: `"context"` (the input of a
 sub-traversal), `"id"`, `"timestamp"`, `"date_time_now"`, `"all"`.
-
-Each following operation wraps the prior node under `input`:
-
-```json
-{
-  "value_map": {
-    "input": {
-      "limit": {
-        "input": {
-          "out": {
-            "input": {
-              "nodes": {
-                "reference": { "var": "user" }
-              }
-            },
-            "label": "FOLLOWS"
-          }
-        },
-        "count": { "literal": 25 }
-      }
-    },
-    "properties": ["$id", "name"]
-  }
-}
-```
 
 ### Operation catalog
 
@@ -220,11 +145,11 @@ Traversal and filters (all take `input`):
 | `vector_search_nodes_within`, `vector_search_edges_within` | as the source form |
 | `text_search_nodes_within`, `text_search_edges_within` | as the source form |
 
-Ordering puts rows missing the property first for `asc` and last for `desc`
-(the opposite of Cypher/SQL defaults). `bind` and `project_bindings` are
-read-only: a write batch rejects them (`read_only_traversal_in_write_batch`).
-After `bind`, `order_by`, `choose`, `repeat`, `values`, `value_map`, `project`,
-`id`, `label` and `edge_properties` are rejected; order before binding.
+Ordering puts rows missing the property first for `asc`, last for `desc` (opposite of
+Cypher/SQL). `bind` and `project_bindings` are read-only: a write batch rejects them
+(`read_only_traversal_in_write_batch`). After `bind`, `order_by`, `choose`, `repeat`,
+`values`, `value_map`, `project`, `id`, `label` and `edge_properties` are rejected; order
+before binding.
 
 Branching and repetition:
 
@@ -279,22 +204,18 @@ Index DDL and lifecycle (sources):
 
 ### Restricted (traversal-scoped) search
 
-Restricted vector search enforces exact membership over input IDs, although
-approximate index structures may accelerate ranking. The ranked stream receives
-`$distance`. The request fails when `min(k, unique candidates)` exceeds 800, so
-a larger `k` succeeds only while 800 or fewer candidates exist.
+- Vector: exact membership over input IDs (approximate structures may accelerate
+  ranking); rows receive `$distance`. Fails when `min(k, unique candidates)` exceeds 800,
+  so a larger `k` succeeds only while 800 or fewer candidates exist.
+- Text: exact BM25 prefilter over unique input IDs; at most
+  `min(unique candidates, k, 800)`, ordered by score descending then entity ID ascending,
+  with tenant-partition BM25 statistics. The input row keeps bindings, path and sack and
+  receives `$score`.
+- Empty input skips the index; wrong-kind input or more than 1,000,000 unique candidates
+  is a query error. Whole-index vector search caps its effective result count at 800.
 
-Restricted text search is an exact BM25 prefilter over unique input IDs. It
-returns at most `min(unique candidates, k, 800)`, orders by score descending
-then entity ID ascending, and keeps tenant-partition BM25 statistics. The
-selected input row keeps bindings, path, and sack and receives `$score`.
-
-For both, empty input skips the index; wrong-kind input or more than 1,000,000
-unique candidates is a query error. A whole-index vector search caps its
-effective result count at 800.
-
-Serialize with an SDK (`to_query_json` / `toQueryJson`) when unsure, and treat
-that output as canonical rather than guessing a field.
+When unsure of a field, serialize with an SDK (`to_query_json` / `toQueryJson`) and treat
+that output as canonical.
 
 ## Projections
 
@@ -341,11 +262,11 @@ element (`"current"`):
 }
 ```
 
-A unique equality index rejects a duplicate write with
-`unique_constraint_violation` (`409`, `retryable: false`); it is the race-safe key
-for an upsert. While the build runs, only values already claimed (by an entity the
-build has scanned, or a write since the build started) are rejected; a duplicate
-of a not-yet-scanned entity's value blocks the build when the scan reaches it.
+A unique equality index rejects a duplicate write with `unique_constraint_violation`
+(`409`, `retryable: false`); it is the race-safe key for an upsert. While the build runs,
+only values already claimed (by an entity the build has scanned, or a write since the build
+started) are rejected; a duplicate of a not-yet-scanned entity's value blocks the build
+when the scan reaches it.
 
 Receipt (`create_index`, `drop_index`), with IDs as decimal strings:
 
@@ -373,88 +294,26 @@ Status (`get_index_operation`, `retry_index_operation`, `abort_index_operation`)
 }
 ```
 
-`status` is `queued`, `running`, `blocked`, `succeeded` or `aborted`.
-`operation_kind` is `build` or `drop`; `family` is `secondary`, `vector` or
-`text`. `blocked` adds `blocker_code` (`invalid_source_data`,
-`uniqueness_violation`, `oversized_entity`, `manifest_limit`,
-`object_store_configuration_unavailable`, `invariant_violation`,
-`invalid_legacy_physical`) and an optional `message`; it does not resume until
-you fix the cause and send `retry_index_operation`, or discard it with
-`abort_index_operation`. Repeating the same `create_index` while it runs
-returns `existing_operation` with the same `operation_id`.
+`status` is `queued`, `running`, `blocked`, `succeeded` or `aborted`; `operation_kind` is
+`build` or `drop`; `family` is `secondary`, `vector` or `text`. `blocked` adds
+`blocker_code` (`invalid_source_data`, `uniqueness_violation`, `oversized_entity`,
+`manifest_limit`, `object_store_configuration_unavailable`, `invariant_violation`,
+`invalid_legacy_physical`) and an optional `message`. Repeating the same `create_index`
+while it runs returns `existing_operation` with the same `operation_id`.
 
-## References
+## References and values
 
-`NodeRef` and `EdgeRef` are `snake_case` variants:
+`NodeRef` / `EdgeRef` (`snake_case`): `{"reference": {"var": "alice"}}`,
+`{"reference": {"ids": [0, 1]}}`, `{"reference": {"param": "user_ids"}}`,
+`{"reference": "all"}`. IDs are unsigned integers; an ID parameter must be a JSON integer
+or array of integers (`"parameter_types": {"user_ids": {"array": "i64"}}`); a string fails
+at runtime.
 
-```json
-{
-  "reference": { "var": "alice" }
-}
-```
-
-```json
-{
-  "reference": { "ids": [0, 1] }
-}
-```
-
-```json
-{
-  "reference": { "param": "user_ids" }
-}
-```
-
-```json
-{
-  "reference": "all"
-}
-```
-
-IDs are unsigned integers. An ID parameter must be a JSON integer or an array
-of integers (`"parameter_types": {"user_ids": {"array": "i64"}}`); a string
-fails at runtime.
-
-## Values and inputs
-
-`PropertyValue` values are tagged:
-
-```json
-{
-  "string": "Alice"
-}
-```
-
-```json
-{
-  "i64": 25
-}
-```
-
-```json
-{
-  "f64_array": [0.1, 0.2, 0.3]
-}
-```
-
-Other tags: `bool`, `f32`, `date_time` (epoch milliseconds), `i64_array`,
-`f32_array`, `string_array`, `array`, `object`; null is the unit string `"null"`.
-
-`PropertyInput` distinguishes a literal value from an expression:
-
-```json
-{
-  "value": { "string": "Alice" }
-}
-```
-
-```json
-{
-  "expr": { "param": "name" }
-}
-```
-
-Properties on `add_n` and `add_e` are ordered pairs:
+`PropertyValue` is tagged: `{"string": "Alice"}`, `{"i64": 25}`,
+`{"f64_array": [0.1, 0.2, 0.3]}`; other tags are `bool`, `f32`, `date_time` (epoch
+milliseconds), `i64_array`, `f32_array`, `string_array`, `array`, `object`; null is the
+unit string `"null"`. `PropertyInput` is `{"value": <PropertyValue>}` or
+`{"expr": <Expr>}`. `add_n` / `add_e` properties are ordered pairs:
 
 ```json
 {
@@ -465,18 +324,11 @@ Properties on `add_n` and `add_e` are ordered pairs:
 }
 ```
 
+Parameter schemas: SKILL.md; arrays are recursive `{ "array": <schema> }` descriptors.
+
 ## Predicates
 
 Predicates are expression trees, not positional arrays:
-
-```json
-{
-  "eq": {
-    "left": { "property": "status" },
-    "right": { "constant": { "string": "active" } }
-  }
-}
-```
 
 ```json
 {
@@ -499,8 +351,8 @@ Predicates are expression trees, not positional arrays:
 }
 ```
 
-Use `constant` for a literal, `param` for a runtime parameter, and `property` for the
-current element's property.
+`constant` is a literal, `param` a runtime parameter, `property` the current element's
+property.
 
 Predicate variants: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` (`left`, `right`);
 `between` (`value`, `min`, `max`, inclusive); `compare` (`left`,
@@ -533,52 +385,9 @@ Predicate variants: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` (`left`, `right`);
 }
 ```
 
-A rows-preserving per-row value belongs in `case` inside an `expr`
-projection, not in `choose`. Write a server timestamp with
-`"value": {"expr": "timestamp"}` (or `"date_time_now"`) in `set_property` or
-`add_n` properties.
-
-## Parameter schemas
-
-The raw HTTP scalar schema names are `bool`, `i64`, `f32`, `f64`, `string`,
-`date_time`, `value`, and `object`. Arrays use recursive `{ "array": <schema> }` descriptors.
-When `parameter_types` is present, its keys must exactly match `parameters`;
-typed and untyped values cannot be mixed. Typed `f32`/`f64` accept integer and
-floating-point JSON numbers. Values must be finite; `f32` values must fit within
-its finite range. Raw bytes cannot be represented on the JSON route.
-
-```json
-{
-  "parameters": {
-    "minimum_age": 18
-  },
-  "parameter_types": {
-    "minimum_age": "i64"
-  }
-}
-```
-
-## Responses
-
-The server returns one top-level member per returned batch name.
-
-```json
-{
-  "users": [
-    { "$id": 0, "name": "Alice" },
-    { "$id": 1, "name": "Bob" }
-  ]
-}
-```
-
-- An unprojected node or edge is `{"$id": N}` (plus `$distance` / `$score` for
-  search hits).
-- Every row-stream return is an array and `[]` when empty, including
-  at-most-one lookups and skipped entries. Only `count`, `exists` and index
-  DDL / lifecycle results are scalars or objects. `"returns": []` produces `{}`.
-- A row with bindings, a visible path or a sack is
-  `{"bindings": {...}, "current": {"node": N}, "path": [...], "sack": ...}`;
-  end such streams with `project_bindings` for a stable shape.
+A rows-preserving per-row value is `case` inside an `expr` projection, not `choose`. Write
+a server timestamp with `"value": {"expr": "timestamp"}` (or `"date_time_now"`) in
+`set_property` or `add_n` properties.
 
 ## HTTP Failure Envelope
 
@@ -586,12 +395,8 @@ The server returns one top-level member per returned batch name.
 {"error":"unique_constraint_violation","msg":"<diagnostic>","retryable":false}
 ```
 
-`error` is the code; there is no `code` field. `retryable` is present only when
-the class settles it. Codes are open strings: keep an unknown one, log it, and
-fall back to its status class. Never parse `msg`. A server older than the
-current contract may send `{"error": "<diagnostic>", "code": "<code>"}`.
-
-Every code has one class, and the class sets the status and `retryable`
+Codes are open strings: keep an unknown one, log it, and fall back to its status class.
+Each code has one class, which sets the status and `retryable`
 (`crates/ast/src/error_code.rs`):
 
 | Class | HTTP | `retryable` | A failed write | Codes |
@@ -608,20 +413,18 @@ Every code has one class, and the class sets the status and `retryable`
 | Unavailable | 503 | absent | committed nothing | `writer_mode_required`, `reader_mode_required`, `database_closed`, `query_cancelled_by_reader_retirement`, `index_lifecycle_unavailable`, `migration_required`, `writer_migration_required` |
 | Commit outcome unknown | 503 | `false` | **may have committed** | `writer_fenced_commit_outcome_unknown` |
 
-Decisions:
+Beyond SKILL.md, Failure envelope:
 
-- `retryable: true` → resend the whole request with bounded backoff and
-  jitter; rebuild a write from freshly read state if it depends on what it read.
-- `unique_constraint_violation` → report the duplicate or choose another key.
-  From an upsert's create branch, re-run the upsert once; it now takes the
-  update branch.
-- `index_busy` → wait for the running operation (`get_index_operation`).
-  `index_build_blocked` → fix what the blocked build's `blocker_code` names,
-  then `retry_index_operation` (or abort it) before resending the write.
-- "May have committed" classes → reconcile by an application key before
-  resubmitting; never auto-retry a non-idempotent write.
-- An index request with several create/drop/retry/abort entries commits each
-  one as it runs; after a later failure, read index state before resending.
+- `retryable: true`: rebuild a write from freshly read state if it depends on what it read.
+- `unique_constraint_violation`: report the duplicate or choose another key; from an
+  upsert's create branch, re-run the upsert once (it now updates).
+- `index_busy`: another lifecycle operation is running; wait for it
+  (`get_index_operation`). `index_build_blocked`: a write would overflow a blocked build's
+  queue; fix what its `blocker_code` names, then `retry_index_operation` (or abort it)
+  before resending the write.
+- "May have committed": never auto-retry a non-idempotent write.
+- An index request with several create/drop/retry/abort entries commits each as it runs;
+  after a later failure, read index state before resending.
 
 Helix Cloud gateway codes (before or around execution): `400
 tenant_id_required` / `tenant_id_not_allowed`, `401 unauthorized`, `402
@@ -639,17 +442,30 @@ Cypher and SQL routes report statement failures as
 `constraint_verification_failed` (400); `resource_limit` (429);
 `access_mode_error` (503, send to the writer); `internal_planner_error` (500).
 
+## HTTP execution
+
+| Published SDK support | TypeScript 3.2.0 | Rust 3.0.0, Python 0.3.4, Go v0.3.1 |
+| --- | --- | --- |
+| GA `x-helix-database-id` | `client.withDatabaseId("<database-id>")` | Not exposed: use the hosted MCP or direct HTTP for a GA shared gateway, or a database-specific cluster gateway (both database/tenant headers absent) |
+| Cloud warm `204 No Content` | Accepted; `send()` resolves `undefined` | Raised as a remote error (they accept only HTTP 200; SDK source on `main` accepts 204): warm through direct HTTP |
+
+Add `X-Helix-Warm: true` to an ordinary read. Helix Cloud fans it out to
+every eligible backend and returns `204 No Content` with no body once one succeeds
+(partial failure is still success; if every target fails, the normal deterministic error
+is returned; a managed cluster with no eligible target returns `503 Service Unavailable`).
+Add `X-Helix-Require-Writer: true` to warm only the authoritative writer. A standalone
+local server warms its own process and returns `200 OK` with the normal body. Header values
+`false` and `0` use the ordinary path; warm writes and any other value return
+`400 invalid_request_option`. The CLI's `--warm` flag is local-only.
+
 ## Validation checklist
 
-- Parse every complete `json` fence.
-- Confirm `request_type` and batch variant match.
-- Confirm every returned name exists in an entry.
-- Confirm response models decode every row return as a list (empty `[]`), and
-  unprojected elements as `{"$id"}` only.
-- Confirm ID parameters are integers.
-- Confirm every non-source operation has the correct nested `input`.
-- Confirm all enum tags are `snake_case`.
-- Compare hand-written JSON with an SDK serializer for the same query.
-- Decode `error`/`msg`/`retryable` failures; branch on `retryable` and keep
-  unknown codes.
-- Run applicable requests against `ghcr.io/helixdb/helixdb:v0.0.16`.
+- Every complete `json` fence parses; `request_type` matches the batch variant; every
+  returned name exists in an entry.
+- Every non-source operation has the correct nested `input`; enum tags are `snake_case`;
+  ID parameters are integers.
+- Response models decode every row return as a list (empty `[]`) and unprojected elements
+  as `{"$id"}` only; failures decode `error` / `msg` / `retryable`, branch on `retryable`,
+  and keep unknown codes.
+- Hand-written JSON matches an SDK serializer for the same query, and applicable requests
+  run against `ghcr.io/helixdb/helixdb:v0.0.16`.

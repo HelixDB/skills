@@ -36,47 +36,39 @@ resend and when it must reconcile a write instead.
 
 ## Focus Areas
 
-- current `error`/`msg`/`retryable` contract with no separate `code` field
-- HTTP 409 covers a retryable class and a non-retryable class
-- migration from legacy `error` diagnostic plus `code`
-- generic noncanonical remote `code`/`message`/`details`
-- unknown-code forward compatibility
-- structured details and raw-body preservation
-- HTTP status plus code classification
-- retry only for safely replayable operations
-- no message parsing
+- current `error`/`msg`/`retryable` contract; no `code` field
+- HTTP 409 spans a retryable and a non-retryable class
+- legacy `error` diagnostic plus `code`
+- generic noncanonical `code`/`message`/`details`
+- unknown-code forward compatibility; structured-details and raw-body preservation
+- status plus code classification; no message parsing
+- retry only safely replayable operations
 
 ## Gold Expectations
 
-- For current bodies, require string `error` and string `msg`; store `error` as the code, `msg` as diagnostic details, and an optional boolean `retryable` (absent when the class does not settle it).
-- Decide retries from `retryable` and the code, not from the 409 status: resend
-  `transaction_conflict`, `request_read_view_changed`, `stale_index_generation`
-  and `429 index_backpressure` with bounded backoff and jitter; never resend
-  `unique_constraint_violation`, `index_busy`, `index_build_blocked`,
-  `index_already_exists`, `index_definition_conflict` or
-  `index_operation_not_abortable` unchanged.
-- Otherwise, when `error` is a string, treat it as legacy diagnostic details and take an optional string `code` as the legacy code.
-- Otherwise, take a string `code`, string `message`, and any structured `details`
-  from the generic remote shape without calling it the gateway contract.
-- Preserve the original response body for every remote failure and retain
-  non-JSON/plain-text bodies as the message with no code.
-- Preserve an unknown current code as an open string and fall back to conservative status-aware handling.
+- Current bodies: require string `error` and `msg`; `error` is the code, `msg` the diagnostic, optional boolean
+  `retryable` (absent when the class does not settle it).
+- Decide retries from `retryable` and the code, not the 409 status. Resend `transaction_conflict`,
+  `request_read_view_changed`, `stale_index_generation` and `429 index_backpressure` with bounded backoff and
+  jitter. Never resend `unique_constraint_violation`, `index_busy`, `index_build_blocked`, `index_already_exists`,
+  `index_definition_conflict` or `index_operation_not_abortable` unchanged.
+- Else, if `error` is a string: legacy diagnostic, with an optional string `code` as the legacy code.
+- Else: string `code`, string `message` and any structured `details` from the generic remote shape, not called
+  the gateway contract.
+- Preserve the raw body for every remote failure; keep non-JSON/plain-text bodies as the message with no code.
+- Keep an unknown current code as an open string; fall back to conservative status-aware handling.
 - Recognize both 409 codes without searching the diagnostic text.
-- Honor `Retry-After` on Cloud `429 rate_limited` when the transport exposes it
-  and add jitter to bounded retries.
-- Treat a write as possibly committed after `408 query_deadline_exceeded`
-  (database), `408 query_timeout` (Cloud gateway), any 500, `503
-  writer_fenced_commit_outcome_unknown` or Cloud `503 write_outcome_unknown`,
-  and reconcile before resubmission.
-- Distinguish `503 rate_limit_unavailable`, which fails closed before execution,
-  from `backend_unavailable` and generic `internal_error`.
-- For a retryable write conflict, rebuild the mutation from freshly read state
-  when it depends on what it read; replay only when it is idempotent or
-  protected by an application idempotency key.
-- For a legacy body without `retryable`, treat only `transaction_conflict` as
-  retryable.
-- Correct validation/schema/index errors before retrying; do not retry merely because a code exists.
-- Mention that gRPC carries the code in `helix-error-code` metadata if cross-transport behavior is discussed.
+- Honor `Retry-After` on Cloud `429 rate_limited` when the transport exposes it; add jitter to bounded retries.
+- A write may have committed after `408 query_deadline_exceeded` (database), `408 query_timeout` (Cloud
+  gateway), any 500, `503 writer_fenced_commit_outcome_unknown` or Cloud `503 write_outcome_unknown`: reconcile
+  before resubmitting.
+- Distinguish `503 rate_limit_unavailable` (fails closed before execution) from `backend_unavailable` and generic
+  `internal_error`.
+- Retryable write conflict: rebuild the mutation from freshly read state when it depends on what it read; replay
+  only when idempotent or protected by an application idempotency key.
+- Legacy body without `retryable`: only `transaction_conflict` is retryable.
+- Fix validation/schema/index errors before retrying; a code alone is no reason to retry.
+- If cross-transport behavior comes up: gRPC carries the code in `helix-error-code` metadata.
 
 ## Gold Decoder Sketch
 

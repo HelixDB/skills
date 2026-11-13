@@ -1,19 +1,10 @@
 # Helix Query Authoring — TypeScript Examples
 
-Each numbered scenario corresponds 1:1 with `../helix-query-rust/EXAMPLES.md`.
-When moving between TypeScript and Rust, open the same scenario in each file, then
-serialize either builder for the canonical direct JSON request.
-
-All snippets assume `import { ... } from "@helix-db/helix-db";`. Query
-builders are plain functions returning a `ReadBatch` or `WriteBatch`. Build a
-direct request with
-`builder().toQueryRequest(params, values, { queryName: "route_name" })` and
-execute it with `await Client.server(url).query<R>(request).send()`. Use
-`toQueryJson` to inspect the exact `POST /v2/query` body.
-
-Every row-stream return decodes as an array (`[]` when empty, even for a single
-lookup); only `count`, `exists` and index DDL / lifecycle entries are scalars.
-Unprojected node or edge streams return `{ "$id": number }` per element.
+Scenarios are numbered 1:1 with `../helix-query-rust/EXAMPLES.md`; either builder
+serializes to the same direct JSON request. Snippets assume
+`import { ... } from "@helix-db/helix-db";`. Send with
+`await Client.server(url).query<R>(builder().toQueryRequest(params, values, { queryName: "route_name" })).send()`;
+`toQueryJson` shows the exact `POST /v2/query` body.
 
 ---
 
@@ -133,9 +124,9 @@ function nearestDocuments(p = nearestParams) {
 }
 ```
 
-The label, tenant, and publication predicates build the exact candidate stream
-before vector ranking. Source vector search followed by `where` can underfill
-top-k. Project `$distance` before any `.out`/`.in`/`.both`.
+The predicates build the exact candidate stream before ranking; source vector search
+followed by `where` can underfill top-k. Project `$distance` before any
+`.out`/`.in`/`.both`.
 
 ---
 
@@ -163,9 +154,8 @@ function documentSearch(p = docSearchParams) {
 }
 ```
 
-The label, tenant, and publication predicates build the candidate stream
-before BM25 ranking. This refills exactly to `k` when enough matching
-candidates exist; source text search followed by `where` does not.
+This returns exactly `k` hits when enough candidates match; source text search followed
+by `where` does not.
 
 ---
 
@@ -238,8 +228,8 @@ function userContent(p = contentParams) {
 }
 ```
 
-Without the else branch, users who are not `premium` would be dropped. To pick a
-value per row instead of a branch, use `Expr.case` (scenario 10).
+Without the else branch, non-`premium` users would be dropped. For a per-row value use
+`Expr.case` (§10).
 
 ---
 
@@ -313,8 +303,7 @@ function totalRevenue() {
 
 ## Edge Endpoint Projection
 
-Use this when an edge list needs stable source/target resource ids. It keeps one
-output row per edge and avoids traversing to every endpoint node.
+One row per edge with source/target resource ids, without traversing to each endpoint.
 
 ```ts
 function listDescribesRelationships() {
@@ -334,18 +323,14 @@ function listDescribesRelationships() {
 }
 ```
 
-The direct request nests this projection under the `project` root. Endpoint
-helpers serialize their sources as `$from.resource_id` and `$to.resource_id`.
+Endpoint sources serialize as `$from.resource_id` and `$to.resource_id`.
 
 ---
 
 ## Row bindings: multi-hop correlation
 
-Use this when one output row must combine values captured at **different hops**
-of a single path — `.project(...)` only sees the final stream. Tag elements with
-`.bind(name)` as you pass them, then assemble rows with
-`.projectDistinctBindings(...)` (or `.projectBindings(...)` to keep duplicates).
-`coalesce` picks the first present non-null reference.
+One row combining values from **different hops** (`.project(...)` only sees the final
+stream). `coalesce` picks the first present non-null reference.
 
 ```ts
 function serviceTopology() {
@@ -374,8 +359,7 @@ function serviceTopology() {
 }
 ```
 
-This binding projection is part of a normal direct request and is
-available in the Python v3 SDK.
+Part of a normal direct request; also available in the Python v3 SDK.
 
 ---
 
@@ -416,8 +400,8 @@ type CreateUserResponse = {
 };
 ```
 
-`addE` creates one edge per (source, target) pair every time it runs; it is not
-idempotent, and an empty target stream fails the whole batch.
+`addE` creates one edge per (source, target) pair every run; an empty target stream fails
+the whole batch.
 
 ---
 
@@ -443,11 +427,9 @@ function upsertUser(p = upsertParams) {
 }
 ```
 
-Both entries return `{ "$id": number }[]`; the branch that did not run returns
-`[]`. Create `IndexSpec.nodeUniqueEquality("User", "userId")` (§17) so two
-concurrent upserts cannot both create: the loser fails with
-`unique_constraint_violation`, and re-running the upsert once takes the update
-branch.
+Both entries are `{ "$id": number }[]`; the branch that did not run returns `[]`. Create
+`IndexSpec.nodeUniqueEquality("User", "userId")` (§17) so concurrent upserts cannot both
+create; the loser fails with `unique_constraint_violation`; re-run the upsert once.
 
 ---
 
@@ -468,9 +450,10 @@ function bulkCreateUsers(p = bulkParams) {
 }
 ```
 
-Inside `body`, parameter names resolve against each object's fields.
-`param.array(param.object(param.value()))` records a structured array-of-object
-schema matching Rust `QueryParamType::Array(Box::new(QueryParamType::Object))`.
+Parameter names in `body` resolve against each object's fields.
+`param.array(param.object(param.value()))` matches Rust
+`QueryParamType::Array(Box::new(QueryParamType::Object))`. `created` holds only the last
+iteration.
 
 ---
 
@@ -511,7 +494,8 @@ function usersByExternalId() {
 }
 ```
 
-Dotted property lookup is exact-first and scan-only in the current runtime. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
+Dotted paths are exact-first and scan-only (REFERENCE.md, Nested properties); keep
+indexed or searchable fields top-level. Arrays are opaque: no `metadata.tags.0`.
 
 ---
 
@@ -541,9 +525,8 @@ const body = usersFiltered().toQueryJson(filteredParams, {
 });
 ```
 
-`statuses` records as an array-of-string schema and `since` as
-`"date_time"`. Pass a `DateTime`; the request normalizes to UTC RFC3339 with
-millisecond precision before serializing.
+`statuses` records as an array-of-string schema, `since` as `"date_time"` (UTC RFC3339,
+milliseconds).
 
 ---
 
@@ -570,10 +553,9 @@ function bootstrapIndexes() {
 }
 ```
 
-Drop an index with `g().dropIndex(IndexSpec....)`. The convenience methods (`createVectorIndexNodes`, etc.) produce identical wire output — prefer `createIndexIfNotExists` + `IndexSpec` for consistency with the dynamic JSON reference.
-
-Each entry returns a receipt object, and the build runs asynchronously. Wait for
-it before relying on the index:
+Drop with `g().dropIndex(IndexSpec....)`. Convenience methods (`createVectorIndexNodes`,
+etc.) produce identical wire output; prefer `createIndexIfNotExists` + `IndexSpec`. Each
+entry returns a receipt; wait for the build before relying on the index:
 
 ```ts
 async function waitForIndex(client: Client, receiptValue: unknown): Promise<void> {
@@ -605,16 +587,14 @@ const created = await client
 for (const receipt of Object.values(created)) await waitForIndex(client, receipt);
 ```
 
-Repeating the same create while the build runs returns `existing_operation` with
-the same `operation_id`. `index_busy` means another lifecycle change on that
-index is running; `index_build_blocked` on an ordinary write means a blocked
-build's queue is full until you retry or abort that build.
+Repeating the create while the build runs returns `existing_operation` with the same
+`operation_id`.
 
 ---
 
 ## 18. Warm a read route
 
-Warming uses the *same* query; `.warmOnly()` sets the `X-Helix-Warm: true` header on the client. Build the request and let callers decide to warm:
+Warming sends the *same* query with `.warmOnly()` (`X-Helix-Warm: true`):
 
 ```ts
 import { Client } from "@helix-db/helix-db";
@@ -627,11 +607,9 @@ const request = userById().toQueryRequest(userByIdParams, { userId: "u-42" });
 await client.requestBuilder<void>().warmOnly().query(request).send();
 ```
 
-Helix Cloud fans the read out to every eligible backend and discards the result
-bodies. Chain `.writerOnly().warmOnly()` to warm only the authoritative writer.
-A local server warms one process and returns the normal query body. Warming is
-strictly read-only; a `WriteBatch` with `X-Helix-Warm: true` is rejected with
-`400 invalid_request_option` before execution.
+Cloud warms every eligible backend and discards the bodies; `.writerOnly().warmOnly()`
+warms only the writer. A `WriteBatch` with `X-Helix-Warm: true` is
+`400 invalid_request_option`.
 
 ---
 
@@ -669,14 +647,9 @@ try {
 }
 ```
 
-Do not use `isConflict()` as the retry test: in 3.2.0 it is true for every 409,
-including `unique_constraint_violation`, `index_busy` and `index_build_blocked`
-(on `main` it means `transaction_conflict` only). `isRateLimited()` is any 429;
-Cloud `rate_limited` should honor `Retry-After`, which the client does not
-expose, so use direct HTTP when the exact delay matters. A rebuilt write that
-depends on what it read should re-read state on each attempt. Use
-`serverMessage`, `serverDetails` and `rawBody` for diagnostics, preserve
-unfamiliar `code` strings, and never classify errors by parsing text.
+Never retry on `isConflict()` (3.2.0: true for every 409). A write that depends on what it
+read re-reads state on each attempt. Use `serverMessage`, `serverDetails` and `rawBody` for
+diagnostics, preserve unfamiliar `code` strings, and never classify errors by parsing text.
 
 ---
 
@@ -701,20 +674,14 @@ const body = introductionPath().toQueryJson(pathParams, { from: 1n, to: 42n });
 // response: { path: [1, 7, 42] } (node IDs, source first), or { path: [] }
 ```
 
-Unweighted BFS; a missing endpoint returns `[]`, and an endpoint that resolves
-to several nodes fails the request.
-
 ---
 
 ## Cypher or SQL instead of the DSL
 
-The server runs openCypher and SQL natively. Send supported statements directly
-and write the DSL only for what they cannot express (`MERGE`, variable-length
-paths, `shortestPath`, `UNION`, `FOREACH`, SQL upserts and outer joins, vector
-and text search, index management).
+Send supported statements natively (SKILL.md, Cypher and SQL):
 
 ```ts
-// main only
+// (main)
 const result = await client.cypher(
   "MATCH (u:User) OPTIONAL MATCH (u)-[:WORKS_AT]->(c:Company) RETURN u.name AS name, c.name AS employer",
 );
@@ -728,10 +695,6 @@ const response = await fetch(`${baseUrl}/v2/cypher`, {
 });
 ```
 
-`POST /v2/sql` takes `{ query, parameters, mappings, query_name }`, where
-`parameters` may be a list binding each `?` in order. Both routes have an
-`/explain` variant that plans without executing.
-
----
-
-The v3 SDK does not expose stored routes, registration, or query-bundle APIs.
+`POST /v2/sql` takes `{ query, parameters, mappings, query_name }` (`parameters` may be a
+list binding each `?` in order). Both routes have an `/explain` variant that plans without
+executing.

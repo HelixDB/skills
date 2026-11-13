@@ -6,15 +6,14 @@ memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`.
 Each query function is plain; call
 `.toQueryRequest(params, values, { queryName: "route_name" })`, then execute it
 with `await Client.server(url).withApiKey(key).query<R>(request).send()` (on
-Helix Cloud, `url` is the database's gateway URL and `key` an application
-database key; see SKILL.md, Run It On Helix Cloud). Writes wait for durability
-by default; `client.requestBuilder<R>().writerOnly().query(request).send()`
-pins a read to the writer. On failure, branch on the `HelixError`'s `code`, not
-on `error.details`: `transaction_conflict` (409) means reload current memory
-state, rebuild, and replay only safe mutations with bounded backoff;
-`unique_constraint_violation` (409) means the key already exists, so treat it
-as a duplicate; `index_not_found` (404) means an index is missing or still
-building (see §1).
+Helix Cloud: the database's gateway URL and an application database key; see
+SKILL.md, Run it on Helix Cloud). Writes wait for durability by default;
+`client.requestBuilder<R>().writerOnly().query(request).send()` pins a read to
+the writer. On failure, branch on the `HelixError`'s `code`, never
+`error.details`: `transaction_conflict` (409): reload memory state, rebuild,
+replay only safe mutations with bounded backoff; `unique_constraint_violation`
+(409): the key exists, treat as a duplicate; `index_not_found` (404): index
+missing or still building (§1).
 Embeddings are produced by the application and passed as numeric arrays.
 Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless
 the app has explicitly standardised on another model. Every tenant-owned
@@ -89,8 +88,8 @@ Relationship: EXTENDS the existing Japan trip memory.
 
 ## 1. Bootstrap indexes (run once), then wait for them
 
-Index creation is asynchronous. Return every index variable so each receipt comes back,
-then wait for every build before serving traffic.
+Return every index variable so each receipt comes back, then wait for every build before
+serving traffic.
 
 ```ts
 function bootstrapMemoryIndexes() {

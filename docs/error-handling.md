@@ -1,9 +1,8 @@
 # Helix Query Error Handling
 
-Branch on the stable code and the `retryable` field; log `msg`. Codes are
-compatibility identifiers, messages are not. Source of truth:
-`crates/ast/src/error_code.rs` (every code has one class, and the class alone
-sets the HTTP status and `retryable`). Public reference:
+Branch on the stable code and `retryable`; log `msg` (codes are compatibility
+identifiers, messages are not). Source of truth: `crates/ast/src/error_code.rs`; each code
+has one class, which alone sets the HTTP status and `retryable`. Public reference:
 https://docs.helix-db.com/database/helix-db/query-guides/error-handling
 
 ## Envelope
@@ -14,16 +13,14 @@ Every non-success response from `POST /v2/query` uses:
 { "error": "unique_constraint_violation", "msg": "<diagnostic>", "retryable": false }
 ```
 
-- `error` is the code. There is no `code` field.
-- `retryable` is present only when the class settles it (`true` or `false`);
-  otherwise it is absent.
-- Codes are open strings: keep an unknown code, log it, and fall back to the
-  status class.
+- `error` is the code; there is no `code` field.
+- `retryable` is present only when the class settles it.
+- Codes are open strings: keep an unknown code, log it, and fall back to the status class.
 
-`POST /v2/cypher`, `/v2/sql` and their `/explain` routes report a failed
-statement as `{"error": "<category>", "msg", "details": {"detail", "phase", "span"}}`
-(see [Cypher and SQL errors](#cypher-and-sql-errors)); request, storage and
-transaction failures on those routes use the envelope above.
+`POST /v2/cypher`, `/v2/sql` and their `/explain` routes report a failed statement as
+`{"error": "<category>", "msg", "details": {"detail", "phase", "span"}}`
+([Cypher and SQL errors](#cypher-and-sql-errors)); their request, storage and transaction
+failures use the envelope above.
 
 ## Classes
 
@@ -41,9 +38,8 @@ transaction failures on those routes use the envelope above.
 | Unavailable | 503 | absent | committed nothing | `writer_mode_required`, `reader_mode_required`, `database_closed`, `query_cancelled_by_reader_retirement`, `index_lifecycle_unavailable`, `migration_required`, `writer_migration_required` |
 | Commit outcome unknown | 503 | `false` | **may have committed** | `writer_fenced_commit_outcome_unknown` |
 
-An index-management request with several create, drop, retry or abort
-operations commits each one as it runs; if a later one fails, the earlier ones
-stay committed.
+An index-management request with several create, drop, retry or abort operations commits
+each as it runs; if a later one fails, the earlier ones stay committed.
 
 ## What to do
 
@@ -71,9 +67,8 @@ Never parse `msg` to classify a failure.
 
 ## SDK access
 
-Snippets in the skills use the SDK source on `main`. The published packages
-(Rust 3.0.0, TypeScript 3.2.0, Python 0.3.4, Go v0.3.1) lag it; see
-`docs/source-canon.md`.
+Skill snippets use the SDK source on `main`; the published packages (Rust 3.0.0,
+TypeScript 3.2.0, Python 0.3.4, Go v0.3.1) lag it (`docs/source-canon.md`).
 
 | SDK | Code | Retry decision | Status | Published-package caveat |
 | --- | --- | --- | --- | --- |
@@ -82,10 +77,10 @@ Snippets in the skills use the SDK source on `main`. The published packages
 | Python | `err.code` | `err.is_retryable()`, `err.retryable` | `err.status_code` | If `code` / `retryable` are missing, parse `err.details` as JSON. |
 | Go | `herr.Code` (after `errors.As(err, &herr)`) | `helix.IsRetryable(err)`, `herr.Retryable` | `herr.StatusCode` | v0.3.1 has no `IsRetryable`/`Retryable`, and its `IsConflict` is `true` for every 409; branch on `herr.Code`. |
 
-`isConflict()` / `is_conflict()` / `IsConflict` on `main` mean
-`transaction_conflict` only. `is_index_backpressure()` / `isIndexBackpressure()` /
-`IsIndexBackpressure` match `index_backpressure`. SDK error objects do not expose
-response headers, so honor Cloud `Retry-After` through direct HTTP.
+On `main`, `isConflict()` / `is_conflict()` / `IsConflict` mean `transaction_conflict`
+only, and `is_index_backpressure()` / `isIndexBackpressure()` / `IsIndexBackpressure`
+match `index_backpressure`. SDK errors do not expose response headers; honor Cloud
+`Retry-After` through direct HTTP.
 
 ## Cypher and SQL errors
 
@@ -100,7 +95,7 @@ response headers, so honor Cloud `Retry-After` through direct HTTP.
 
 ## Helix Cloud gateway codes
 
-The managed gateway adds its own codes before or around database execution
+Added before or around database execution
 (https://docs.helix-db.com/database/helix-cloud/operate/error-handling):
 
 | HTTP | Code | Action |

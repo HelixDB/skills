@@ -1,8 +1,7 @@
 # Cypher Benchmarks
 
-These cases test whether `helix-query-from-cypher` sends statements the server
-runs natively (`POST /v2/cypher`) and translates the rest with correct
-semantics.
+Tests whether `helix-query-from-cypher` sends supported statements natively
+(`POST /v2/cypher`) and translates the rest with correct semantics.
 
 Coverage goals:
 

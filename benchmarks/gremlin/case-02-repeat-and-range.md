@@ -22,11 +22,10 @@ g.V().hasLabel('Entity').has('entityId', seedId).repeat(__.both('RELATED_TO')).t
 ## Gold Expectations
 
 - anchor `Entity` by `entityId`
-- use bounded `repeat(...)` rather than claiming the traversal is unsupported
-- translate postfix `emit()` to `.emit_after()` (each iteration's output), not
+- use bounded `repeat(...)`, not "unsupported"
+- postfix `emit()` → `.emit_after()` (each iteration's output), not
   `.emit_all()`, which also emits the seed and repeats intermediate levels
-- does not add `.without("seed")`: Gremlin emits the seed when a later hop
-  reaches it again
+- no `.without("seed")`: Gremlin emits the seed when a later hop reaches it
 - use `dedup()` and `range(...)` explicitly
 
 ## Gold Translation Sketch

@@ -17,13 +17,10 @@ Helix stores and searches the graph. Extraction, chunking, embedding, connector 
 
 ## Tenant Rules
 
-This spec uses **`tenant_id`** as the tenant property. It is a convention, not a Helix
-requirement: a partitioned vector or text index accepts any property name as its
-`tenant_property`. Keep an existing repo's name if it already has one.
+This spec uses **`tenant_id`** by convention; a partitioned vector or text index accepts any
+property name as its `tenant_property`. Keep an existing repo's name. Use one name throughout:
 
-Reasons to pick one name and keep it:
-
-- vector and text searches over a label use the same partition key, so hybrid recall passes one tenant value to both
+- hybrid recall passes one tenant value to a label's vector and text searches
 - row-level isolation is application-enforced, so every query and write must carry tenant scope
 
 Rules:
@@ -207,12 +204,17 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 ### Index Bootstrap
 
 Create these from a **write** batch before generation/retrieval, then wait for each build.
-Creation is asynchronous: each `createIndexIfNotExists` returns a receipt, `accepted` or
-`existing_operation` (both with an `operation_id`) or `already_active`. Poll
-`getIndexOperation(operation_id)` in a read batch until `status` is `succeeded`; `queued` and
-`running` mean keep waiting, `blocked` (with a `blocker_code`) means fix the cause (for a unique
-index, duplicate existing values) and run `retryIndexOperation`, and `aborted` means create it
-again. Searching a vector or text index before it is active fails with `index_not_found`.
+Each `createIndexIfNotExists` returns a receipt: `accepted` or `existing_operation` (with an
+`operation_id`), or `already_active`. Poll `getIndexOperation(operation_id)` in a read batch:
+
+| `status` | Do |
+|---|---|
+| `queued`, `running` | Keep waiting |
+| `succeeded` | Usable |
+| `blocked` (with `blocker_code`) | Fix the cause (for a unique index, existing duplicates), then `retryIndexOperation` |
+| `aborted` | Create it again |
+
+Searching a vector or text index before it is active fails with `index_not_found`.
 
 - `IndexSpec.nodeUniqueEquality("Tenant", "tenant_id")`
 - `IndexSpec.nodeUniqueEquality("User", "userKey")`
@@ -263,7 +265,7 @@ expiresAt IS NULL OR expiresAt > now
 
 For vector and BM25, build this candidate stream first and call traversal-scoped
 `vectorSearchWith`/`vector_search_with` or
-`textSearchWith`/`text_search_with` (Rust `text_search_with` is SDK `main` only; with
+`textSearchWith`/`text_search_with` (Rust `text_search_with` is SDK `main` only; on
 helix-db 3.0.0 bind the candidates, then `g().text_search_nodes_with(..).within("<var>")`,
 which can return fewer than `k`); Helix then ranks only visible, live IDs. If
 a route cannot express a future-time or ACL condition, enforce it in application

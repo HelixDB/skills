@@ -17,23 +17,22 @@ RETURN u
 
 ## Focus Areas
 
-- recognizing that `MERGE` and `timestamp()` are outside the native profile
+- `MERGE` and `timestamp()` are outside the native profile
 - upsert branching in one write batch
 - a unique key so concurrent creates cannot duplicate
 - server-side timestamps
 
 ## Gold Expectations
 
-- notes that `/v2/cypher` rejects `MERGE` (`unsupported_feature`, `merge`), so
-  this one is translated
-- recommends a unique equality index on `User.userId`
-  (`IndexSpec::node_unique_equality`) created once and waited on until active
+- `/v2/cypher` rejects `MERGE` (`unsupported_feature`, `merge`), so translate
+- a unique equality index on `User.userId` (`IndexSpec::node_unique_equality`),
+  created once and waited on until active
 - uses `write_batch()` with an `existing` read, then `var_as_if` on
   `BatchCondition::VarNotEmpty` (update) and `BatchCondition::VarEmpty` (create)
 - assigns branch-specific fields, with `Expr::timestamp()` rather than
   client-supplied time parameters
-- on `409 unique_constraint_violation` (`retryable: false`), re-runs the upsert
-  once instead of retrying the same create
+- on `409 unique_constraint_violation` (`retryable: false`), re-run the upsert
+  once, not the same create
 
 ## Gold Translation Sketch
 

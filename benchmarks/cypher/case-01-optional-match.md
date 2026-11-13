@@ -17,20 +17,20 @@ RETURN u, o
 
 ## Focus Areas
 
-- recognizing that the statement runs natively
+- the statement runs natively
 - anchored lookup by indexed property
 - optional traversal that keeps the user row without inventing an org
-- a per-row result carrying both variables
+- per-row result with both variables
 
 ## Gold Expectations
 
-- states that the statement is supported as is: `POST /v2/cypher` with
+- runs as is: `POST /v2/cypher` with
   `{"query": ..., "parameters": {"userId": ...}}` (or `helix cypher -e`)
 - for the DSL route: anchor `User` by `userId`, `bind("u")`, then
   `.optional(sub().out(Some("WORKS_AT")).has_label("Org").bind("o"))`, then
   `project_bindings` over `u` and `o`
-- explains that `.optional(sub().out(..))` alone is wrong: an empty branch passes
-  the user row through, so the user would be reported as the org
+- rejects a bare `.optional(sub().out(..))`: an empty branch passes the user row
+  through, reporting the user as the org
 - a user without an org yields a row whose `o` fields are absent
 
 ## Gold Translation Sketch

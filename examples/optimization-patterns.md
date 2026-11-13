@@ -1,6 +1,6 @@
 # v3 Optimization Patterns
 
-Generic before-and-after patterns for direct published v3 SDK requests.
+Before-and-after patterns for direct v3 SDK requests.
 
 ## Better Anchor Choice
 
@@ -34,9 +34,9 @@ g().n_with_label_where(
 .count()
 ```
 
-Compatible `limit`/`skip`/`range` windows are normalized with saturating
-arithmetic. Identity-sensitive or unsupported pipelines keep a streaming count.
-`order_by` never changes a count; leave it out of count-only routes.
+`limit`/`skip`/`range` windows normalize with saturating arithmetic;
+identity-sensitive or unsupported pipelines keep a streaming count. Leave
+`order_by` out of count-only routes.
 
 ## Equality Union And Intersection Before Rows Load
 
@@ -53,10 +53,9 @@ g().n_with_label_where(
 )
 ```
 
-With compatible non-unique indexes, the status points can use one batched bitmap
-union and intersect the region bitmap before row materialization. Null and NaN do
-not use an ordinary equality bitmap; unique hits and range candidates remain
-authoritatively verified.
+With non-unique indexes, the status points become one batched bitmap union
+intersected with the region bitmap before rows load. Null and NaN never use an
+equality bitmap; unique hits and range candidates are verified.
 
 ## Ordered Range Driver Filters Before Limit
 
@@ -71,12 +70,11 @@ g().n_with_label_where(
 ```
 
 With a descending `Order.createdAt` range index and an `Order.region` equality
-index, the planner can filter the ordered range scan before satisfying the limit
-and avoid a redundant sort. A genuinely late-bound equality parameter may use a
-dynamic equality program. Orders without `createdAt` sort last for `Desc` and
-first for `Asc`.
+index, the planner filters the ordered range scan before the limit and skips the
+sort. A late-bound equality parameter may use a dynamic equality program. Orders
+without `createdAt` sort last for `Desc`, first for `Asc`.
 
-If only the window's size is needed, drop the ordering:
+For only the window's size, drop the ordering:
 `g().n_with_label_where("Order", SourcePredicate::eq("region", "eu")).limit(50).count()`
 counts the region bitmap and clamps it to 50.
 
@@ -91,11 +89,11 @@ write_batch()
     .returning(["index"])
 ```
 
-Poll the returned `operation_id` with `get_index_operation` until `status` is
-`succeeded`. The upsert batch then reads the key, updates under
-`BatchCondition::VarNotEmpty`, and creates under `BatchCondition::VarEmpty`. A
-concurrent create of the same email fails with `unique_constraint_violation`
-(409, `retryable: false`); re-running the upsert takes the update branch.
+Poll `get_index_operation(operation_id)` until `status` is `succeeded`. The
+upsert batch reads the key, updates under `BatchCondition::VarNotEmpty` and
+creates under `BatchCondition::VarEmpty`. A concurrent duplicate create fails
+with `unique_constraint_violation` (409, `retryable: false`); re-running the
+upsert takes the update branch.
 
 ## Smaller search projection
 
@@ -113,7 +111,7 @@ g().vector_search_nodes_with(...)
     ])
 ```
 
-The ellipsis marks a review pattern, not compilable Rust. A concrete v3 form is:
+The ellipsis is a review pattern, not compilable Rust. Concrete form:
 
 ```rust
 g().vector_search_nodes_with(
@@ -166,14 +164,13 @@ g().n_with_label("Document")
     ])
 ```
 
-This enforces exact candidate membership. Source vector search followed by
-`where_` can underfill top-k.
+Exact candidate membership; source vector search plus `where_` can underfill.
 
 ## Traversal-scoped Full Text Search prefilter
 
-Traversal `text_search_with` is SDK `main` only. With helix-db 3.0.0, bind the
-candidates, then use `g().text_search_nodes_with(..).within("<var>")`, which filters
-after top-k and can underfill.
+Rust `main` only; with helix-db 3.0.0 bind the candidates, then
+`g().text_search_nodes_with(..).within("<var>")`, which filters after top-k and
+can underfill.
 
 ```rust
 g().n_with_label("Document")
@@ -192,20 +189,17 @@ g().n_with_label("Document")
     ])
 ```
 
-This ranks the exact candidate IDs and refills to `limit` when enough candidates
-match. Source BM25 followed by `where_` can underfill.
+Ranks the exact candidates and refills to `limit` when enough match; source BM25
+plus `where_` can underfill.
 
 ## Warm reads, not writes
 
-All v3 SDK requests use the direct `POST /v2/query` route. Warm stable,
-performance-sensitive reads with `X-Helix-Warm: true`.
+All v3 requests use `POST /v2/query`. Warm stable, performance-sensitive reads
+with `X-Helix-Warm: true`. A standalone server (Docker `v0.0.16`) warms its one
+process and returns the normal body; Helix Cloud fans out to every eligible
+backend and returns `204 No Content` after at least one succeeds.
+`X-Helix-Require-Writer: true` targets only the writer.
 
-A standalone server (Docker `v0.0.16`) warms its single process and returns the
-normal query body. Helix Cloud fans the read out to every eligible backend and returns
-`204 No Content` after at least one succeeds. Add
-`X-Helix-Require-Writer: true` to target only the writer.
-
-Write warming is rejected with `400 invalid_request_option` before backend
-execution. Fix a slow write's query and storage-access pattern; skipping the
-durability wait (`X-Helix-Await-Durable: false`) lowers write latency at the
-cost of crash safety and does not reduce conflicts.
+Write warming is rejected with `400 invalid_request_option` before execution.
+Fix a slow write's query and access pattern; `X-Helix-Await-Durable: false`
+lowers write latency at the cost of crash safety and does not reduce conflicts.

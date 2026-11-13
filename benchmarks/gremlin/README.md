@@ -1,8 +1,7 @@
 # Gremlin Benchmarks
 
-These cases test whether `helix-query-from-gremlin` maps imperative Gremlin step
-chains into deliberate Helix anchors, traversals, and result shaping with the
-same semantics.
+Tests whether `helix-query-from-gremlin` maps Gremlin step chains to Helix
+anchors, traversals and result shaping with the same semantics.
 
 Coverage goals:
 

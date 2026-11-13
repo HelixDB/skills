@@ -1,12 +1,9 @@
 # Source Canon
 
-The one place that records which Helix release the skills target and the
-contracts every query skill repeats. When a version or a contract changes, change
-it here first, then update every skill that inlines it (installed skills only
-contain `skills/<name>/`, so they cannot link to this file).
-
-Checked against `HelixDB/helix-db` main at `5be60bdaa` ("Release CLI v3.7.0 with
-Docker v0.0.16 default").
+The release the skills target and the contracts every query skill repeats. Change a
+version or contract here first, then in every skill that inlines it (installed skills
+contain only `skills/<name>/` and cannot link here). Checked against `HelixDB/helix-db`
+main at `5be60bdaa` ("Release CLI v3.7.0 with Docker v0.0.16 default").
 
 ## Release set
 
@@ -19,8 +16,7 @@ Docker v0.0.16 default").
 | Python SDK | PyPI `helix-db` 0.3.4 (import `helixdb`) | `pip install helix-db` |
 | Go SDK | `github.com/helixdb/helix-db/sdks/go` v0.3.1 (tag `sdks/go/v0.3.1`) | `go get github.com/helixdb/helix-db/sdks/go@latest`, then `import helix "github.com/helixdb/helix-db/sdks/go"` (no `/v3` suffix) |
 
-Snippets are written against the SDK source at the commit above. These parts of
-that source are newer than the published packages:
+Snippets follow the SDK source at that commit. Not yet in the published packages:
 
 | Feature | Missing from | Use instead |
 | --- | --- | --- |
@@ -30,27 +26,27 @@ that source are newer than the published packages:
 | `IsRetryable`, `HelixError.Retryable` | Go v0.3.1 (has `HelixError.Code` and `StatusCode`) | Branch on `HelixError.Code` |
 | `isConflict()` / `IsConflict` limited to `transaction_conflict` | TypeScript 3.2.0 and Go v0.3.1 report `true` for every 409, including `unique_constraint_violation` | `isRetryable()` (TypeScript) or `Code` (Go) |
 
-If a helper named in a skill is missing from the installed package, read the
-error body's `error` and `retryable` fields directly.
+If an error helper is missing from the installed package, read the body's `error` and
+`retryable` fields directly.
 
 ## Contracts every query skill repeats
 
 | Contract | Rule | Source (helix-db) |
 | --- | --- | --- |
-| Empty returns | Every row-stream return is `[]` when empty, including at-most-one lookups (`n(id)`, `limit(1)`, a skipped `var_as_if`). Only `count` (`0`), `exists` (`false`) and index DDL / lifecycle operations return scalars. Decode a single lookup as a list and take the first element. Docker v0.0.13+ (older images returned `null` for at-most-one). | `crates/planner/src/exec/returns.rs` |
-| IDs | Node and edge `$id` values are unsigned integers. Bind ID parameters as `i64` / integer (`param.i64`, `ParamI64`, `PropertyInput::param` with an integer value); a string ID fails at runtime. | `crates/db/src/execution/interpreter/access/params.rs` |
-| Element output | An unprojected node or edge stream, read or mutation, returns `{"$id": N}` per element (search streams add `$distance` or `$score`). Project (`project`, `value_map`, `values`) to get properties. Rows that still carry bindings, a path or a sack come back as `{"bindings": {...}, "current": {...}, ...}`. `shortest_path` returns an array of node IDs. Index receipts and statuses carry `index_id` and `generation` as decimal strings. | `crates/db/src/query_service.rs` (`QueryResponse`), `sdks/rust/src/lifecycle.rs` |
+| Empty returns | Every row-stream return is `[]` when empty, including at-most-one lookups (`n(id)`, `limit(1)`, a skipped `var_as_if`); decode a single lookup as a list and take the first element. Only `count` (`0`), `exists` (`false`) and index DDL / lifecycle operations return scalars. Docker v0.0.13+ (older images returned `null` for at-most-one). | `crates/planner/src/exec/returns.rs` |
+| IDs | Node and edge `$id` values are unsigned integers. Bind ID parameters as integers (`param.i64`, `ParamI64`, `PropertyInput::param` with an integer value); a string ID fails at runtime. | `crates/db/src/execution/interpreter/access/params.rs` |
+| Element output | An unprojected node or edge stream, read or mutation, returns `{"$id": N}` per element (search adds `$distance` or `$score`); project (`project`, `value_map`, `values`) for properties. Rows still carrying bindings, a path or a sack return as `{"bindings": {...}, "current": {...}, ...}`. `shortest_path` returns node IDs. Index receipts and statuses carry `index_id` and `generation` as decimal strings. | `crates/db/src/query_service.rs` (`QueryResponse`), `sdks/rust/src/lifecycle.rs` |
 | Error envelope | `{"error": "<code>", "msg": "<diagnostic>", "retryable": true\|false}`; `retryable` is present only when the class settles it. There is no `code` field. | `crates/server/src/http.rs`, `crates/ast/src/error_code.rs` |
 | 409 | Two classes. Retryable (`retryable: true`): `transaction_conflict`, `request_read_view_changed`, `stale_index_generation`. Not retryable unchanged (`retryable: false`): `unique_constraint_violation`, `index_already_exists`, `index_definition_conflict`, `index_busy`, `index_operation_not_abortable`, `index_build_blocked`. Branch on `retryable`, never on the status alone. | `crates/ast/src/error_code.rs` |
-| Durability | Writes wait for durability by default (no header). `X-Helix-Await-Durable: false` skips the wait for latency; a crash before the WAL upload loses the write. It does not reduce conflicts. `true` on a read is `400 invalid_request_option`. | `crates/server/src/http.rs` |
+| Durability | Writes wait for durability by default. `X-Helix-Await-Durable: false` skips the wait for latency (a crash before the WAL upload loses the write) and does not reduce conflicts. `true` on a read is `400 invalid_request_option`. | `crates/server/src/http.rs` |
 | Reserved steps | `fold`, `unfold`, `path`, `simple_path`, `with_sack`, `sack_set`, `sack_add`, `sack_get` execute; they are not no-ops. | `crates/db/src/execution/interpreter/reserved.rs` |
-| `optional(sub)` | When the branch is empty, the input row passes through unchanged, so the current element is still the input. For OPTIONAL MATCH semantics bind the anchor, bind inside the branch, and read through `project_bindings`; a missing binding's key is absent from the row. | `crates/db/src/execution/interpreter/control/branch.rs` |
+| `optional(sub)` | An empty branch passes the input row through unchanged, so the current element is still the input. For OPTIONAL MATCH bind the anchor, bind inside the branch, and read through `project_bindings`; a missing binding's key is absent from the row. | `crates/db/src/execution/interpreter/control/branch.rs` |
 | `choose` | Without an else branch, rows that fail the condition are dropped. A per-row value choice is `Expr::case`. | `crates/db/src/execution/interpreter/control/branch.rs` |
 | Ordering | Rows missing the sort property sort first for `Asc` and last for `Desc` (the opposite of Cypher and SQL `NULLS` defaults). | `crates/db/src/execution/interpreter/stream/order.rs` |
 | After `bind` | `order_by`, `choose`, `repeat`, `values`, `value_map`, `project`, `id`, `label` and `edge_properties` are rejected (`invalid_after_bind_operation`). Order before binding; finish with `project_bindings`, `count` or `exists`. `bind` and `project_bindings` are read-only: a write batch rejects them (`read_only_traversal_in_write_batch`). | `crates/planner/src/planning/selected/native/context_usage.rs`, `crates/planner/src/planning/envelope/write_contract.rs` |
 | `repeat` emit | `emit_after` emits each iteration's output (Gremlin postfix `.emit()`); `emit_before` emits each iteration's input; `emit_all` emits both, so a row reached at depth 1 appears twice. Gremlin prefix `emit()` with `times(n)` is `emit_before()` with `times(n + 1)`. `until(pred)` stops the whole loop once any row of the new frontier matches and returns that whole frontier; it is not per-traverser like Gremlin. | `crates/db/src/execution/interpreter/control/repeat.rs` |
 | `add_e` | Always creates one edge per (source, target) pair; it is not idempotent. An empty target fails the whole batch; an empty source creates nothing. | `crates/db/src/execution/interpreter/mutation/ops.rs` |
-| Upsert | One write batch: read into a variable, then `var_as_if(VarNotEmpty, update)` and `var_as_if(VarEmpty, create)`. A unique equality index (`IndexSpec::node_unique_equality`) on the key makes concurrent creates fail with `unique_constraint_violation` instead of duplicating; re-run the upsert once, which then takes the update branch. | `crates/ast/src/batch.rs`, `crates/ast/src/index.rs` |
+| Upsert | One write batch: read into a variable, then `var_as_if(VarNotEmpty, update)` and `var_as_if(VarEmpty, create)`. A unique equality index (`IndexSpec::node_unique_equality`) on the key makes concurrent creates fail with `unique_constraint_violation` instead of duplicating; re-running the upsert once takes the update branch. | `crates/ast/src/batch.rs`, `crates/ast/src/index.rs` |
 | Index DDL | Asynchronous. `create_index_if_not_exists` / `drop_index` return a receipt `{"kind": "accepted", "operation_id", "index_id", "generation"}`, `{"kind": "existing_operation", "operation_id"}` or `{"kind": "already_active", "index_id", "generation"}`. Poll `get_index_operation(operation_id)` until `status` is `succeeded`; `blocked` carries `blocker_code` and needs a fix then `retry_index_operation`, or `abort_index_operation`. | `sdks/rust/src/lifecycle.rs`, `crates/ast/src/traversal.rs` |
 | Search consistency | Read requests take `search_consistency`: `strong` (default; includes committed but unpublished vector/text work) or `eventual` (bounded unpublished work, can return stale tenant/label/property matches). Writes are always strong. | `crates/ast/src/query.rs` |
 | Search limits | Whole-index vector search caps the effective result count at 800. A traversal-scoped (prefiltered) vector search fails when `min(k, unique candidates)` exceeds 800; text returns at most `min(candidates, k, 800)`. More than 1,000,000 unique candidates fails. | `crates/db/src/search/vector/hnsw/restricted.rs` |
@@ -59,7 +55,7 @@ error body's `error` and `retryable` fields directly.
 
 ## Working order
 
-When an agent writes or reviews Helix query code it uses, in order:
+Agents writing or reviewing Helix query code use, in order:
 
 1. the user's repo and schema
 2. this repository's `docs/` and `examples/`
@@ -90,8 +86,8 @@ When an agent writes or reviews Helix query code it uses, in order:
 `examples/authoring-patterns.md`, `examples/search-patterns.md`,
 `examples/optimization-patterns.md`.
 
-These are authoring sources. A published skill inlines what it needs from them
-or links the public docs; it never links `../../docs/...`.
+These are authoring sources: a published skill inlines what it needs or links the public
+docs, never `../../docs/...`.
 
 ## Rules
 

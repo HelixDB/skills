@@ -1,6 +1,6 @@
 # HelixDB v3 Optimization Examples
 
-Each example contrasts a broad shape with a more selective direct-request shape.
+Broad shape versus selective direct-request shape.
 
 ## Anchor a property filter with its label
 
@@ -17,7 +17,7 @@ read_batch()
     .returning(["users"]);
 ```
 
-Stronger when the equality index is defined for `User.status`:
+Stronger, with an equality index on `User.status`:
 
 ```rust
 read_batch()
@@ -159,9 +159,8 @@ writeBatch()
 }
 ```
 
-The response is a receipt such as
-`{"index": {"kind": "accepted", "operation_id": "…", "index_id": "7", "generation": "1"}}`.
-Poll the operation until it succeeds before benchmarking `active_users`:
+Response: `{"index": {"kind": "accepted", "operation_id": "…", "index_id": "7", "generation": "1"}}`.
+Poll until it succeeds before benchmarking `active_users`:
 
 ```ts
 readBatch()
@@ -170,9 +169,6 @@ readBatch()
 // repeat with backoff until op.status === "succeeded";
 // "blocked" needs a data fix, then g().retryIndexOperation(operationId) in a write batch
 ```
-
-`existing_operation` means the same build is already running (poll its
-`operation_id`); `already_active` means there is nothing to wait for.
 
 ## Bound graph expansion
 
@@ -196,8 +192,7 @@ g()
   .valueMap(["$id", "name"])
 ```
 
-If the start user is known, replace the label-wide source with an exact ID or an
-indexed unique property.
+If the start user is known, start from an exact ID or an indexed unique property.
 
 ## Project only what the API returns
 
@@ -229,11 +224,7 @@ readBatch()
   .returning(["active_count"]);
 ```
 
-Keep this as `count()` rather than projecting IDs and taking the client-side
-array length. With a compatible `User.status` equality index, the planner can
-select a bitmap count without materializing user rows. Compatible
-`skip`/`limit`/`range` windows are normalized with saturating arithmetic; an
-identity-sensitive or unsupported pipeline retains a streaming count.
+With a `User.status` equality index this is a bitmap count; no user rows load.
 
 ## Keep Equality Union And Intersection As One Set Expression
 
@@ -254,15 +245,12 @@ g()
   .valueMap(["$id", "status", "region"])
 ```
 
-The two same-index status points can become one batched bitmap union. The
-result can intersect the region bitmap before rows are loaded. Do not split
-this into separate client requests merely to force index use; every arm still
-needs compatible label/property/index identity.
+The status points become one batched bitmap union, intersected with the region
+bitmap before rows load. Do not split it into client requests.
 
 ## Keep Runtime Membership Bounded
 
-When the caller supplies the status domain as a parameter, keep it as one
-membership predicate:
+Keep a caller-supplied domain as one membership predicate:
 
 ```ts
 g()
@@ -273,15 +261,12 @@ g()
   .valueMap(["$id", "status"])
 ```
 
-With a compatible non-unique equality index, a scalar or bounded array can use
-a runtime equality union. Duplicate values collapse and NaN members are skipped.
-Null, unsupported, oversized, or over-limit domains fall back to authoritative
-membership evaluation; they never produce a partial indexed answer. An empty
-domain returns the normal empty collection shape.
+With a non-unique equality index, a scalar or bounded array uses a runtime
+equality union.
 
 ## Keep Related Filters Adjacent
 
-These filters are canonicalized into one conjunction for access planning:
+Canonicalized into one conjunction for access planning:
 
 ```ts
 g()
@@ -291,10 +276,8 @@ g()
   .valueMap(["$id", "status", "region"])
 ```
 
-The planner can combine label scope and indexed predicates even though the SDK
-chain used separate `where` calls. A traversal, `limit`, `orderBy`, projection,
-mutation, or any other non-filter operation ends the contiguous run; do not move
-filters across that boundary unless the query semantics independently allow it.
+A traversal, `limit`, `orderBy`, projection, mutation or other non-filter
+operation ends the run.
 
 ## Rank vectors with traversal prefiltering
 
@@ -317,7 +300,7 @@ g()
   .vectorSearchWith("Document", "embedding", queryVector, 10, tenant)
 ```
 
-The second shape cannot return an ID outside the candidate stream.
+It cannot return an ID outside the candidate stream.
 
 ## Rank Full Text Search within exact traversal candidates
 
@@ -340,8 +323,7 @@ g()
   .textSearchWith("Document", "body", query, 10, tenant)
 ```
 
-The second shape is exact and refills to ten when at least ten candidate documents
-match the text query.
+Exact; refills to ten when at least ten candidates match the text query.
 
 ## Use a range index for large ordered pages
 
@@ -378,25 +360,17 @@ readBatch()
   .returning(["orders"]);
 ```
 
-Poll the descending range index's build to `succeeded` before measuring the
-ordered query. The
-planner can union status IDs, intersect the region IDs, drive the route from the
-descending range index, filter before satisfying the 25-row limit, and avoid a
-redundant in-memory sort. Range candidates remain authoritatively verified.
+After the build succeeds, the planner unions status IDs, intersects region IDs,
+drives the route from the descending range index, filters before the 25-row
+limit, and skips the in-memory sort.
 
-If the caller needs only the cardinality of that window, drop `.orderBy(...)`
-as well as `.valueMap(...)` and end in `.limit(25).count()`: ordering never
-changes a count, so the range index is not needed and the planner can count the
-status/region bitmap intersection and clamp it to 25. Null equality still needs
-a scan, NaN is non-indexable, a unique equality hit verifies its owner, and a
-genuinely late-bound equality parameter may select a dynamic equality program.
-
-Elements without `createdAt` sort last for `Order.Desc` and first for
-`Order.Asc`.
+For only the window's cardinality, drop `.orderBy(...)` and `.valueMap(...)` and
+end in `.limit(25).count()`: no range index is needed; the planner counts the
+status/region bitmap intersection and clamps it to 25.
 
 ## Scope vector search to its tenant
 
-When the vector index has a tenant property, include the tenant input in the search:
+With a tenant-partitioned vector index, pass the tenant to the search:
 
 ```ts
 const vectorParams = defineParams({
@@ -418,13 +392,8 @@ function tenantVectorSearch(p = vectorParams) {
 }
 ```
 
-Do not run an unscoped top-k query and try to repair it with a later tenant filter.
-
-`limit` here is clamped to 800 for a whole-index search. If a strong search is
-rejected with `index_backpressure` (429, retryable) because indexing lags writes,
-retry after a backoff, or send the read with `"search_consistency": "eventual"`
-when a hit whose tenant or indexed text changed moments ago is acceptable. The
-published SDK packages cannot set this option yet; on SDK source from `main`:
+If a strong search hits `index_backpressure` and stale hits are acceptable, read
+eventually (main):
 
 ```ts
 readBatch()
@@ -439,7 +408,7 @@ readBatch()
 
 ## Preserve rank fields
 
-Project the search result while it is still ranked:
+Project while the stream is still ranked:
 
 ```ts
 g()
@@ -447,16 +416,15 @@ g()
   .valueMap(["$id", "title", "$score"])
 ```
 
-If the query must traverse to related nodes, keep the ranked projection as one named
-entry and run the traversal from a second named entry.
+To traverse to related nodes, keep the ranked projection as one named entry and
+traverse from a second.
 
 ## Keep write batches bounded
 
-Use `forEachParam` for small, bounded object arrays. For large imports, page the input
-and measure transaction duration instead of sending an unbounded batch.
+Use `forEachParam` only for small arrays; page large imports and measure
+transaction duration.
 
-For an application-level upsert, back the key with a unique equality index and
-build one write batch:
+Upsert: unique equality index on the key, then one write batch:
 
 ```ts
 writeBatch()
@@ -487,9 +455,6 @@ function upsertUser(p = upsertParams) {
 }
 ```
 
-Exactly one of `updated` / `created` holds `[{"$id": N}]`; the other is `[]`.
-The unique index makes the lookup an owner point read and stops two concurrent
-creates of the same email from both committing: the loser gets
-`unique_constraint_violation` (409, `retryable: false`). Re-run the upsert once on
-that error and it takes the update branch. A `transaction_conflict` (409,
-`retryable: true`) is retried the same way.
+Exactly one of `updated` / `created` holds `[{"$id": N}]`; the other is `[]`. Re-run
+once on `unique_constraint_violation` (it takes the update branch); retry
+`transaction_conflict` with backoff.

@@ -1,14 +1,10 @@
 # Helix Query Authoring — TypeScript DSL Reference
 
-Exhaustive builder catalog for the `@helix-db/helix-db` TypeScript DSL
-(verified against 3.2.0 and the SDK source on `main`; items marked "main only"
-are not in 3.2.0). Use when `SKILL.md` points you at a category or when you need
-a signature confirmed.
-
-The public surface is defined under
+Builder catalog for `@helix-db/helix-db`, defined under
 [`sdks/typescript/src`](https://github.com/HelixDB/helix-db/tree/main/sdks/typescript/src).
-The compatibility target is structural JSON equality with the Rust SDK; encoding
-rules live in `../helix-query-json-dynamic/REFERENCE.md`.
+**(main)** marks APIs missing from 3.2.0; SKILL.md has the fallbacks. Output is
+structurally equal to the Rust SDK's JSON; encoding rules:
+`../helix-query-json-dynamic/REFERENCE.md`.
 
 ## Import
 
@@ -20,10 +16,10 @@ import { g, sub, readBatch, writeBatch, NodeRef, EdgeRef, Predicate, SourcePredi
          RangeIndexDirection, VectorDistanceMetric, QueryRequest, defineParams, param,
          ShortestPathDirection, parseIndexDdlReceipt, parseIndexOperationStatus,
          Client, HelixError, stringifyJson, i64, f32, f64, bytes, dateTime } from "@helix-db/helix-db";
-// main only: SearchConsistency
+// (main): SearchConsistency
 ```
 
-A `prelude` object re-exports the common DSL surface for convenience.
+A `prelude` object re-exports the common DSL surface.
 
 ## Typestate Cheat Sheet
 
@@ -57,10 +53,9 @@ edges  -- count, exists, id, label, values, valueMap, project,
           projectBindings, edgeProperties                                    └─> terminal
 ```
 
-`ReadBatch.varAs` accepts only a read traversal. `WriteBatch.varAs` accepts
-either mode. The TypeScript types also let you call `within`, `without`,
-`select`, `orderByMultiple` and `dropEdgeById` on an edge stream; the Rust DSL
-does not expose them there, so keep edge streams to the list above for parity.
+`ReadBatch.varAs` accepts only a read traversal; `WriteBatch.varAs` accepts either. The
+types also allow `within`, `without`, `select`, `orderByMultiple` and `dropEdgeById` on an
+edge stream, but Rust does not: keep edge streams to the list above for parity.
 
 ---
 
@@ -97,8 +92,7 @@ BatchCondition.varMinSize(name, n) // {"var_min_size": [name, n]}
 BatchCondition.prevNotEmpty()      // "prev_not_empty"
 ```
 
-`NamedQuery` and `BatchEntry` are built for you by `varAs` / `forEachParam` —
-you rarely construct them directly.
+`varAs` / `forEachParam` build `NamedQuery` and `BatchEntry` for you.
 
 ---
 
@@ -127,12 +121,10 @@ PropertyValue.from(input)         // smart conversion from PropertyValueInput
 // accessors: asStr, asI64, asDatetimeMillis, asF64, asBool, asArray, asObject
 ```
 
-`PropertyValueInput` is the union accepted wherever a literal is allowed:
-`null | boolean | number | bigint | string | Uint8Array | DateTime |
-PropertyValue | arrays | { object: ... }`. Objects and generic arrays are
-stored as property values. Homogeneous primitive arrays may use tagged
-`i64_array`, `f64_array`, or `string_array` values; mixed or nested arrays use
-`PropertyValue.array(...)`.
+`PropertyValueInput` (accepted wherever a literal is): `null | boolean | number | bigint |
+string | Uint8Array | DateTime | PropertyValue | arrays | { object: ... }`. Homogeneous
+primitive arrays may use tagged `i64_array`, `f64_array` or `string_array`; mixed or nested
+arrays use `PropertyValue.array(...)`.
 
 ### `PropertyInput` — value-or-expression
 
@@ -194,11 +186,10 @@ g().textSearchNodesWith(label, property, queryText, k, tenantValue?)
 g().vectorSearchEdgesWith(...)   g().textSearchEdgesWith(...)
 ```
 
-Prefer the `*With` variants for parameterized routes. The high-level `vectorSearchNodes` wraps `queryVector` as `PropertyValue.f32Array` and `k` as `StreamBound.literal`.
-
-These source methods search the whole selected tenant partition. To rank only
-IDs already present in a traversal, use traversal-scoped vector or text search
-below.
+Prefer `*With` for parameterized routes; `vectorSearchNodes` wraps `queryVector` as
+`PropertyValue.f32Array` and `k` as `StreamBound.literal`. Sources search the whole
+selected tenant partition; to rank only IDs already in a traversal, use traversal-scoped
+search.
 
 ---
 
@@ -236,17 +227,14 @@ Traversal-scoped vector and BM25 search on node or edge streams:
     tenantValue?: PropertyInput | Expr | ParamRef | PropertyValueInput | null)
 ```
 
-Both forms enforce exact membership over the IDs in the current stream. Vector
-ranking may still use approximate index structures, but cannot return an ID
-outside that stream; project `$distance`. BM25 results equal exhaustive search
-of the tenant partition intersected with those IDs, then top-`k` ordered by
-score descending and entity ID ascending; project `$score`. BM25 statistics
-remain partition-wide. Use the same tenant partition for candidate construction
-and search.
+Traversal-scoped search enforces exact membership over the IDs in the current stream.
+Vector ranking may use approximate index structures but never returns an ID outside the
+stream; project `$distance`. BM25 equals exhaustive search of the tenant partition
+intersected with those IDs, top-`k` by score descending then entity ID ascending, with
+partition-wide statistics; project `$score`. Use the same tenant partition for candidates
+and search. Limits: SKILL.md, Search.
 
-The label argument is optional; omit it (`out()`) or pass a string
-(`out("FOLLOWS")`). On the wire the nested `out` node has an `input` and omits
-`label` when it is absent.
+An omitted label (`out()`) is omitted from the wire `out` node.
 
 ---
 
@@ -263,10 +251,9 @@ The label argument is optional; omit it (`out()`) or pass a string
 .edgeHasLabel(label)                                        // edge streams
 ```
 
-On edge streams, generic `.has`, `.hasLabel`, `.hasKey`, and `.where` filter
-stored edge properties plus virtual fields `$id`, `$label`, `$from`, `$to`,
-`$distance`, and `$score`. Keep `.edgeHas` for edge filters whose right-hand
-side must be a `PropertyInput` expression or runtime parameter.
+On edge streams, `.has`, `.hasLabel`, `.hasKey` and `.where` filter stored edge properties
+plus virtual fields `$id`, `$label`, `$from`, `$to`, `$distance`, `$score`. Use `.edgeHas`
+when the right-hand side is a `PropertyInput` expression or runtime parameter.
 
 ### `Predicate`
 
@@ -292,21 +279,23 @@ Predicate.gtParam(...)   Predicate.gteParam(...)   Predicate.ltParam(...)   Pred
 
 ### `SourcePredicate` — used in `nWhere` / `eWhere`
 
-`SourcePredicate` is an alias of `Predicate` (same constructors). Prefer
-index-friendly shapes on top-level properties (equality and range comparisons,
-combined with `and`), and scope the source to a label with `nWithLabelWhere` so
-a label-scoped index applies; an unlabeled `nWhere` cannot use one:
-
-```text
-SourcePredicate.eq / neq / gt / gte / lt / lte / between / isIn / hasKey / startsWith / and / or
-```
-
-The v3 wire format serializes predicates as expression trees, for example
+`SourcePredicate` is an alias of `Predicate`
+(`SourcePredicate.eq / neq / gt / gte / lt / lte / between / isIn / hasKey / startsWith /
+and / or`). Index-friendly shapes are equality and range comparisons on top-level
+properties, combined with `and`, scoped with `nWithLabelWhere` (an unlabeled `nWhere`
+cannot use a label-scoped index). Put other filters in `.where(Predicate....)` after the
+source. Predicates serialize as expression trees, e.g.
 `{"eq":{"left":{"property":"u"},"right":{"constant":{"string":"alice"}}}}`.
-Use `.where(Predicate....)` after a source for filters that are not suitable as
-an indexed source anchor.
 
-Property-name strings in filters can be dotted object paths, for example `Predicate.eq("metadata.externalID", "crm-42")`. Lookup is exact-first: a top-level property named `metadata.externalID` wins before walking the `metadata` object. Dotted paths are scan-only in the current runtime; secondary, text, and vector indexes remain top-level only. Arrays are opaque and do not support `tags.0` syntax.
+### Nested properties (dotted paths)
+
+Dotted object paths such as `Predicate.eq("metadata.externalID", "crm-42")` work in
+predicates, `Expr.prop`, filtered `values` / `valueMap`, `PropertyProjection.source` and
+`orderBy`. Lookup is exact-first: a top-level property named `metadata.externalID` wins
+before walking the `metadata` object. Dotted paths are scan-only: secondary, range, text
+and vector indexes cover top-level properties only, so duplicate indexed or searchable
+fields onto explicit top-level properties. Arrays are opaque (no `tags.0`).
+`valueMap(null)` returns top-level properties as stored, without flattening.
 
 ### `CompareOp`
 
@@ -332,10 +321,7 @@ Expr.case(whenThen: [Predicate, Expr][], elseExpr?: Expr | null)
 `ParamRef` has `.toExpr()` so a `param` reference can be used where an `Expr`
 is expected.
 
-Typical uses:
-
 - `Predicate.compare(Expr.prop("age"), CompareOp.Gte, Expr.param("minAge"))` — property-to-parameter comparison.
-- `Expr.prop("metadata.score")` — nested object field lookup with the same exact-first dotted-path rules as filters.
 - `ExprProjection.new("age2", Expr.prop("age").add(Expr.val(1)))` — computed column.
 - `g().addN("Foo", { createdAt: PropertyInput.expr(Expr.timestamp()) })` — server-side timestamp.
 
@@ -378,11 +364,8 @@ Cross-entry references: `NodeRef.var(name)`, `EdgeRef.var(name)`, `NodeRef.param
 .orderByMultiple([[prop1, Order.Desc], [prop2, Order.Asc]])
 ```
 
-Use `Order.Asc` or `Order.Desc`. Rows missing the property sort **first** for
-`Asc` and **last** for `Desc`, the opposite of Cypher/SQL defaults; add
-`.where(Predicate.isNotNull(prop))` before ordering to drop them.
-Dotted paths such as `metadata.score` are valid for fallback ordering, but current
-range indexes do not accelerate nested paths.
+Missing values sort first for `Asc`, last for `Desc`; `.where(Predicate.isNotNull(prop))`
+before ordering drops them. Range indexes do not accelerate nested paths.
 
 ---
 
@@ -407,12 +390,11 @@ Each arm is a `SubTraversal` from `sub()`:
 .optional(subA)                // subA's rows, or the input row itself when subA is empty
 ```
 
-- `choose` without `elseTraversal` **drops** rows that fail the condition. For a
-  per-row value (Cypher `CASE`), use `Expr.case(...)` in a projection.
-- `optional` keeps the input row as the current element when the branch is
-  empty, so `.optional(sub().out("WORKS_AT")).values(["name"])` returns the
-  *user's* name for users without an employer. For OPTIONAL MATCH semantics,
-  bind both sides and project bindings (see [Row bindings](#row-bindings-multi-hop-correlation)).
+- `choose` without `elseTraversal` **drops** rows that fail the condition (per-row value:
+  `Expr.case(...)`).
+- `.optional(sub().out("WORKS_AT")).values(["name"])` returns the *user's* name for users
+  without an employer; for OPTIONAL MATCH see
+  [Row bindings](#row-bindings-multi-hop-correlation).
 
 `SubTraversal` supports: `out`, `in`, `both`, `outE`, `inE`, `bothE`, `outN`, `inN`, `otherN`, `has`, `hasLabel`, `hasKey`, `where`, `dedup`, `within`, `without`, `edgeHas`, `edgeHasLabel`, `limit`, `skip`, `range`, `as`, `store`, `select`, `bind`, `orderBy`, `orderByMultiple`, `path`, `simplePath`.
 
@@ -439,9 +421,8 @@ Each arm is a `SubTraversal` from `sub()`:
 - `.maxDepth(n)` — safety cap (default 100)
 
 Default `emit` is `EmitBehavior.None` (only the final iteration's rows). `emitAfter`
-emits each iteration's output (Gremlin postfix `.emit()`); `emitBefore` emits each
-iteration's input, starting with the seed; `emitAll` does both, so a row reached
-at depth 1 is emitted twice. Bound every repeat with `times` or `until`.
+emits each iteration's output (Gremlin postfix `.emit()`); `emitBefore` each iteration's
+input, starting with the seed; `emitAll` both, so a depth-1 row is emitted twice.
 
 ---
 
@@ -468,25 +449,20 @@ Projection.toEndpoint("resource_id", "to_id")
 Projection.from(value)
 ```
 
-Mix `PropertyProjection` and `ExprProjection` freely in `.project([...])`.
-Filtered `values(...)`, filtered `valueMap(...)`, `PropertyProjection.source`, and `Expr.prop(...)` accept dotted object paths. `valueMap(null)` returns all top-level stored properties as-is and does not flatten nested objects.
-
-On edge streams, `Projection.fromEndpoint(prop, alias)` serializes to
-`{"source":"$from.<prop>","alias":"<alias>"}` and
-`Projection.toEndpoint(prop, alias)` serializes to
-`{"source":"$to.<prop>","alias":"<alias>"}`. Use these to return source/target
-node properties such as resource ids without traversing from every edge to its
-endpoints. Keep `.edgeProperties()` for full edge maps and the internal `$from`
-/ `$to` node ids.
+Mix `PropertyProjection` and `ExprProjection` in `.project([...])`. On edge streams,
+`Projection.fromEndpoint(prop, alias)` serializes to
+`{"source":"$from.<prop>","alias":"<alias>"}` and `Projection.toEndpoint(prop, alias)` to
+`{"source":"$to.<prop>","alias":"<alias>"}`: endpoint node properties without traversing to
+each endpoint. Keep `.edgeProperties()` for full edge maps and the internal `$from` / `$to`
+node ids.
 
 ---
 
 ## Row bindings (multi-hop correlation)
 
-`.project(...)` only sees the final stream. When one output row must combine
-values captured at **different hops** of one path, tag elements with
-`.bind(name)` as you pass them, then assemble rows with `.projectBindings(...)`
-/ `.projectDistinctBindings(...)`.
+`.project(...)` only sees the final stream. To combine values from **different hops** of
+one path, tag elements with `.bind(name)`, then build rows with `.projectBindings(...)` /
+`.projectDistinctBindings(...)`.
 
 ```text
 .bind(name: string)                                ↻ same stream; enters row mode (throws on empty name)
@@ -494,15 +470,13 @@ values captured at **different hops** of one path, tag elements with
 .projectDistinctBindings(projs: BindingProjection[])-> Traversal<"terminal", M> // dedups identical rows
 ```
 
-`.bind()` does not change the stream — each path keeps its own row-local
-bindings, so hops inside `union` / `optional` / `coalesce` can still reference
-earlier captures. `bind` is available on `Traversal` (node and edge streams) and
-on `SubTraversal`. After a `bind`, `orderBy`, `choose`, `repeat`, `values`,
-`valueMap`, `project`, `id`, `label` and `edgeProperties` are rejected with
-`invalid_after_bind_operation`: order before binding and finish with
-`projectBindings`, `projectDistinctBindings`, `count` or `exists`. A binding that
-was never set on a row (an empty `optional` branch) leaves its alias out of that
-row's object.
+`.bind()` does not change the stream; each path keeps row-local bindings, so hops inside
+`union` / `optional` / `coalesce` can reference earlier captures. It works on node and edge
+`Traversal`s and on `SubTraversal`. After a `bind`, `orderBy`, `choose`, `repeat`,
+`values`, `valueMap`, `project`, `id`, `label` and `edgeProperties` are rejected
+(`invalid_after_bind_operation`); finish with `projectBindings`, `projectDistinctBindings`,
+`count` or `exists`. A binding never set on a row (empty
+`optional` branch) leaves its alias out of that row's object.
 
 `BindingProjection` constructors:
 
@@ -523,7 +497,7 @@ BindingProjection.coalesce([                                // first present non
 `source` accepts stored properties and the virtual fields `$id`, `$label`,
 `$from`, `$to`, `$distance`, `$score`.
 
-Worked example:
+Worked example (one row per path):
 
 ```text
 g().nWithLabel("Service")
@@ -557,22 +531,16 @@ g().nWithLabel("User")
   ]);
 ```
 
-Without the bindings, `optional` would leave the user as the current element and
-`employer` would silently become the user's own name. `out` does not check the
-target's label, so keep `hasLabel` when the pattern names one.
-
-The binding projection is part of the normal direct `QueryRequest`. See
-`../helix-query-json-dynamic/REFERENCE.md` for its JSON wire shape.
+Without the bindings, `employer` would silently become the user's own name. Keep
+`hasLabel` when the pattern names one (`out` ignores the target label). Wire shape:
+`../helix-query-json-dynamic/REFERENCE.md`.
 
 ---
 
 ## Terminals (metadata)
 
-```text
-.count()   .exists()   .id()   .label()
-```
-
-Usable on node and edge streams. `.edgeProperties()` is edge-only.
+`.count()`, `.exists()`, `.id()`, `.label()` work on node and edge streams;
+`.edgeProperties()` is edge-only.
 
 ---
 
@@ -596,10 +564,9 @@ Node-state mutations (→ `Traversal<"nodes", "write">`):
 .dropEdge(to)              .dropEdgeLabeled(to, label)        .dropEdgeById(edges)
 ```
 
-`addN`/`addE` properties accept an object (`{ name: "Alice" }`) or an array of
-tuples (`[["name", "Bob"]]`); values may be raw literals, nested
-objects/arrays, `PropertyInput.param(...)`, or a `ParamRef`. On the wire a
-literal property is `["name", {"value": {"string": "Alice"}}]`.
+`addN` / `addE` properties are an object (`{ name: "Alice" }`) or tuples
+(`[["name", "Bob"]]`) of raw literals, nested objects/arrays, `PropertyInput.param(...)` or a
+`ParamRef`. On the wire: `["name", {"value": {"string": "Alice"}}]`.
 
 ---
 
@@ -634,23 +601,20 @@ IndexSpec.edgeVector(label, property, dimension, metric, tenantProperty?)
 IndexSpec.edgeText(label, property, tenantProperty?)
 ```
 
-Range indexes default to ascending physical order. Use `RangeIndexDirection.Desc` for descending indexes that primarily serve newest-first or high-score-first scans.
+Range indexes default to ascending; use `RangeIndexDirection.Desc` for newest-first or
+high-score-first scans. `createVectorIndexNodes(...)` serializes to the same `create_index`
+operation as `createIndexIfNotExists(IndexSpec.nodeVector(...))`.
 
-`createVectorIndexNodes(...)` serializes to the same `create_index` operation
-as `createIndexIfNotExists(IndexSpec.nodeVector(...))`.
-
-A unique equality index (`IndexSpec.nodeUniqueEquality`) rejects a write that
-would duplicate a value with `unique_constraint_violation` (409,
-`retryable: false`). While the build runs it rejects only a value already claimed,
-by an entity the build has scanned or by a write since the build started; a
-duplicate of a value held only by a not-yet-scanned entity is written, and the
-build blocks (`uniqueness_violation`) when its scan reaches that entity. Use it as
-the race-safe key of an upsert.
+A unique equality index (`IndexSpec.nodeUniqueEquality`) rejects a duplicate write with
+`unique_constraint_violation` (409, `retryable: false`). While the build runs it rejects
+only a value already claimed, by an entity the build has scanned or by a write since the
+build started; a duplicate of a value held only by a not-yet-scanned entity is written, and
+the build blocks (`uniqueness_violation`) when its scan reaches that entity.
 
 ### Index lifecycle
 
-Index DDL is asynchronous. Each `createIndexIfNotExists` / `dropIndex` entry
-returns one receipt object (a scalar, not an array):
+Each `createIndexIfNotExists` / `dropIndex` entry returns one receipt object (not an
+array):
 
 ```text
 { kind: "accepted", operation_id, index_id, generation }   // new build/drop queued
@@ -666,19 +630,15 @@ parseIndexDdlReceipt(value): IndexDdlReceipt
 parseIndexOperationStatus(value): IndexOperationStatus
 ```
 
-`IndexOperationStatus.status` is `queued`, `running`, `blocked`, `succeeded` or
-`aborted`, with `operation_kind`, `family`, `stage`, `attempt` and `progress`. A
-`blocked` status adds `blocker_code` (`invalid_source_data`,
-`uniqueness_violation`, `oversized_entity`, `manifest_limit`,
-`object_store_configuration_unavailable`, `invariant_violation`) and an optional
-`message`; it does not resume on its own. Queries cannot rely on the index until
-the build `succeeded`. Lifecycle errors: `index_busy` (another lifecycle change
-is in progress), `index_build_blocked` (a write would overflow a blocked build's
-queue; fix the blocker and retry or abort the build first),
-`index_operation_not_abortable`, `index_operation_not_found`. An index request
-with several operations commits each one as it runs, so read state before
-resending a partly failed batch. See EXAMPLES.md §17 for a polling loop.
-Index properties are top-level only in the current runtime. Do not declare `metadata.externalID` as an equality, range, vector, or text index; duplicate indexed/searchable fields onto explicit top-level properties.
+`IndexOperationStatus.status` is `queued`, `running`, `blocked`, `succeeded` or `aborted`,
+with `operation_kind`, `family`, `stage`, `attempt` and `progress`. `blocked` adds
+`blocker_code` (`invalid_source_data`, `uniqueness_violation`, `oversized_entity`,
+`manifest_limit`, `object_store_configuration_unavailable`, `invariant_violation`) and an
+optional `message`. Lifecycle errors: `index_busy` (another lifecycle change is in
+progress), `index_build_blocked` (a write would overflow a blocked build's queue; fix the
+blocker and retry or abort the build first), `index_operation_not_abortable`,
+`index_operation_not_found`. A request with several index operations commits each as it
+runs, so read state before resending a partly failed batch.
 
 ---
 
@@ -697,9 +657,8 @@ These execute; they are not no-ops.
 .sackGet()           // expose the sack in the output
 ```
 
-After `path()` or `sackGet()` (or with unprojected bindings) each row returns as
-`{ "bindings": {...}, "current": <element>, "path"?: [...], "sack"?: value }`
-instead of `{"$id": N}`.
+After `path()` or `sackGet()` (or with unprojected bindings) rows return as
+`{ "bindings": {...}, "current": <element>, "path"?: [...], "sack"?: value }`.
 
 ---
 
@@ -713,25 +672,19 @@ param.dateTime()  param.bytes()  param.value()
 param.object()  param.object(inner)  param.array(inner)
 ```
 
-`defineParams(schema)` returns a `DefinedParams<T>` — an object of typed
-`ParamRef`s (`p.limit`, `p.tenantId`) plus hidden metadata. Pass it as the
-default argument of a builder function (`function f(p = params) { ... }`).
-A `ParamRef` can be used directly where a `StreamBound`/`Expr`/property value
-is expected; `.toExpr()` converts it explicitly.
-
-`QueryParamType` is the on-the-wire parameter type: scalar schemas serialize
-as lowercase strings (`"string"`, `"i64"`, `"date_time"`, …); arrays and
-objects use their structured `snake_case` schema form.
-
-`param.bytes()` cannot be sent through the JSON route — conversion throws
-`QueryError.UnsupportedBytesParameter`.
+`defineParams(schema)` returns a `DefinedParams<T>`: typed `ParamRef`s (`p.limit`,
+`p.tenantId`) plus hidden metadata, passed as a builder's default argument
+(`function f(p = params) { ... }`). A `ParamRef` works where a `StreamBound` / `Expr` /
+property value is expected; `.toExpr()` converts it explicitly. `QueryParamType` is the wire
+type: scalars are lowercase strings (`"string"`, `"i64"`, `"date_time"`, …), arrays and
+objects their structured `snake_case` form.
 
 ---
 
 ## Direct Requests
 
 ```text
-type QueryOptions = { queryName?: string | null; searchConsistency?: SearchConsistency } // searchConsistency: main only
+type QueryOptions = { queryName?: string | null; searchConsistency?: SearchConsistency } // searchConsistency: (main)
 
 QueryRequest.read(batch: ReadBatch, queryName?: string | null)
 QueryRequest.write(batch: WriteBatch, queryName?: string | null)
@@ -739,32 +692,25 @@ req.insertUntypedParameter(name, value: JsonValue)                 req.withUntyp
 req.insertTypedParameter(name, type: QueryParamType, value)        req.withTypedParameter(name, type, value)
 req.setQueryName(name)                   req.clearQueryName()
 req.withQueryName(name)
-req.withSearchConsistency(SearchConsistency.Eventual)  // main only; throws on a write request
+req.withSearchConsistency(SearchConsistency.Eventual)  // (main); throws on a write request
 req.toJsonString()   req.toJsonBytes()
 // req.requestType -> "read" | "write" (lowercase on the wire)
 // req.queryName -> string | null         (serialized as top-level query_name)
 ```
 
-A request is either all untyped or all typed: mixing `insertUntypedParameter`
-and `insertTypedParameter` (or adding a duplicate name) throws `TypeError`.
-
-Most code reaches requests through
-`batch.toQueryJson(params, values, { queryName })` or
-`.toQueryRequest(...)`, which fill `parameters` and `parameter_types`
-automatically. Direct unnamed requests serialize `query_name: null`.
-
-`QueryValue` is an untagged JSON value in the top-level `parameters` map,
-distinct from the tagged `PropertyValue` used inside the AST.
-
-For the exact JSON wire encoding these produce (externally-tagged enums,
-untagged `Projection`/`BatchQuery`/`QueryValue`, `parameter_types` rules, and
-`DateTime` coercion), see `../helix-query-json-dynamic/REFERENCE.md`.
+A request is all untyped or all typed: mixing `insertUntypedParameter` and
+`insertTypedParameter`, or a duplicate name, throws `TypeError`. `batch.toQueryJson(...)` /
+`.toQueryRequest(...)` fill `parameters` and `parameter_types` for you. `QueryValue` is an
+untagged JSON value in `parameters`, unlike the tagged `PropertyValue` inside the AST. Wire
+encoding (externally tagged enums, untagged `Projection` / `BatchQuery` / `QueryValue`,
+`parameter_types`, `DateTime` coercion): `../helix-query-json-dynamic/REFERENCE.md`.
 
 ---
 
 ## Client (sending requests)
 
-Built-in HTTP client for running a request against a Helix instance. Uses the global `fetch`, so there are no extra dependencies. Strict port of the Rust `helix_db::Client`.
+Uses the global `fetch` (no extra dependencies); a strict port of the Rust
+`helix_db::Client`.
 
 ```text
 new Client(url?: string | null)           // defaults to http://localhost:6969
@@ -773,7 +719,7 @@ Client.server(url?: string | null)
   .withDatabaseId(id?: string | null)     // x-helix-database-id: <id> on every request (null/undefined clears it)
   .query<R = unknown>(request)             // direct POST /v2/query
 
-// main only: native Cypher and SQL (POST /v2/cypher, /v2/sql and their /explain routes)
+// (main): native Cypher and SQL (POST /v2/cypher, /v2/sql and their /explain routes)
 client.cypher(query, parameters = {}, queryName?): Promise<{ columns: string[]; rows: unknown[][] }>
 client.explainCypher(query, parameters = {}, queryName?)
 client.sql(query, parameters: unknown[] | Record<string, unknown> = [], mappings: SqlMappings = {}, queryName?)
@@ -784,25 +730,15 @@ client.requestBuilder<R>()
   .writerOnly()                            // X-Helix-Require-Writer: true
   .warmOnly()                              // X-Helix-Warm: true (reads only)
   .shouldAwaitDurability(b: boolean)       // X-Helix-Await-Durable: true|false (writes only)
-  .query(request)                          // main only: .cypher(...) / .sql(...) take the same options
+  .query(request)                          // (main): .cypher(...) / .sql(...) take the same options
 
 await request.send(): Promise<R>           // 200 -> parsed JSON; Cloud warm 204 -> undefined; any other status -> HelixError
 ```
 
-With 3.2.0, call the Cypher/SQL routes with `fetch` and the same headers; the
-body is `{ "query", "parameters", "query_name" }` (SQL adds `mappings`, and
-`parameters` may be a list binding each `?` in order). Cypher and SQL failures
-return `{ "error": "<category>", "msg", "details": { "detail", "phase", "span" } }`.
-
-The Cloud service returns `204 No Content` after a successful warm fanout, and
-`send()` resolves `undefined` for it. Partial target failure is still a
-service-level success when at least one backend warms.
-
-A Helix Cloud GA shared gateway requires the database on every request. Set it
-with `.withDatabaseId("<database-id>")`; omitting it returns HTTP 400
-`tenant_id_required`. A database-specific cluster gateway rejects the header
-with `tenant_id_not_allowed`, so leave it unset there. Embedded clients ignore
-it.
+Cypher and SQL failures return
+`{ "error": "<category>", "msg", "details": { "detail", "phase", "span" } }`. A Cloud warm
+fanout is a success when at least one backend warms, even if others fail. Embedded clients
+ignore `withDatabaseId`.
 
 ```text
 const client = new Client(process.env.HELIX_URL)
@@ -810,33 +746,9 @@ const client = new Client(process.env.HELIX_URL)
   .withDatabaseId(process.env.HELIX_DATABASE_ID);
 ```
 
-Writes wait for durability by default; leave `shouldAwaitDurability` unset.
-`.shouldAwaitDurability(false)` returns once the write is applied on the writer,
-so a crash before its WAL upload loses it; use it only when that loss is
-acceptable. It has no effect on conflicts. `.shouldAwaitDurability(true)` on a
-read is rejected with `400 invalid_request_option`.
-
-```text
-import { Client, HelixError } from "@helix-db/helix-db";
-
-const client = new Client("https://helix.example.com").withApiKey(apiKey);
-
-const request = findUsers().toQueryRequest(params, {
-  tenantId: "acme",
-  limit: 25n,
-});
-type FindUsersResponse = { users: UserRow[] };
-const response = await client.query<FindUsersResponse>(request).send();
-```
-
-The response is an object keyed by returned variable name. Every row-stream
-return is an array and an empty one is `[]`, including at-most-one lookups
-(`n(id)`, `limit(1)`) and skipped `varAsIf` entries. Only `count` (`number`),
-`exists` (`boolean`) and index DDL / lifecycle entries (one object) are scalars.
-An empty returns list produces `{}`. Unprojected node and edge streams return
-`{ "$id": number }` per element (search hits add `$distance` or `$score`).
-
-Type the complete top-level response by returned name:
+The response is keyed by returned variable name (rules: SKILL.md, Empty returns); `count`
+is a `number`, `exists` a `boolean`, index DDL / lifecycle one object, an empty returns
+list `{}`; search hits add `$distance` or `$score`. Type the whole response:
 
 ```ts
 type FindUserResponse = {
@@ -849,37 +761,23 @@ const response = await client.query<FindUserResponse>(request).send();
 const user = response.user[0]; // undefined when not found
 ```
 
-Build the `QueryRequest` with `batch.toQueryRequest(...)`. Stored routes,
-registration, and query bundles are not supported.
-
 ---
 
 ## Errors
 
-- `HelixError` — raised by `Client`/`send()`. `kind` distinguishes network,
-  remote, serialization, URL, invalid-request, embedded-unavailable, and
-  embedded failures. Remote errors expose `statusCode`, open-string `code` (the
-  body's `error` field), `serverMessage` (`msg`), `retryable`, structured
-  `serverDetails`, and `rawBody`, with `details` as the diagnostic compatibility
-  field.
-  - `isRetryable()` — true only when the body says `"retryable": true`. Use it
-    for retry decisions.
-  - `isConflict()` — 3.2.0: any HTTP 409, **including**
-    `unique_constraint_violation`. On `main`: `transaction_conflict` only. Do not
-    use it as a retry signal.
-  - `isRateLimited()` — any HTTP 429. `isIndexBackpressure()` (main only) —
-    `code === "index_backpressure"`.
-  - The client does not expose `Retry-After`; use direct HTTP when the exact
-    Cloud delay is required. Preserve unknown codes; never parse `msg` for
-    control flow.
-- `QueryError` — invalid parameter values, unknown parameters, serialization,
-  or unsupported bytes parameters.
+- `HelixError` (from `Client` / `send()`): `kind` is network, remote, serialization, URL,
+  invalid-request, embedded-unavailable or embedded. Remote errors expose `statusCode`,
+  open-string `code` (the body's `error`), `serverMessage` (`msg`), `retryable`,
+  structured `serverDetails`, `rawBody`, and `details` (diagnostic compatibility field).
+  `isRetryable()` is the retry test; `isConflict()` is not (SKILL.md table);
+  `isRateLimited()` is any 429; `isIndexBackpressure()` (main) is
+  `code === "index_backpressure"`. Preserve unknown codes; never parse `msg`.
+- `QueryError`: invalid or unknown parameters, serialization, unsupported bytes parameters.
 
 ### Error classes
 
-The envelope is `{ "error": "<code>", "msg": "<diagnostic>", "retryable"?: boolean }`;
-`retryable` is present only when the class settles it. Every code belongs to one
-class, and the class sets the status:
+Envelope `{ "error": "<code>", "msg": "<diagnostic>", "retryable"?: boolean }`; `retryable`
+is present only when the class settles it. Each code's class sets the status:
 
 | Class | HTTP | `retryable` | A failed write | Codes |
 | --- | ---: | --- | --- | --- |
@@ -895,29 +793,26 @@ class, and the class sets the status:
 | Unavailable | 503 | absent | committed nothing | `writer_mode_required`, `reader_mode_required`, `database_closed`, `index_lifecycle_unavailable`, `migration_required`, `writer_migration_required`, `query_cancelled_by_reader_retirement` |
 | Commit outcome unknown | 503 | `false` | **may have committed** | `writer_fenced_commit_outcome_unknown` |
 
-- Retry with bounded backoff and jitter only when `isRetryable()` is true. For a
-  write that depends on what it read, rebuild it from fresh state.
-- `unique_constraint_violation`: report the duplicate or choose another key; from
-  an upsert's create branch, re-run the upsert once (it then takes the update
-  branch).
-- `index_busy`: wait for the running operation (`getIndexOperation`).
-  `index_build_blocked`: fix the build's `blocker_code`, then
-  `retryIndexOperation` or `abortIndexOperation`, before resending the write.
-- 408, 500 and `writer_fenced_commit_outcome_unknown`: a write may have
-  committed. Reconcile by reading it back before resubmitting.
-- `query_memory_limit_exceeded`: reduce the work; unchanged it fails again.
-- `invalid_request_body`: body over 16 MiB (Helix Cloud rejects bodies over 2 MiB
-  with `413 payload_too_large` instead). `invalid_query_json`:
-  malformed JSON, unknown fields, or nesting deeper than 255 levels.
+Beyond SKILL.md, Errors:
 
-The Helix Cloud gateway adds its own codes: `tenant_id_required` /
-`tenant_id_not_allowed` (400), `unauthorized` (401), `tenant_disabled` (402),
-`forbidden` (403), `query_timeout` (408, reconcile writes), `payload_too_large`
-(413), `rate_limited` (429, honor `Retry-After`), `backend_unavailable` /
-`rate_limit_unavailable` (503, back off), `failover_wait_unavailable` (503, not
-sent; retry after `Retry-After`), `write_outcome_unknown` (503, reconcile). Full
-reference: https://docs.helix-db.com/database/helix-db/query-guides/error-handling
-and https://docs.helix-db.com/database/helix-cloud/operate/error-handling.
+- A retried write that depends on what it read is rebuilt from fresh state.
+- `unique_constraint_violation`: report the duplicate or choose another key; from an
+  upsert's create branch, re-run the upsert once (it then updates).
+- `index_busy`: wait for the running operation (`getIndexOperation`).
+  `index_build_blocked`: fix the build's `blocker_code`, then `retryIndexOperation` or
+  `abortIndexOperation`, before resending the write.
+- `query_memory_limit_exceeded`: reduce the work; unchanged it fails again.
+- `invalid_request_body`: body over 16 MiB (Helix Cloud: over 2 MiB is
+  `413 payload_too_large`). `invalid_query_json`: malformed JSON, unknown fields, or
+  nesting deeper than 255 levels.
+
+Helix Cloud gateway codes: `tenant_id_required` / `tenant_id_not_allowed` (400),
+`unauthorized` (401), `tenant_disabled` (402), `forbidden` (403), `query_timeout` (408,
+reconcile writes), `payload_too_large` (413), `rate_limited` (429, honor `Retry-After`),
+`backend_unavailable` / `rate_limit_unavailable` (503, back off), `failover_wait_unavailable`
+(503, not sent; retry after `Retry-After`), `write_outcome_unknown` (503, reconcile).
+References: https://docs.helix-db.com/database/helix-db/query-guides/error-handling and
+https://docs.helix-db.com/database/helix-cloud/operate/error-handling.
 
 ---
 
@@ -935,10 +830,8 @@ QueryRequestType.{Read, Write}                 // lowercase on the wire
 
 ## JSON Utilities
 
-`stringifyJson(value, pretty?)`, `parseJsonStructural(json)`,
-`structuralJsonEqual(a, b)`, and `canonicalizeJson(value)` are the bigint-safe
-JSON utilities. Use `stringifyJson` or `toJsonString` instead of raw
-`JSON.stringify` whenever a payload may contain `bigint`.
+Bigint-safe: `stringifyJson(value, pretty?)`, `parseJsonStructural(json)`,
+`structuralJsonEqual(a, b)`, `canonicalizeJson(value)`.
 
 ---
 
@@ -971,4 +864,4 @@ JSON utilities. Use `stringifyJson` or `toJsonString` instead of raw
 | `Client::new(Some(url))?` / `.with_api_key(...)` | `new Client(url)` / `.withApiKey(...)` |
 | `client.request_builder().warm_only().query(r).send()` | `client.requestBuilder().warmOnly().query(r).send()` |
 
-The wire output (enum tags, field names, omitted/null fields) is identical between the two DSLs — only the surface naming differs.
+Wire output (enum tags, field names, omitted/null fields) is identical; only names differ.

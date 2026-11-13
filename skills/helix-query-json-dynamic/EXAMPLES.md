@@ -1,7 +1,6 @@
 # HelixDB v3 JSON Examples
 
-These are direct request bodies for `POST /v2/query`. They use the same nested AST as
-the published v3 SDKs.
+Direct request bodies for `POST /v2/query`, using the same nested AST as the v3 SDKs.
 
 ## Count nodes by label
 
@@ -233,8 +232,7 @@ Expected shape:
 }
 ```
 
-Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.16` instance (unprojected
-nodes return only `$id`):
+Response from a clean `ghcr.io/helixdb/helixdb:v0.0.16` instance:
 
 ```json
 {
@@ -355,9 +353,7 @@ nodes return only `$id`):
 
 ## Upsert by a unique key
 
-Create the unique index once (while it builds it rejects only values already
-claimed by a scanned entity or a newer write; an unscanned duplicate blocks the
-build instead):
+Create the unique index once (build-time semantics: REFERENCE.md, Index specs):
 
 ```json
 {
@@ -384,9 +380,9 @@ build instead):
 }
 ```
 
-The response is a receipt, for example
+The response is a receipt, e.g.
 `{"index": {"kind": "accepted", "operation_id": "07070707-0707-0707-0707-070707070707", "index_id": "1", "generation": "1"}}`.
-Poll it until `status` is `succeeded`:
+Poll until `status` is `succeeded`:
 
 ```json
 {
@@ -408,11 +404,9 @@ Poll it until `status` is `succeeded`:
 }
 ```
 
-`already_active` needs no polling. On `blocked`, fix the data its
-`blocker_code` names (for `uniqueness_violation`, the existing duplicates) and
-send `{"retry_index_operation": {"operation_id": "..."}}` in a write request.
-
-Then upsert in one atomic write batch:
+On `blocked`, fix the data its `blocker_code` names (for `uniqueness_violation`, the
+existing duplicates) and send `{"retry_index_operation": {"operation_id": "..."}}` in a
+write request. Then upsert in one atomic write batch:
 
 ```json
 {
@@ -474,16 +468,15 @@ Then upsert in one atomic write batch:
 }
 ```
 
-One of `updated` / `created` is `[{"$id": N}]` and the other `[]`. If two
-clients race, the loser gets `409 unique_constraint_violation`
-(`retryable: false`) or `409 transaction_conflict` (`retryable: true`); re-run
-the upsert once and it takes the update branch.
+One of `updated` / `created` is `[{"$id": N}]`, the other `[]`. A racing loser gets
+`409 unique_constraint_violation` (`retryable: false`) or `409 transaction_conflict`
+(`retryable: true`); re-run the upsert once and it takes the update branch.
 
 ## Optional neighbor (OPTIONAL MATCH)
 
-`optional` passes the input row through unchanged when its branch is empty, so
-read the optional side through a binding. A missing binding omits its key.
-`bind` and `project_bindings` are read-only.
+`optional` passes the input row through when its branch is empty, so read the optional
+side through a binding (a missing binding omits its key). `bind` and `project_bindings`
+are read-only.
 
 ```json
 {
@@ -546,8 +539,8 @@ read the optional side through a binding. A missing binding omits its key.
 
 ## Eventual search consistency
 
-A read may trade freshness of unpublished vector/text work for latency and
-never fail with `index_backpressure`:
+A read trading freshness of unpublished vector/text work for never failing with
+`index_backpressure`:
 
 ```json
 {
@@ -585,7 +578,7 @@ never fail with `index_backpressure`:
 
 ## Cypher instead of the operation tree
 
-When the statement is in the Cypher profile, send it to `POST /v2/cypher`:
+A statement in the Cypher profile goes to `POST /v2/cypher`:
 
 ```json
 {
@@ -601,8 +594,7 @@ When the statement is in the Cypher profile, send it to `POST /v2/cypher`:
 
 ## Invalid legacy shapes
 
-The following are intentionally invalid and shown as `text` so JSON validation does
-not mistake them for supported requests:
+Intentionally invalid (shown as `text` so JSON validation skips them):
 
 ```text
 {"queries":[{"Query":{"steps":["Count"]}}],"returns":["count"]}
@@ -616,9 +608,8 @@ not mistake them for supported requests:
 {"request_type":"read","queries.json":{}}
 ```
 
-Use an SDK serializer when constructing a shape not covered here. Equivalent builders
-in the Rust, TypeScript, Python, and Go skills must serialize to the same JSON
-structure.
+For a shape not covered here, use an SDK serializer; the Rust, TypeScript, Python and Go
+builders serialize to the same JSON.
 
 ## Interpret A Query Failure
 
@@ -632,13 +623,5 @@ Both of these are HTTP 409; only the first is worth resending:
 { "error": "unique_constraint_violation", "msg": "<diagnostic>", "retryable": false }
 ```
 
-Branch on `retryable`, then on `error`; never on the status alone and never on
-`msg`. `retryable: true` (also `request_read_view_changed`,
-`stale_index_generation`, and `429 index_backpressure`) means resend the whole
-request with bounded backoff and jitter. `retryable: false` on a 409 means the
-database's state rejects it: report the duplicate or fix the state.
-
-A write may have committed after `408 query_deadline_exceeded`, any 500, `503
-writer_fenced_commit_outcome_unknown`, or the Cloud gateway's `408
-query_timeout` / `503 write_outcome_unknown`; reconcile before resubmitting.
-Cloud `429 rate_limited` did not execute: honor `Retry-After`.
+`retryable: false` on a 409 means the database's state rejects the request: report the
+duplicate or fix the state. Rules: SKILL.md, Failure envelope.

@@ -38,15 +38,15 @@ The caller only needs the number of matching rows in that ordered 50-row window.
 
 - Keep `status == open OR status == queued` as one logical source expression so same-index points can use a batched bitmap union.
 - Intersect the status union with the `(Order, region)` equality bitmap before loading rows.
-- Drop `order_by("createdAt", Order::Desc)`: ordering never changes a count, so the size of the ordered 50-row window is `min(50, matches)` and the range index is not needed for this answer (the planner ignores an order in a count's trailing window anyway).
-- State that the descending `createdAt` range index matters only if the caller later needs the rows themselves: it then drives the ordered scan, applies equality filters before satisfying `limit(50)`, and avoids a redundant sort.
+- Drop `order_by("createdAt", Order::Desc)`: ordering never changes a count, so the ordered 50-row window's size is `min(50, matches)` and the range index is not needed (the planner ignores an order in a count's trailing window anyway).
+- The descending `createdAt` range index matters only if the caller needs the rows: it then drives the ordered scan, applies equality filters before `limit(50)`, and avoids a redundant sort.
 - End in `.limit(50).count()`, not `.id()` plus client-side length, so the planner can select a dedicated bitmap count clamped to 50.
-- Explain that count windows use normalized saturating arithmetic while preserving operator order.
-- State that exact cross-numeric equality does not round integers through `f64`; signed zero normalizes; NaN is non-reflexive/non-indexable.
-- State that null equality needs an authoritative scan, unique equality verifies the owner, range candidates are verified, and a genuinely late-bound parameter may use a dynamic equality program.
-- State that bounded scalar/array `is_in_param` values can use a runtime equality union; duplicate values normalize, NaN members are skipped, and null, unsupported, oversized, or over-limit domains use authoritative evaluation.
-- State that contiguous filters canonicalize into one conjunction, while a non-filter operation remains a boundary.
-- Avoid claiming that only immediate `step -> Limit` lookahead enables the optimization.
+- Count windows use normalized saturating arithmetic in operator order.
+- Exact cross-numeric equality does not round integers through `f64`; signed zero normalizes; NaN is non-reflexive/non-indexable.
+- Null equality needs an authoritative scan, unique equality verifies the owner, range candidates are verified, and a late-bound parameter may use a dynamic equality program.
+- Bounded scalar/array `is_in_param` values can use a runtime equality union; duplicates normalize, NaN members are skipped, and null, unsupported, oversized or over-limit domains use authoritative evaluation.
+- Contiguous filters canonicalize into one conjunction; a non-filter operation remains a boundary.
+- Do not claim only immediate `step -> Limit` lookahead enables the optimization.
 
 ## Gold Shape Sketch
 
@@ -65,7 +65,7 @@ g().n_with_label_where(
 .count()
 ```
 
-Row-returning variant (where the range index is the ordered driver):
+Row-returning variant (range index as ordered driver):
 
 ```rust
 g().n_with_label_where(

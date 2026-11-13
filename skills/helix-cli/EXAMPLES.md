@@ -1,6 +1,6 @@
 # Helix CLI examples
 
-Every example uses `--json` the way an agent should; drop it when a person reads the output.
+Every example uses `--json` as an agent should; drop it for output a person reads.
 
 ## Local with persistence
 
@@ -15,7 +15,7 @@ helix stop dev --json
 `helix init` pins `tag = "v0.0.16"` in `[local.dev]`. If an older project pins an older tag, set it
 to `v0.0.16` (or try one run with `helix start dev --image-version v0.0.16`, then `--persist`).
 
-Stopping keeps the volume; `helix prune dev --yes` deletes it, after the user confirmed. For an
+Stopping keeps the volume; `helix prune dev --yes` deletes it, only after the user confirms. For an
 external S3-compatible store, put AWS credentials in the environment or the project-root `.env`:
 
 ```bash
@@ -26,8 +26,8 @@ helix start dev \
   --persist --json
 ```
 
-Use `--s3-allow-http` only for a trusted plain-HTTP endpoint. The CLI never deletes externally
-owned object-store data.
+`--s3-allow-http` only for a trusted plain-HTTP endpoint. The CLI never deletes externally owned
+object-store data.
 
 ## Check an instance
 
@@ -40,7 +40,7 @@ helix cypher dev -e 'MATCH (u:User) RETURN count(u) AS users' --json
 
 ## Direct Docker native persistence
 
-This mode uses the filesystem directly and needs no sidecar:
+Uses the filesystem directly; no sidecar:
 
 ```bash
 docker volume create helixdb-data
@@ -51,15 +51,15 @@ docker run --rm --name helixdb \
   ghcr.io/helixdb/helixdb:v0.0.16
 ```
 
-Stop with `docker stop helixdb`. Start another container with the same volume to keep the
-database; removing the volume deletes it. The image runs as `65532:65532`, so bind mounts and
-existing volumes must be writable by that user. Leave `S3_BUCKET` unset for this mode; setting it
-with `HELIX_DATA_DIR` fails startup. Memory mode requires both unset. Manage a directly started
-container with `docker`; the CLI manages only instances in its `helix.toml`.
+Stop with `docker stop helixdb`; a new container on the same volume keeps the database, and
+removing the volume deletes it. The image runs as `65532:65532`, so bind mounts and existing volumes
+must be writable by that user. Leave `S3_BUCKET` unset: setting it with `HELIX_DATA_DIR` fails
+startup. Memory mode needs both unset. Manage this container with `docker`; the CLI manages only
+instances in its `helix.toml`.
 
 ## Cloud: first session in a fresh directory
 
-The user logs in once in their own terminal; the agent cannot:
+The user logs in once in their own terminal; the agent can't:
 
 ```text
 Agent: Please run `helix auth login` in your terminal and tell me when it says "Logged in".
@@ -80,7 +80,7 @@ helix query production --file request.json --json
 ```
 
 `helix project link` and `helix add cloud` only edit an existing `helix.toml`. No API key, gateway
-URL, push or sync step is used.
+URL, push or sync step.
 
 ## Handle a non-interactive ambiguity
 
@@ -92,8 +92,8 @@ helix database get --project app --json
 # exit 1
 ```
 
-Show the user the candidates and re-run with the one they pick, such as `helix database get
-tenant:tenant_123 --json`. A bad flag exits 2 with the same error shape.
+Show the user the candidates and re-run with their pick, e.g. `helix database get tenant:tenant_123
+--json`. A bad flag exits 2 with the same error shape.
 
 ## Create a database and capture its default application key
 
@@ -101,15 +101,14 @@ tenant:tenant_123 --json`. A bad flag exits 2 with the same error shape.
 helix database create app --slug app --project project_123 --plan <workspace-plan-code> --json
 ```
 
-Capture the returned default read-write token in the application's secrets manager. The CLI does not
-retain or use it. Create another key only when the application needs a separate credential:
+Capture the returned default read-write token in the app's secrets manager; the CLI doesn't keep or
+use it. Create another key only when the app needs a separate credential:
 
 ```bash
 helix database key create --database tenant:tenant_123 --access read-only --name reporting --json
 ```
 
-Capture that printed token once as well. On a dedicated cluster use `--cluster <cluster>` instead
-of `--plan`.
+Capture that token once too. On a dedicated cluster pass `--cluster <cluster>` instead of `--plan`.
 
 ## Headless MCP credential
 

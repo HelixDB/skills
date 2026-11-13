@@ -1,19 +1,11 @@
 # Helix Query Authoring — Rust Examples
 
-Each numbered scenario corresponds 1:1 with `../helix-query-typescript/EXAMPLES.md`.
-When moving between Rust and TypeScript, open the same scenario in each file, then
-serialize either builder for the canonical direct JSON request.
-
-All snippets assume `use helix_db::dsl::prelude::*;`.
-
-Calling a public `#[query]` function returns `Result<QueryRequest, QueryError>`
-(add `?`); the request's top-level `query_name` is the Rust function name.
-Inside the body each argument is rebound as `Expr::param("<name>")`. Direct
+Scenarios are numbered 1:1 with `../helix-query-typescript/EXAMPLES.md`; either builder
+serializes to the same direct JSON request. Snippets assume
+`use helix_db::dsl::prelude::*;`. A `#[query]` function returns
+`Result<QueryRequest, QueryError>` (add `?`) named after the function; direct
 `QueryRequest::read/write` builders serialize `query_name: null` until
-`.with_query_name(...)` or `.set_query_name(...)` is used.
-
-Every stream return is an array, `[]` when empty, including single lookups; an
-unprojected element is `{"$id": N}`.
+`.with_query_name(...)` or `.set_query_name(...)`.
 
 ---
 
@@ -136,9 +128,9 @@ pub fn nearest_documents(
 }
 ```
 
-The label, tenant, and publication predicates build the exact candidate stream
-before vector ranking. Source vector search followed by `where_` can underfill
-top-k. Project `$distance` before any `.out`/`.in_`/`.both`.
+The predicates build the exact candidate stream before ranking; source vector search
+followed by `where_` can underfill top-k. Project `$distance` before any
+`.out`/`.in_`/`.both`.
 
 ---
 
@@ -157,8 +149,7 @@ pub fn document_search(
             g().n_with_label("Document")
                 .where_(Predicate::eq_param("tenantId", "tenantId"))
                 .where_(Predicate::eq("published", true))
-                // main only. 3.0.0: bind these candidates, then
-                // g().text_search_nodes_with(..).within("<var>") (can return fewer than k).
+                // (main); 3.0.0 fallback: SKILL.md table
                 .text_search_with(
                     "Document",
                     "body",
@@ -176,9 +167,8 @@ pub fn document_search(
 }
 ```
 
-The label, tenant, and publication predicates build the candidate stream
-before BM25 ranking. This refills exactly to `k` when enough matching
-candidates exist; source text search followed by `where_` does not.
+This returns exactly `k` hits when enough candidates match; source text search followed
+by `where_` does not.
 
 ---
 
@@ -344,8 +334,7 @@ pub fn total_revenue() -> ReadBatch {
 
 ## Edge Endpoint Projection
 
-Use this when an edge list needs stable source/target resource ids. It keeps one
-output row per edge and avoids traversing to every endpoint node.
+One row per edge with source/target resource ids, without traversing to each endpoint.
 
 ```rust
 #[query]
@@ -364,18 +353,14 @@ pub fn list_describes_relationships() -> ReadBatch {
 }
 ```
 
-The direct request nests this projection under the `project` root. Endpoint
-helpers serialize their sources as `$from.resource_id` and `$to.resource_id`.
+Endpoint sources serialize as `$from.resource_id` and `$to.resource_id`.
 
 ---
 
 ## Row bindings: multi-hop correlation
 
-Use this when a single output row must combine values captured at **different
-hops** of one path — `.project(...)` only sees the final stream. Tag elements
-with `.bind(name)` as you pass them, then assemble rows with
-`.project_distinct_bindings(...)` (or `.project_bindings(...)` to keep
-duplicates). `coalesce` picks the first present non-null reference.
+One row combining values from **different hops** (`.project(...)` only sees the final
+stream). `coalesce` picks the first present non-null reference.
 
 ```rust
 #[query]
@@ -407,10 +392,7 @@ pub fn service_topology() -> ReadBatch {
 }
 ```
 
-The binding projection serializes as the nested `project_bindings` operation in a
-normal direct request.
-
-This binding projection is part of a normal direct request and is also
+Serializes as the nested `project_bindings` operation in a normal direct request; also
 available in the Python v3 SDK.
 
 ---
@@ -446,10 +428,9 @@ pub fn create_user_and_link_post(
 }
 ```
 
-`NodeRef::var("newUser")` needs a node stream, so `newUser` stays the raw
-`add_n` (it returns `[{"$id": N}]`). A variable ending in `.project(...)` is not a
-node stream and fails at runtime. `add_e` creates one edge per (post, user) pair
-every time it runs, and an empty `newUser` target fails the batch.
+`newUser` stays the raw `add_n` (`[{"$id": N}]`) because `NodeRef::var` needs a node
+stream; a variable ending in `.project(...)` fails at runtime. `add_e` creates one edge per
+(post, user) pair every run, and an empty `newUser` target fails the batch.
 
 ---
 
@@ -486,11 +467,9 @@ pub fn upsert_user(userId: String, name: String) -> WriteBatch {
 }
 ```
 
-Create `IndexSpec::node_unique_equality("User", "userId")` first (example 17).
-Without it, two concurrent upserts can both take the create branch and
-duplicate the user; with it, the loser fails with `unique_constraint_violation`
-(409, `retryable: false`) and re-running the upsert once takes the update
-branch.
+Create `IndexSpec::node_unique_equality("User", "userId")` first (§17); without it two
+concurrent upserts can both create. With it the loser fails with
+`unique_constraint_violation` (409, `retryable: false`); re-run the upsert once.
 
 ---
 
@@ -514,11 +493,9 @@ pub fn bulk_create_users(data: Vec<ParamObject>) -> WriteBatch {
 }
 ```
 
-Inside `body`, the parameter names resolve against each object's fields. A
-`data: Vec<ParamObject>` argument makes `#[query]` record a structured
-array-of-object parameter schema. A variable set in `body` holds only the last
-iteration's result, so returning `created` would report one node, not all of
-them; read the created nodes back afterwards if the caller needs them.
+Parameter names in `body` resolve against each object's fields; `data:
+Vec<ParamObject>` records an array-of-object schema. `created` holds only the last
+iteration, so read the created nodes back if the caller needs them.
 
 ---
 
@@ -570,7 +547,8 @@ pub fn users_by_external_id() -> ReadBatch {
 }
 ```
 
-Dotted property lookup is exact-first and scan-only in the current runtime. Keep indexed/searchable fields top-level; use nested objects for metadata you can scan or project. Arrays are opaque, so there is no `metadata.tags.0` syntax.
+Dotted paths are exact-first and scan-only (REFERENCE.md, Nested properties); keep
+indexed or searchable fields top-level. Arrays are opaque: no `metadata.tags.0`.
 
 ---
 
@@ -597,10 +575,8 @@ pub fn users_filtered(
 }
 ```
 
-The macro records `statuses` as an array-of-string schema and `since` as
-`"date_time"`. `since` is a `helix_db::DateTime`: build it with
-`DateTime::from_millis(ms)` or `DateTime::parse_rfc3339("2026-01-01T00:00:00Z")?`;
-the wrapper serializes it as UTC RFC3339.
+`statuses` records as an array-of-string schema, `since` as `"date_time"` (a
+`helix_db::DateTime`, serialized as UTC RFC3339).
 
 ---
 
@@ -636,32 +612,23 @@ pub fn bootstrap_indexes() -> WriteBatch {
 }
 ```
 
-Each variable returns a receipt, not an active index:
-`{"kind": "accepted", "operation_id", "index_id", "generation"}`,
-`{"kind": "existing_operation", "operation_id"}` or
-`{"kind": "already_active", "index_id", "generation"}`. Builds run in the
-background; poll `g().get_index_operation(operation_id)` until its `status` is
-`succeeded` before relying on the index, and handle `blocked` with
-`retry_index_operation` / `abort_index_operation` (see `REFERENCE.md`, Index
-lifecycle). Drop an index with `g().drop_index(IndexSpec::...)`. The convenience
-methods (`create_vector_index_nodes`, etc.) produce identical wire output;
-`create_text_index_nodes("Doc", "body", None::<&str>)` needs the turbofish for an
-unscoped index.
+Each variable returns a receipt, not an active index; poll until `succeeded` before
+relying on it (polling loop: REFERENCE.md, Index lifecycle). Drop with
+`g().drop_index(IndexSpec::...)`. Convenience methods (`create_vector_index_nodes`, etc.)
+produce identical wire output.
 
 ---
 
 ## 18. Warm a read route
 
-Warming uses the *same* query; `.warm_only()` sets the `X-Helix-Warm: true` header on the client. Build the request and let callers decide to warm:
+Warming sends the *same* query with `.warm_only()` (`X-Helix-Warm: true`):
 
 ```rust
 use helix_db::Client;
 
 let client = Client::new(Some("http://localhost:6969"))?;
 
-// Helix Cloud returns 204 after a successful warm. helix-db 3.0.0 accepts only
-// 200 and raises RemoteError for it; `main` accepts 204. With 3.0.0, warm Cloud
-// through direct HTTP.
+// Cloud returns 204; 3.0.0 raises RemoteError for it (SKILL.md table).
 let response = client
     .request_builder::<serde_json::Value>()
     .warm_only()
@@ -670,18 +637,16 @@ let response = client
     .await?;
 ```
 
-Helix Cloud fans the read out to every eligible backend and discards the result
-bodies. Chain `.writer_only().warm_only()` to warm only the authoritative
-writer. A local server warms one process and returns the normal query body.
-Warming is strictly read-only; a `WriteBatch` with `X-Helix-Warm: true` is
-rejected with `400 invalid_request_option` before execution.
+Cloud warms every eligible backend and discards the bodies; `.writer_only().warm_only()`
+warms only the writer. A local server warms one process and returns the normal body. A
+`WriteBatch` with `X-Helix-Warm: true` is `400 invalid_request_option`.
 
 ---
 
 ## 19. Handle Structured Remote Errors
 
 ```rust
-use helix_db::QueryErrorCode; // main only (3.0.0: see below)
+use helix_db::QueryErrorCode; // (main); 3.0.0: parse RemoteError { details }
 
 match client.query::<serde_json::Value>(request).send().await {
     Ok(response) => Ok(response),
@@ -698,19 +663,9 @@ match client.query::<serde_json::Value>(request).send().await {
 }
 ```
 
-Branch on `is_retryable()` / `retryable()`, not on the 409 status:
-`unique_constraint_violation`, `index_busy` and `index_build_blocked` are 409s
-that are **not** retryable. `is_conflict()` means `transaction_conflict` only.
-A `query_deadline_exceeded` (408), a 500, or
-`writer_fenced_commit_outcome_unknown` (503) may follow a committed write:
-reconcile before resubmitting. `remote_message()`, `remote_details()`, and
-`raw_response_body()` keep diagnostics without string parsing; unknown codes
-stay available through `error_code()`.
-
-These helpers are on `main`. In helix-db 3.0.0, `HelixError::RemoteError {
-details }` holds the raw body: parse it with `serde_json` and read `error` and
-`retryable`. The SDK does not expose `Retry-After`; use direct HTTP when the
-exact Cloud delay matters.
+`remote_message()`, `remote_details()` and `raw_response_body()` keep diagnostics without
+string parsing; unknown codes stay available through `error_code()`. Error classes:
+SKILL.md, Errors.
 
 ---
 
@@ -735,5 +690,4 @@ pub fn route(fromId: i64, toId: i64) -> ReadBatch {
 }
 ```
 
-Unweighted BFS: `path` is the ordered node IDs from source to target, or `[]`
-when there is no path within the depth.
+`path` is the ordered node IDs from source to target, or `[]` when none within the depth.

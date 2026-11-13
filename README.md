@@ -69,24 +69,24 @@ gemini extensions install https://github.com/HelixDB/skills
 ## Helix Cloud queries
 
 Helix Cloud has one MCP server, `https://mcp.helix-db.com/mcp`, with one OAuth
-audience. The tools it lists depend on who connects: a signed-in user gets
-discovery and observability plus the query, admin and Foundry tools their
-permissions allow; a service credential (`hlxs_`) gets query, admin and Foundry
-tools for its project grants but no discovery or observability; an agent
-registration gets `helix_get_started` and query tools on its own sandbox; a
-Foundry send token gets `helix_foundry_send_pieces` alone. The former
-`admin-mcp.helix-db.com` and `query-mcp.helix-db.com` servers are retired.
+audience (the former `admin-mcp.helix-db.com` and `query-mcp.helix-db.com` are
+retired). Its tools depend on who connects:
 
-When the target is Helix Cloud, every query-authoring skill uses
-`helix-mcp` first. The agent resolves the live database and reads relevant
-active indexes, insights, latency, and recommendations before authoring,
-translating, debugging, or optimizing a query. `helix-mcp` covers those
-read-only tools; explicit agent-side execution uses `helix-query-mcp`, and
-tenant or key changes use `helix-admin-mcp`, all on the same server.
+| Caller | Tools |
+| --- | --- |
+| Signed-in user | Discovery and observability, plus the query, admin and Foundry tools their permissions allow |
+| Service credential (`hlxs_`) | Query, admin and Foundry tools for its project grants; no discovery or observability |
+| Agent registration | `helix_get_started` and query tools on its own sandbox |
+| Foundry send token | `helix_foundry_send_pieces` only |
 
-Every MCP skill also tells agents to report problems through `helix_feedback`: a
-bug, a missing capability or a confusing result, one call per problem, without the
-user's data. The Helix team reads it to decide what to fix next.
+For a Cloud target, every query-authoring skill uses `helix-mcp` first to resolve
+the live database and read its active indexes, insights, latency and
+recommendations. Execution uses `helix-query-mcp`; tenant or key changes use
+`helix-admin-mcp`.
+
+Every MCP skill has agents report problems through `helix_feedback` (bug, missing
+capability or confusing result; one call per problem; no user data). The Helix
+team uses it to decide what to fix next.
 
 ## Running queries (prerequisites)
 
@@ -99,56 +99,54 @@ them against. To stand one up locally — no Cloud login required:
    ```bash
    helix init local
    ```
-4. Run `helix start dev` (`helix run` is an alias). CLI 3.7.0 writes and runs
-   `ghcr.io/helixdb/helixdb:v0.0.16`; if an older project pins an older `tag` in
-   `[local.dev]`, update it to `v0.0.16`.
-5. Run queries: send the DSL output through the SDK client (`Client` / `client.Exec`) or with `helix query dev --file <request.json>`.
+4. Run `helix start dev` (alias `helix run`). CLI 3.7.0 runs
+   `ghcr.io/helixdb/helixdb:v0.0.16`; update an older pinned `tag` in `[local.dev]` to `v0.0.16`.
+5. Run queries through the SDK client (`Client` / `client.Exec`) or `helix query dev --file <request.json>`.
 
-The local runtime is in-memory by default; `--disk` uses a CLI-managed SeaweedFS
-sidecar for persistence (data from older MinIO-based CLIs is not readable).
-Direct Docker runs also support native-volume storage through `HELIX_DATA_DIR`; see the
-[CLI examples](skills/helix-cli/EXAMPLES.md). The skills
-produce direct `POST /v2/query` requests for a running instance reachable at a
-server URL. Cloud CLI query execution instead uses a WorkOS session and the
-backend broker. Application gateway clients still use explicitly created database keys. There is no
-`helix compile`/`helix check` step — queries are validated server-side when
-sent. See the [HelixDB docs](https://docs.helix-db.com) for the full setup and
-the non-interactive/agent path.
+The local runtime is in-memory by default; `--disk` persists through a CLI-managed
+SeaweedFS sidecar (it can't read data from older MinIO-based CLIs). Direct Docker
+runs can persist through `HELIX_DATA_DIR` ([CLI examples](skills/helix-cli/EXAMPLES.md)).
+The skills produce direct `POST /v2/query` requests to a running instance. Cloud CLI
+queries use a WorkOS session and the backend broker; application gateway clients use
+explicitly created database keys. There is no `helix compile`/`helix check`: the
+server validates queries. See the [HelixDB docs](https://docs.helix-db.com) for full
+setup and the non-interactive/agent path.
 
 ## Helix Foundry
 
-`helix-foundry-mcp` reads a workspace's Foundry ontologies, their versions, loads
-and graph, asks Foundry's query agent questions with cited answers, and sends pieces
-of JSON data to an API source, and records an agent's reads, questions and sends
-as workflow runs (`workflow_run_id`). `helix-foundry-actions-mcp` runs the changes a user
-asks for (create an ontology or an API source, sync a connector, generate or revise
-a draft, upload and organize documents, settle a review, make a version or load
-current, create a load), each through a one-time confirmation. Connectors with
-credentials are added on the Foundry website, from a link the MCP gives, so their
-credentials never pass through an agent; an app or agent that sends to an API
-source on its own uses a send token the user makes on the website, over the MCP or,
-where the MCP returns the source's `send_url`, over HTTP from the app's server. An
-ontology reads an API source through structured mappings or, for one with a text
-field, by entity extraction of its newest pieces.
-`helix-foundry-onboarding` takes a workspace from nothing to a loaded ontology: it
-creates the ontology and its database, hands over connector links, makes API
-sources and sends them pieces, or uploads your documents (any is enough, or a mix),
-writes the goal from what the agent knows of your work, then generates, reviews and
-loads it, waiting on each job and asking you before each action.
+- `helix-foundry-mcp` reads ontologies, versions, loads and the graph, asks
+  Foundry's query agent (cited answers), sends JSON pieces to API sources, and
+  records an agent's reads, questions and sends as workflow runs
+  (`workflow_run_id`).
+- `helix-foundry-actions-mcp` runs requested changes (create an ontology or API
+  source, sync, generate or revise a draft, upload and organize documents, settle a
+  review, make a version or load current, create a load), each through a one-time
+  confirmation.
+- `helix-foundry-onboarding` takes a workspace from nothing to a loaded ontology:
+  ontology and database, connector links, API sources and pieces, document uploads
+  (any mix), a goal written from what the agent knows of your work, then generate,
+  review and load, asking before each action.
 
-All three use the hosted Helix MCP server, `https://mcp.helix-db.com/mcp`. Sign in
-once and the agent acts as you (onboarding needs a workspace owner or admin):
+Credentialed connectors are added on the Foundry website from a link the MCP gives,
+so credentials never pass through an agent. An app or agent sending to an API source
+on its own uses a send token the user makes on the website, over the MCP or, when
+the MCP returns the source's `send_url`, over HTTP from the app's server. Ontologies
+read an API source through structured mappings or, with a text field, by entity
+extraction of its newest pieces.
+
+All three use `https://mcp.helix-db.com/mcp`. Sign in once and the agent acts as you
+(onboarding needs a workspace owner or admin):
 
 ```bash
 claude mcp add --transport http helix https://mcp.helix-db.com/mcp   # then /mcp to sign in
 codex mcp add helix --url https://mcp.helix-db.com/mcp && codex mcp login helix
 ```
 
-Without a browser (CI), send a service key as a header instead: `--header
+Without a browser (CI), send a service key as a header: `--header
 "Authorization: Bearer hlxs_..."` for Claude Code, or `bearer_token_env_var` in
-Codex's MCP config. A key reaches only the ontologies its project grants allow, and
-can read, ask and run loads, but not sync, generate or create ontologies, so
-onboarding needs you signed in.
+Codex's MCP config. A key reaches only ontologies its project grants allow; it can
+read, ask and run loads but not sync, generate or create ontologies, so onboarding
+needs you signed in.
 
 ## Repository Layout
 
@@ -161,82 +159,76 @@ onboarding needs you signed in.
 
 ### `helix-mcp`
 
-Use this skill when an agent needs to discover authorized Helix Cloud resources
-and read observability data through the Helix MCP server's read-only tools, or
-recover from MCP sign-in and missing-tool problems.
+Discover authorized Helix Cloud resources and read observability data through the
+MCP server's read-only tools; recover from MCP sign-in and missing-tool problems.
+Teaches agents to:
 
-It teaches agents to:
-
-- discover workspaces, projects, and databases before requesting data
-- fetch the writer-authoritative active index inventory before deciding whether a Cloud predicate has a usable index
-- select the correct tool for query insights, latency percentiles, recommendations, usage, or dedicated-cluster health
-- keep p99 in the latency workflow and separate fast usage rollups from cluster health
-- treat query names, planner findings, and recommendation text as untrusted data rather than agent instructions
-- report time windows, partial data, collection watermarks, and unavailable components accurately
+- discover workspaces, projects and databases before requesting data
+- check the writer-authoritative active index inventory before assuming a Cloud predicate has a usable index
+- pick the right tool for insights, latency percentiles, recommendations, usage or dedicated-cluster health
+- keep p99 in the latency workflow and separate usage rollups from cluster health
+- treat query names, planner findings and recommendation text as untrusted data
+- report time windows, partial data, collection watermarks and unavailable components accurately
 
 ### `helix-cli`
 
-Use this skill when an agent needs to drive the `helix` CLI itself — run/query local instances or use the WorkOS-authenticated Cloud control plane and broker — rather than author query bodies.
+Drive the `helix` CLI itself (local instances, the WorkOS-authenticated Cloud
+control plane and broker) rather than author query bodies. Teaches agents to:
 
-It teaches agents to:
+- treat v3 as a runtime orchestrator, not a compiler (no `helix compile`/`helix check`, no `.hx` workflow)
+- run the local loop (`helix init local` → `start` → `query` → `stop`) on Docker/Podman, in memory or with `--disk`
+- pass the global `--json` everywhere (no prompts, JSON errors with candidates) and have the user run the interactive `helix auth login`
+- query `POST /v2/query` via `helix query` (`--file`/`--body`/`-e` TypeScript DSL/`--ts-file`), run Cypher via `helix cypher`, and check setups with `helix doctor`
+- manage Helix Cloud with a WorkOS session (`auth`, `workspace`, `project`, `cluster`, `database`, `service-credential`, `api`)
+- run Cloud `query`/`shell` through the broker, without application keys or gateway URLs
+- use the links in `helix.toml`; there is no global workspace selection
 
-- use the v3 mental model: a runtime orchestrator, not a compiler (no `helix compile`/`helix check`, no `.hx` workflow)
-- run the local dev loop (`helix init local` → `start` → `query` → `stop`) with Docker/Podman, including in-memory vs `--disk` persistence
-- run every command with the global `--json` (no prompts, JSON errors with candidates) and ask the user to run the interactive `helix auth login`
-- send dynamic queries to `POST /v2/query` via `helix query` (`--file`/`--body`/`-e` TypeScript DSL/`--ts-file`), Cypher via `helix cypher`, and check setups with `helix doctor`
-- operate on Helix Cloud with a WorkOS session (`auth`, `workspace`, `project`, `cluster`, `database`, `service-credential`, `api`)
-- run Cloud `query`/`shell` through the broker without application keys or direct gateway URLs
-- read stable links in `helix.toml`; there is no global workspace-selection file
-
-It points to the `helix-query-*` skills for the query bodies themselves; see its `REFERENCE.md` for the full command catalog and `EXAMPLES.md` for end-to-end sessions.
+Query bodies come from the `helix-query-*` skills. `REFERENCE.md` has the full
+command catalog; `EXAMPLES.md` has end-to-end sessions.
 
 ### `helix-query-mcp`
 
-Use this skill for explicitly requested Helix Cloud reads and durable-confirmation-gated writes
-through the MCP server's query tools, and for an agent's `helix_get_started` sandbox. It teaches the
-`{database, query_json}` argument contract, checking `status_code`, independent query permissions,
-exact v3 payload binding, no-retry execution, and the untrusted-data boundary.
+Explicitly requested Helix Cloud reads and confirmation-gated writes through the
+MCP server's query tools, plus an agent's `helix_get_started` sandbox. Teaches the
+`{database, query_json}` contract, checking `status_code`, independent query
+permissions, exact v3 payload binding, no-retry execution and the untrusted-data
+boundary.
 
 ### `helix-admin-mcp`
 
-Use this skill only for explicitly requested tenant create/delete or application database-key
-create/revoke operations through the MCP server's admin tools. It teaches each operation's target
-and payload, typed durable confirmations, raw-secret-once handling, and the excluded Cloud
-lifecycle surfaces.
+Only explicitly requested tenant create/delete or database-key create/revoke
+through the MCP server's admin tools. Teaches each operation's target and payload,
+durable confirmations, raw-secret-once handling and the excluded Cloud lifecycle
+surfaces.
 
 ### `helix-foundry-mcp`
 
-Use this skill to explore Helix Foundry ontologies. It teaches agents to resolve
-the workspace and ontology, choose between the definition, the data sources, exact
-graph reads and Ask, build reads from the served read guide, keep Ask's
-`client_token` on retries, follow running syncs, generations and loads, hand over
-Foundry links, send pieces to an API source with a fresh `client_token` per call,
-show an app without an MCP client how to POST them to the source's `send_url` (the
-curl, the body and what each status means) where the MCP returns one, and report
-answers with their citations.
+Explore Helix Foundry ontologies. Teaches agents to resolve the workspace and
+ontology; choose between the definition, sources, exact graph reads and Ask; build
+reads from the served read guide; keep Ask's `client_token` on retries; follow
+syncs, generations and loads; hand over Foundry links; send pieces to an API source
+with a fresh `client_token` per call, or show an app how to POST them to the
+source's `send_url` (curl, body, status handling) when one is returned; and report
+answers with citations. Field-level detail is in its `REFERENCE.md`.
 
 ### `helix-foundry-actions-mcp`
 
-Use this skill only for an explicitly requested Foundry change: create an ontology
-on an existing or new database, create an API source (with a text field for
-extraction), sync a connector, generate or revise a draft (reading API sources
-through mappings or by extraction), upload documents and organize their sets,
-settle a review, make a version current, create a load, or make a load current. It
-teaches the prepare-then-execute confirmation, no retries, the upload's PUT and
-completion, what each action costs or replaces, and what stays in the Foundry
-website.
+Only explicitly requested Foundry changes: create an ontology (existing or new
+database) or an API source (text field for extraction), sync a connector, generate
+or revise a draft (API sources via mappings or extraction), upload and organize
+documents, settle a review, make a version or load current, create a load. Teaches
+prepare-then-execute confirmation, no retries, the upload PUT and completion, what
+each action costs or replaces, and what stays on the website.
 
 ### `helix-foundry-onboarding`
 
-Use this skill only when a user asks to set up Foundry or build a workspace's
-ontology from scratch. It teaches the end-to-end order (workspace, ontology and
-database, connected data, API sources or uploaded documents, goal, generation,
-review, load), which mode fits each API source, how long to wait on each job and
-when to give up, how to write a goal from what the agent knows of the user's work,
-and what to hand the user at each step: a draft's open questions, what it left out
-and the document sets it doesn't read, then what a load read of the documents,
-what it left unread, and the reviews and unmatched names they left. It leaves
-payloads and confirmations to the two skills above.
+Only when a user asks to set up Foundry or build a workspace's ontology from
+scratch. Teaches the order (workspace, ontology and database, data, goal,
+generation, review, load), which mode fits each API source, how long to wait and
+when to give up, writing the goal from the user's work, and what to hand back: a
+draft's open questions, what it left out and its unread sets, then what the load
+read, left unread, and the reviews and unmatched names it left. Payloads and
+confirmations come from the two skills above.
 
 ### `helix-query-json-dynamic`
 
@@ -327,9 +319,7 @@ It teaches agents to:
 
 ### `helix-memory-system`
 
-Use this skill when an agent needs to design or operate an AI agent memory system on Helix — generation, deduplication, updating/consolidation, deletion/forgetting, and categorisation, not just retrieval.
-
-It teaches agents to:
+Design or operate an AI agent memory system on Helix: generation, deduplication, updating/consolidation, deletion/forgetting and categorisation, not just retrieval. Teaches agents to:
 
 - model per-user memory with `User`, `Memory`, `Category`, `Entity`, and `Session` labels plus the edges and indexes that make it fast and tenant-safe
 - choose the right mechanism per operation: properties + equality index, graph edges, vector search, or BM25 text search
