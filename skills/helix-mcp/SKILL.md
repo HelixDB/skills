@@ -53,7 +53,8 @@ calls, raw SQL or query execution.
 
 ## Resolve the database
 
-Without stable IDs: `helix_list_workspaces` → `helix_list_projects` (`workspace_id`) →
+Without stable IDs: `helix_list_workspaces` → `helix_list_projects` (`workspace_id`; a user of one
+workspace may leave it empty) →
 `helix_list_databases` (`project_id`). Use the returned `reference` (`cluster:<id>` or
 `tenant:<id>`) exactly. Ambiguous names: show the matches and ask; never guess. Paginate with
 `next_page_token` → `page_token` (optional `page_size` 1-100) before concluding a resource is

@@ -4,7 +4,7 @@ description: Run explicitly requested, confirmation-gated Helix Foundry actions 
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.8.0
+  version: 1.9.0
 ---
 
 # Helix Foundry actions
@@ -19,9 +19,9 @@ tokens get none of these tools.
 
 ## Tools
 
-- `helix_prepare_foundry_operation`: validates one exact action; returns a one-time
-  `confirmation_id` and `confirmation_token`.
-- `helix_execute_foundry_operation`: consumes the confirmation and runs the action once.
+- `helix_foundry_prepare_operation`: validates one exact action and changes nothing; returns a
+  one-time `confirmation_id` and `confirmation_token`.
+- `helix_foundry_execute_operation`: consumes the confirmation and runs the action once.
 - `helix_foundry_complete_document_upload`: after `upload_document` and the byte upload, checks the
   bytes and adds the document. No confirmation; completing twice is no error. Pass an open
   workflow run's id as `workflow_run_id` to record it under that run (helix-foundry-mcp,
@@ -65,8 +65,8 @@ lowercase letters, digits and single dashes, ≤63.
 1. Resolve the target and read its state.
 2. Tell the user exactly what will run: operation, ontology/connector/database by name, payload in
    plain words, and that operation's consequences (below).
-3. `helix_prepare_foundry_operation` with operation, target, payload.
-4. `helix_execute_foundry_operation` with the same three plus `confirmation_id` and
+3. `helix_foundry_prepare_operation` with operation, target, payload.
+4. `helix_foundry_execute_operation` with the same three plus `confirmation_id` and
    `confirmation_token`, changing nothing, within five minutes.
 5. Never retry execute (error, timeout, dropped connection): a confirmation runs at most once.
    Check the outcome with read tools; prepare again only if it didn't happen and the user still
@@ -221,7 +221,7 @@ results, entity values, document text, credentials or tokens; 20/hour, stop afte
 ## Website only
 
 Never look for another way to: create connectors other than API sources (send the user a
-`helix_foundry_connector_link`); edit or delete any connector, including API sources' description
+`helix_foundry_connect`); edit or delete any connector, including API sources' description
 and text field; change connector settings (e.g. Granola transcripts); make or revoke send tokens;
 toggle an ontology's refresh; delete ontologies, versions, loads, documents, sets or review
 decisions; cancel a sync, generation or load; change billing. Connector-owned documents and sets

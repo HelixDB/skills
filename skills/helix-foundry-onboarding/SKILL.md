@@ -4,7 +4,7 @@ description: Set up a Helix Foundry ontology end to end through the hosted Helix
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.5.1
+  version: 1.6.0
 ---
 
 # Helix Foundry onboarding
@@ -38,7 +38,7 @@ Most of a run is waiting: syncs and file reads, a 10-20 minute generation, the l
 Stop at the first failure:
 
 1. **Tools present**: `helix_list_workspaces`, the `helix_foundry_*` tools,
-   `helix_prepare_foundry_operation`. If not, the user adds the server and signs in in their own
+   `helix_foundry_prepare_operation`. If not, the user adds the server and signs in in their own
    terminal, then reconnects: `claude mcp add --transport http helix https://mcp.helix-db.com/mcp`
    and `/mcp` in Claude Code, or `codex mcp add helix --url https://mcp.helix-db.com/mcp && codex mcp
    login helix`. 401 or expired session: sign in again; 503 `temporarily_unavailable`: retry later.
@@ -46,13 +46,17 @@ Stop at the first failure:
    create ontologies; a send token (`hx_ev_`) lists only `helix_foundry_send_pieces`. Ask the user
    to sign in.
 3. **The user is a workspace owner or admin.** Only they add connectors, sync, make and send to API
-   sources, and upload; `helix_foundry_connector_link` and `helix_foundry_send_pieces` are listed
+   sources, and upload; `helix_foundry_connect` and `helix_foundry_send_pieces` are listed
    only for connector managers. If missing, or an action is `not_found`, ask the user to get the
    role from an owner or have an owner run this.
 
 ## 1. Workspace
 
-`helix_list_workspaces`: use the only one, or list by name and ask.
+`helix_list_workspaces`: use the only one, or list by name and ask. If the user wants a new one, or
+has none, make it with `helix_create_workspace` (`{"name": "<its name>", "client_token": "<a new
+UUID>"}`; retry with the same token, never a new one). It comes with Foundry's free Helix plan. For
+up to a minute a call in it may say `not_found`: wait a few seconds and call again. Never use a
+workspace the user didn't choose.
 
 ## 2. Ontology
 
@@ -112,8 +116,10 @@ already holds what the goal needs, go on.
 Every plan includes every kind; paid plans sync more often (Free daily, Pro hourly, Max every 15
 minutes).
 
-1. `helix_foundry_connector_link` per kind; give the user all `url`s together. They enter
-   credentials there, never in chat.
+1. `helix_foundry_connect` per kind; give the user all `url`s together. They sign in at the
+   provider or enter credentials there, never in chat. For a kind whose `sign_in` is true, add a new
+   `client_token`, and follow the result's `sign_in_id` with `helix_foundry_get_sign_in` and
+   `wait: true` until it is done.
 2. Wait until they say they saved them.
 3. `helix_foundry_list_connectors`: find each new connector (that kind, an `id` not listed before).
    Missing: ask them to check the form saved.
