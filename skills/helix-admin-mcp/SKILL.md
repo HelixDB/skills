@@ -11,7 +11,7 @@ metadata:
 
 Admin tools are on the one Helix MCP server, `https://mcp.helix-db.com/mcp` (no separate admin
 server or audience; setup, identities and sign-in recovery: helix-mcp). Use them only for an
-explicitly requested in-scope change. Users sign in with WorkOS OAuth; headless automation sends a
+explicitly requested in-scope change. Users sign in with Helix's browser OAuth; headless automation sends a
 project-scoped service credential (`hlxs_`). Agent registrations never get these tools; application
 database keys don't authenticate MCP.
 

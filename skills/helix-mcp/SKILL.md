@@ -23,7 +23,7 @@ The tool list is built per request from the caller:
 
 | Identity | Authenticates with | Tools |
 | --- | --- | --- |
-| User | WorkOS OAuth in the client | Discovery and observability, plus query, admin and Foundry tools the user's current permissions allow |
+| User | Helix's browser OAuth in the client | Discovery and observability, plus query, admin and Foundry tools the user's current permissions allow |
 | Service credential (`hlxs_`) | Bearer header, from `helix service-credential create` | Query, admin and Foundry tools its project grants allow; no discovery or observability |
 | Agent registration | WorkOS agent registration | `helix_get_started` and query tools on its own sandbox tenant only |
 | Foundry send token (`hx_ev_`) | Bearer header | `helix_foundry_send_pieces` only |

@@ -17,7 +17,7 @@ question budget. `REFERENCE.md` has field-level detail: versions, generations, l
 documents, connectors, API sources (send rules, extraction, send tokens, HTTP), workflows.
 
 Tools are on the one Helix MCP server, `https://mcp.helix-db.com/mcp` (setup, identities, sign-in:
-helix-mcp). Users sign in with WorkOS OAuth and act with their permissions; headless runs send a
+helix-mcp). Users sign in with Helix's browser OAuth and act with their permissions; headless runs send a
 scoped service key (`hlxs_`) or, to send pieces only, an API source's send token (`hx_ev_`). Agent
 registrations get no Foundry tools. Never ask for a database key, connector credential or send
 token; never put an MCP credential in a query or report.

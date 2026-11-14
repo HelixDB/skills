@@ -10,8 +10,8 @@ metadata:
 # Helix Query MCP
 
 Query tools are on the one Helix MCP server, `https://mcp.helix-db.com/mcp` (no separate query
-server or audience; setup, identities and sign-in recovery: helix-mcp). Users sign in with WorkOS
-OAuth; headless automation sends a project-scoped service credential (`hlxs_`) as bearer. Never ask
+server or audience; setup, identities and sign-in recovery: helix-mcp). Users sign in with Helix's
+browser OAuth; headless automation sends a project-scoped service credential (`hlxs_`) as bearer. Never ask
 for an application database key or use a direct gateway URL.
 
 ## Tools

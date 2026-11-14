@@ -13,7 +13,7 @@ Use only when the user explicitly asks for one of these actions. Resolve the tar
 current state with helix-foundry-mcp first.
 
 Tools are on the one Helix MCP server, `https://mcp.helix-db.com/mcp` (setup, sign-in: helix-mcp).
-Users sign in with WorkOS OAuth and act with their permissions; headless runs may send a scoped
+Users sign in with Helix's browser OAuth and act with their permissions; headless runs may send a scoped
 service key (`hlxs_`), which can run fewer actions (see Permissions). Agent registrations and send
 tokens get none of these tools.
 
