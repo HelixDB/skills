@@ -16,18 +16,11 @@ to API sources, and record workflow runs. They change nothing else; asking spend
 question budget. `REFERENCE.md` has field-level detail: versions, generations, load counts,
 documents, connectors, API sources (send rules, extraction, send tokens, HTTP), workflows.
 
-<<<<<<< HEAD
-Interactive clients sign in through Helix's browser OAuth and act with the user's permissions.
-Headless runs may send a scoped service key, or, to send pieces only, an API
-source's send token (see API sources). Never ask for a database key, a connector
-credential or a send token, and never put an MCP credential in a query or a report.
-=======
 Tools are on the one Helix MCP server, `https://mcp.helix-db.com/mcp` (setup, identities, sign-in:
 helix-mcp). Users sign in with Helix's browser OAuth and act with their permissions; headless runs send a
 scoped service key (`hlxs_`) or, to send pieces only, an API source's send token (`hx_ev_`). Agent
 registrations get no Foundry tools. Never ask for a database key, connector credential or send
 token; never put an MCP credential in a query or report.
->>>>>>> origin/main
 
 ## Tools
 

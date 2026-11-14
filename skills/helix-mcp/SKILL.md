@@ -9,16 +9,10 @@ Helix Cloud has one MCP server, `https://mcp.helix-db.com/mcp`, with one OAuth a
 URL). The retired `admin-mcp.helix-db.com` and `query-mcp.helix-db.com` servers, and tokens minted
 for their audiences, get HTTP 401. Configure once:
 
-<<<<<<< HEAD
-Interactive clients authenticate through Helix's browser OAuth. Explicitly scoped service credentials may be
-used by headless MCP automation. Neither is an application database key, and no MCP credential should
-ever be copied into a query, source file, or report.
-=======
 ```bash
 claude mcp add --transport http helix https://mcp.helix-db.com/mcp   # then /mcp to sign in
 codex mcp add helix --url https://mcp.helix-db.com/mcp && codex mcp login helix
 ```
->>>>>>> origin/main
 
 This skill covers the read-only discovery and observability tools: no query execution, no Cloud
 changes.

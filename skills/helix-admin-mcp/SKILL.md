@@ -9,17 +9,11 @@ metadata:
 
 # Helix Admin MCP
 
-<<<<<<< HEAD
-Use the Admin MCP server only when the user explicitly requests an in-scope resource mutation.
-Interactive principals sign in through Helix's browser OAuth. Headless automation may use a project-scoped service
-credential. Application database keys do not authenticate MCP.
-=======
 Admin tools are on the one Helix MCP server, `https://mcp.helix-db.com/mcp` (no separate admin
 server or audience; setup, identities and sign-in recovery: helix-mcp). Use them only for an
 explicitly requested in-scope change. Users sign in with Helix's browser OAuth; headless automation sends a
 project-scoped service credential (`hlxs_`). Agent registrations never get these tools; application
 database keys don't authenticate MCP.
->>>>>>> origin/main
 
 ## Tools
 

@@ -12,16 +12,10 @@ metadata:
 Use only when the user explicitly asks for one of these actions. Resolve the target and read its
 current state with helix-foundry-mcp first.
 
-<<<<<<< HEAD
-Interactive clients sign in through Helix's browser OAuth and act with the user's permissions.
-Headless runs may send a scoped service key, which can run fewer actions (see
-Permissions).
-=======
 Tools are on the one Helix MCP server, `https://mcp.helix-db.com/mcp` (setup, sign-in: helix-mcp).
 Users sign in with Helix's browser OAuth and act with their permissions; headless runs may send a scoped
 service key (`hlxs_`), which can run fewer actions (see Permissions). Agent registrations and send
 tokens get none of these tools.
->>>>>>> origin/main
 
 ## Tools
 
