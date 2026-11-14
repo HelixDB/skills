@@ -17,12 +17,10 @@ Helix stores and searches the graph. Extraction, chunking, embedding, connector 
 
 ## Tenant Rules
 
-Use **`tenant_id`** as the canonical tenant property.
+This spec uses **`tenant_id`** by convention; a partitioned vector or text index accepts any
+property name as its `tenant_property`. Keep an existing repo's name. Use one name throughout:
 
-Reasons:
-
-- tenant-partitioned Helix text indexes currently require the tenant property name to be `tenant_id`
-- vector and text searches use the same partition key
+- hybrid recall passes one tenant value to a label's vector and text searches
 - row-level isolation is application-enforced, so every query and write must carry tenant scope
 
 Rules:
@@ -205,7 +203,18 @@ Helix is schema-on-write for labels and properties, but **indexes are explicit**
 
 ### Index Bootstrap
 
-Create these from a **write** batch before generation/retrieval:
+Create these from a **write** batch before generation/retrieval, then wait for each build.
+Each `createIndexIfNotExists` returns a receipt: `accepted` or `existing_operation` (with an
+`operation_id`), or `already_active`. Poll `getIndexOperation(operation_id)` in a read batch:
+
+| `status` | Do |
+|---|---|
+| `queued`, `running` | Keep waiting |
+| `succeeded` | Usable |
+| `blocked` (with `blocker_code`) | Fix the cause (for a unique index, existing duplicates), then `retryIndexOperation` |
+| `aborted` | Create it again |
+
+Searching a vector or text index before it is active fails with `index_not_found`.
 
 - `IndexSpec.nodeUniqueEquality("Tenant", "tenant_id")`
 - `IndexSpec.nodeUniqueEquality("User", "userKey")`
@@ -239,7 +248,7 @@ Create these from a **write** batch before generation/retrieval:
 - `IndexSpec.nodeEquality("Session", "tenant_id")`
 - `IndexSpec.nodeEquality("Session", "userId")`
 
-The `tenant_property` on vector/text indexes must be the property name (`tenant_id`), and query-time `tenantValue` must be the tenant value. Tenant-scoped search against a tenant-partitioned index without a tenant value returns no useful results.
+The `tenant_property` on vector/text indexes is the property name (`tenant_id` here), and query-time `tenantValue` is the tenant value. Tenant-scoped search against a tenant-partitioned index without a tenant value returns no useful results.
 
 ## Current Scoped Memory Filter
 
@@ -256,7 +265,9 @@ expiresAt IS NULL OR expiresAt > now
 
 For vector and BM25, build this candidate stream first and call traversal-scoped
 `vectorSearchWith`/`vector_search_with` or
-`textSearchWith`/`text_search_with`; Helix then ranks only visible, live IDs. If
+`textSearchWith`/`text_search_with` (Rust `text_search_with` is SDK `main` only; on
+helix-db 3.0.0 bind the candidates, then `g().text_search_nodes_with(..).within("<var>")`,
+which can return fewer than `k`); Helix then ranks only visible, live IDs. If
 a route cannot express a future-time or ACL condition, enforce it in application
 code before context packing. Never return records that fail scope or lifecycle
 policy because they appeared in a tenant-scoped search result.
@@ -436,7 +447,7 @@ Never include embedding arrays in normal responses.
 | `.where(Predicate.isNull("deletedAt"))` | `.where_(Predicate::is_null(...))` | post-source filter |
 | `.vectorSearchNodesWith(label, prop, p.vec, p.k, p.tenant_id)` | `.vector_search_nodes_with(label, prop, PropertyInput::param("vec"), Expr::param("k"), Some(PropertyInput::param("tenant_id")))` | tenant arg last |
 | `.vectorSearchWith(label, prop, p.vec, p.k, p.tenant_id)` | `.vector_search_with(...)` | exact vector membership over the current node/edge stream |
-| `.textSearchWith(label, prop, p.q, p.k, p.tenant_id)` | `.text_search_with(...)` | exact BM25 over the current node/edge stream |
+| `.textSearchWith(label, prop, p.q, p.k, p.tenant_id)` | `.text_search_with(...)` (Rust SDK `main` only) | exact BM25 over the current node/edge stream |
 | `.addN("Memory", { ... })` | `.add_n("Memory", vec![("k", ...)])` | TS takes an object map |
 | `.addE("OWNS", NodeRef.var("mem"), { tenant_id: p.tenant_id })` | `.add_e("OWNS", NodeRef::var("mem"), vec![("tenant_id", ...)])` | put tenant scope on edges |
 | `.setProperty("lastAccessedAt", Expr.datetime())` | `.set_property("lastAccessedAt", Expr::datetime())` | typed DateTime |

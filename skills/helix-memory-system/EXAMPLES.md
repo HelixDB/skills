@@ -5,14 +5,15 @@ memory lifecycle. The Rust equivalents are in `EXAMPLES.rust.md`.
 
 Each query function is plain; call
 `.toQueryRequest(params, values, { queryName: "route_name" })`, then execute it
-with `await Client.server(url).withApiKey(key).query<R>(request).send()`. For
-advanced write headers use
-`client.requestBuilder<R>().writerOnly().shouldAwaitDurability(true).query(request).send()`.
-On failure, classify a concurrent-write retry with
-`error.code === "transaction_conflict"`, not by parsing `error.details`. Reload
-current memory state before rebuilding, then replay only safe mutations with
-bounded backoff. See
-`../../docs/error-handling.md`.
+with `await Client.server(url).withApiKey(key).query<R>(request).send()` (on
+Helix Cloud: the database's gateway URL and an application database key; see
+SKILL.md, Run it on Helix Cloud). Writes wait for durability by default;
+`client.requestBuilder<R>().writerOnly().query(request).send()` pins a read to
+the writer. On failure, branch on the `HelixError`'s `code`, never
+`error.details`: `transaction_conflict` (409): reload memory state, rebuild,
+replay only safe mutations with bounded backoff; `unique_constraint_violation`
+(409): the key exists, treat as a duplicate; `index_not_found` (404): index
+missing or still building (§1).
 Embeddings are produced by the application and passed as numeric arrays.
 Default to OpenAI `text-embedding-3-small` (`1536` dimensions, `F32`) unless
 the app has explicitly standardised on another model. Every tenant-owned
@@ -85,7 +86,10 @@ Relationship: EXTENDS the existing Japan trip memory.
 
 ---
 
-## 1. Bootstrap indexes (run once)
+## 1. Bootstrap indexes (run once), then wait for them
+
+Return every index variable so each receipt comes back, then wait for every build before
+serving traffic.
 
 ```ts
 function bootstrapMemoryIndexes() {
@@ -120,7 +124,44 @@ function bootstrapMemoryIndexes() {
     .varAs("sessId",      g().createIndexIfNotExists(IndexSpec.nodeUniqueEquality("Session", "sessionId")))
     .varAs("sessTenant",  g().createIndexIfNotExists(IndexSpec.nodeEquality("Session", "tenant_id")))
     .varAs("sessUser",    g().createIndexIfNotExists(IndexSpec.nodeEquality("Session", "userId")))
-    .returning(["memVector", "memText", "chunkVec", "chunkText"]);
+    .returning([
+      "tenant", "userKey", "userTenant", "userId", "profileId", "profileTen", "profileUser",
+      "docId", "docTenant", "docUser", "docChecksum", "chunkId", "chunkTenant", "chunkUser", "chunkDoc",
+      "chunkVec", "chunkText", "memoryId", "memTenant", "memUser", "memLatest", "memVector", "memText",
+      "catKey", "catTenant", "entKey", "entTenant", "sessId", "sessTenant", "sessUser",
+    ]);
+}
+
+// Each returned variable is an index DDL receipt: `accepted` or `existing_operation`
+// carry an operation_id; `already_active` needs no wait.
+async function bootstrapAndWait(client: Client, timeoutMs = 10 * 60_000) {
+  const receipts = await client
+    .query<Record<string, { kind: string; operation_id?: string }>>(
+      bootstrapMemoryIndexes().toQueryRequest({ queryName: "bootstrap_memory_indexes" }),
+    )
+    .send();
+  const deadline = Date.now() + timeoutMs;
+  for (const [name, receipt] of Object.entries(receipts)) {
+    if (receipt.kind === "already_active" || !receipt.operation_id) continue;
+    for (;;) {
+      const { status } = await client
+        .query<{ status: { status: string; blocker_code?: string; message?: string | null } }>(
+          readBatch()
+            .varAs("status", g().getIndexOperation(receipt.operation_id))
+            .returning(["status"])
+            .toQueryRequest({ queryName: "index_operation" }),
+        )
+        .send();
+      if (status.status === "succeeded") break;
+      if (status.status !== "queued" && status.status !== "running") {
+        // blocked: fix the cause (duplicates for a unique index), then retryIndexOperation;
+        // aborted: create the index again.
+        throw new Error(`index ${name} is ${status.status} (${status.blocker_code ?? ""})`);
+      }
+      if (Date.now() > deadline) throw new Error(`index ${name} is still ${status.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
 }
 ```
 

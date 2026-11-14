@@ -23,18 +23,22 @@ RETURN reduce(best = null, score IN scores |
 
 ## Focus Areas
 
-- bounded multi-hop traversal
-- explicit emission behavior
+- variable-length paths and `reduce` are rejected natively, so translate both
+- bounded multi-hop traversal with explicit emission and target labels
 - distinct handling
-- best-item selection by property
-- choose-style conditional logic
+- best-item selection by property, including missing values
 
 ## Gold Expectations
 
-- use `repeat(RepeatConfig::new(...).times(2).emit_after())` for the multi-hop traversal
-- use `dedup()` for `DISTINCT`
-- if only the best score is required, prefer `order_by(...).limit(1)` instead of forcing collection
-- if true collection semantics are required, use the DSL's fold or collect support and `.choose(...)`-style branching rather than inventing Cypher expressions verbatim
+- uses `repeat(RepeatConfig::new(sub().out(Some("FOLLOWS"))).times(2).emit_after())`
+  (depths 1 and 2; a `dedup()` inside the body is optional), then
+  `has_label("User")` and `dedup()`
+- the best score anchors the user in the same batch, then
+  `out(Some("HAS_SCORE")).has_label("Score").order_by("value", Order::Desc).limit(1)`
+- Helix `Desc` puts scores missing `value` last; a native rewrite
+  `ORDER BY s.value DESC LIMIT 1` puts nulls first unless it adds
+  `WHERE s.value IS NOT NULL`
+- no `choose` to emulate `CASE`
 
 ## Gold Translation Sketch
 
@@ -50,30 +54,41 @@ read_batch()
         "results",
         g().n(NodeRef::var("user"))
             .repeat(
-                RepeatConfig::new(sub().out(Some("FOLLOWS")))
+                RepeatConfig::new(sub().out(Some("FOLLOWS")).dedup())
                     .times(2)
                     .emit_after(),
             )
-            .dedup(),
+            .has_label("User")
+            .dedup()
+            .project(vec![PropertyProjection::new("$id"), PropertyProjection::new("name")]),
     )
     .returning(["results"])
 
-// best score when only the best element is needed
+// best score
 read_batch()
+    .var_as(
+        "user",
+        g().n_with_label("User")
+            .where_(Predicate::eq_param("userId", "userId")),
+    )
     .var_as(
         "bestScore",
         g().n(NodeRef::var("user"))
             .out(Some("HAS_SCORE"))
+            .has_label("Score")
             .order_by("value", Order::Desc)
-            .limit(1),
+            .limit(1)
+            .project(vec![PropertyProjection::new("$id"), PropertyProjection::new("value")]),
     )
     .returning(["bestScore"])
 ```
 
+`bestScore` is a list of at most one element (`[]` when the user has no scores).
+
 ## Scoring Checklist
 
 - [ ] Uses bounded `repeat(...)` with `emit_after()` for the multi-hop traversal
+- [ ] Keeps the `User` / `Score` target labels with `has_label`
 - [ ] Uses `dedup()` for `DISTINCT`
-- [ ] Does not claim `[:REL*1..2]` is unsupported
-- [ ] Recognizes that best-element selection can often be expressed as `order_by(...).limit(1)`
-- [ ] Uses `.choose(...)` only when branch logic is truly needed inside the query
+- [ ] Defines `user` in the same batch before `NodeRef::var("user")`
+- [ ] Expresses best-element selection as `order_by(...).limit(1)` and accounts for missing values

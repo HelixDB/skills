@@ -1,6 +1,7 @@
 # Direct Query Examples
 
-Canonical examples for HelixDB v3 `POST /v2/query` requests.
+Canonical HelixDB v3 `POST /v2/query` requests. Cross-SDK contracts:
+[source-canon.md](source-canon.md#contracts-every-query-skill-repeats).
 
 ## Core rules
 
@@ -13,8 +14,14 @@ Canonical examples for HelixDB v3 `POST /v2/query` requests.
 - `parameters` and `parameter_types` are optional. When `parameter_types` is
   present, its keys exactly match `parameters`; typed and untyped values cannot
   be mixed in one request.
-- The route accepts one direct request, not a stored route or query bundle.
+- One direct request per call; no stored routes or query bundles.
 - Query warming is read-only.
+- Node and edge IDs are JSON integers.
+- A read may set `"search_consistency": "eventual"` (default `strong`).
+- Cypher and SQL go to `POST /v2/cypher` / `POST /v2/sql` (and `/explain`) with
+  `{"query", "parameters", "query_name"}`; use `/v2/query` for what their
+  profiles reject (`MERGE`, variable-length paths, `UNION`, subqueries,
+  `FOREACH`, search, index management).
 
 ## Minimal read request
 
@@ -53,7 +60,8 @@ Canonical examples for HelixDB v3 `POST /v2/query` requests.
 
 ## Parameters
 
-Runtime values are ordinary JSON. Add a schema when the SDK/query declares one:
+Runtime values are ordinary JSON; add `parameter_types` when the SDK/query
+declares them (the full request still needs the envelope and batch):
 
 ```json
 {
@@ -68,21 +76,16 @@ Runtime values are ordinary JSON. Add a schema when the SDK/query declares one:
 }
 ```
 
-The full request still needs the normal envelope and query batch.
-
-For raw HTTP JSON, use `bool`, `i64`, `f32`, `f64`, `string`, `date_time`, `value`,
-`object`, and recursive `array` descriptors. The v0.0.5 decoder accepts integer
-and floating-point JSON numbers for `f32`/`f64` and converts them to the declared
-type. Values must be finite; `f32` values must fit within its finite range.
-Floating-point parameters may also be untyped, but a supplied `parameter_types`
-map must describe every parameter. Raw bytes cannot be represented on this route.
-
-Local requests may be at most 16 MiB; Helix Cloud requests may be at most
-2 MiB. Keep portable request bodies at or below 2 MiB.
+- Descriptors: `bool`, `i64`, `f32`, `f64`, `string`, `date_time`, `value`,
+  `object`, recursive `array`. Raw bytes cannot be represented.
+- Typed `f32`/`f64` accept integer and floating-point JSON numbers; values must
+  be finite and `f32` within its finite range. Floats may be untyped, but a
+  supplied `parameter_types` must describe every parameter.
+- Body limit: 16 MiB locally (`400 invalid_request_body`), 2 MiB on Helix Cloud
+  (`413 payload_too_large`); keep portable bodies ≤ 2 MiB. Nesting over 255
+  levels is `400 invalid_query_json`.
 
 ## Write request
-
-A write request uses `request_type: "write"` and a `write` batch:
 
 ```json
 {
@@ -111,7 +114,8 @@ A write request uses `request_type: "write"` and a `write` batch:
 }
 ```
 
-On a clean `ghcr.io/helixdb/helixdb:v0.0.5` instance, the response is normalized:
+Response on a clean `ghcr.io/helixdb/helixdb:v0.0.16` instance (an unprojected
+node is only its `$id`):
 
 ```json
 {
@@ -119,72 +123,38 @@ On a clean `ghcr.io/helixdb/helixdb:v0.0.5` instance, the response is normalized
 }
 ```
 
-Populated shapes stay unchanged. When a declared return is empty, an
-at-most-one return is `null`, a collection/fold/mutation return is `[]`, and a
-scalar terminal still returns values such as `0` or `false`. An empty
-`returns` list produces `{}`.
+Row-stream returns are arrays (`[]` when empty); an empty `returns` list
+produces `{}`. Writes wait for durability unless `X-Helix-Await-Durable: false`
+is sent (see source-canon for both contracts).
 
 ## Query warming
 
-For a direct read request, warming uses the same body plus:
+Send the same read body with `X-Helix-Warm: true` (or `1`; `false`/`0` is the
+ordinary path).
 
-```text
-X-Helix-Warm: true
-```
-
-On the standalone `ghcr.io/helixdb/helixdb:v0.0.5` runtime, a warm read executes
-on the single process and returns `200 OK` with the normal normalized response.
-
-On Helix Cloud, the `/v2/query` gateway fans the same read out to every eligible
-database backend, discards the query responses, and returns `204 No Content`
-after at least one target succeeds. Partial backend failure still returns `204`;
-if every target fails, the gateway returns the normal deterministic error. Add
-`X-Helix-Require-Writer: true` to warm only the authoritative writer.
-
-`X-Helix-Warm: true` or `1` enables warming; `false` or `0` uses the ordinary
-query path. Any other value returns `400 Bad Request`. A warm write is rejected
-with `400 Bad Request` before backend execution, and a managed cluster with no
-eligible warming target returns `503 Service Unavailable`. Authentication, read
-rate limits, retries, and normal query timeouts still apply.
-
-TypeScript 3.2.0 accepts this `204`; its `send()` resolves `undefined`. The
-current published Rust 3.0.0, Python 0.3.4, and Go 0.3.1 SDK transports treat
-only HTTP 200 as success, so they surface this Cloud `204` as a remote error.
-From those SDKs, use direct HTTP for Cloud warming until a release accepts
-`204 No Content`.
-
-The CLI's `--warm` flag is local-only and cannot warm a Cloud database. Current
-SDK source accepts 204, but that fix is absent from the published Rust, Python,
-and Go versions.
+- Local server: executes the read and returns `200 OK` with the normal response.
+- Helix Cloud: the gateway fans the read out to every eligible backend, discards
+  the responses and returns `204 No Content` once one target succeeds (partial
+  failure still `204`; all failing returns the normal error).
+  `X-Helix-Require-Writer: true` warms only the writer. No eligible target is
+  `503 Service Unavailable`.
+- Any other header value, or a warm write, is `400` (`invalid_request_option`
+  locally) before execution. Auth, read rate limits, retries and query timeouts
+  still apply.
+- The Cloud `204`: TypeScript 3.2.0 accepts it (`send()` resolves `undefined`);
+  published Rust 3.0.0, Python 0.3.4 and Go 0.3.1 accept only 200 and surface
+  it as a remote error (SDK `main` accepts it), so warm Cloud over direct HTTP
+  from those.
+- The CLI's `--warm` flag is local-only; it cannot warm a Cloud database.
 
 ## Query Failures
 
-Current Helix non-success responses, including responses delivered through the
-Cloud query gateway, separate the stable code from the diagnostic:
-
-```json
-{"error":"transaction_conflict","msg":"transaction commit conflicted with another writer"}
-```
-
-Use HTTP status plus the open-string code in `error` for decisions; keep `msg`
-for logs or display. There is no `code` field in the current Helix envelope.
-During a rolling upgrade, also accept legacy
-`{"error":"<diagnostic>","code":"<stable_code>"}` bodies.
-
-A defensive client may additionally preserve a noncanonical proxy body such as:
-
-```json
-{"code":"external_error","message":"upstream rejected the request","details":{"request_id":"req_123"}}
-```
-
-Decode the canonical and legacy Helix shapes before this generic remote
-fallback. Preserve structured `details`, raw JSON or plain text, and unknown
-codes, but do not call `code`/`message` the gateway contract. The Cloud catalog
-also distinguishes account, timeout, payload, rate-limit, and availability
-failures; in particular, reconcile a timed-out write before resubmitting and
-honor `Retry-After` on 429 when the transport exposes it. Reload state before
-rebuilding a conflicting write and replay it only when safe; never identify a
-failure by parsing the message. See `docs/error-handling.md`.
+Non-success responses, including through the Cloud gateway, are
+`{"error":"<code>","msg":"<diagnostic>","retryable":true|false}`. Both
+`transaction_conflict` (`retryable: true`) and `unique_constraint_violation`
+(`retryable: false`) are HTTP 409: branch on `error`/`retryable`, never on the
+status or `msg`. No `code` field; keep unknown codes as open strings. Classes,
+actions and Cloud gateway codes: [error-handling.md](error-handling.md).
 
 ## Common mistakes
 
@@ -196,19 +166,17 @@ Do not:
 - use the obsolete `queries` plus `steps` AST
 - use PascalCase enum tags
 - mismatch `request_type` and the batch variant
-- reverse the current `error` and `msg` meanings, require a current `code`
-  field, call generic `code`/`message` the gateway contract, or discard raw
-  remote details
+- reverse the `error` and `msg` meanings, require a `code` field, or retry
+  every 409
+- send node or edge IDs as strings
 - document internal `current`/`bindings` rows as the response
 
 ## See also
 
-- `docs/source-canon.md`
-- `docs/error-handling.md`
-- `docs/dsl-cheatsheet.md`
-- `skills/helix-query-json-dynamic/REFERENCE.md`
+- [source-canon.md](source-canon.md), [error-handling.md](error-handling.md),
+  [dsl-cheatsheet.md](dsl-cheatsheet.md),
+  `skills/helix-query-json-dynamic/REFERENCE.md`
 - `https://docs.helix-db.com/openapi.json`
-- `https://docs.helix-db.com/database/helix-db/query-guides/http-api`
-- `https://docs.helix-db.com/database/helix-cloud/operate/error-handling`
-- `https://docs.helix-db.com/database/helix-cloud/operate/limits`
+- `https://docs.helix-db.com/database/helix-db/query-guides/{http-api,error-handling,search-consistency,cypher,sql}`
+- `https://docs.helix-db.com/database/helix-cloud/operate/{error-handling,limits}`
 - `https://docs.helix-db.com/database/helix-db/core-concepts/overview`

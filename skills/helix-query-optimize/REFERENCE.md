@@ -1,17 +1,16 @@
 # HelixDB v3 Optimization Reference
 
-This reference describes the planner-selected physical behavior introduced by
+Planner-selected physical behavior from
 [PR #974](https://github.com/HelixDB/helix-db/pull/974) and
-[PR #975](https://github.com/HelixDB/helix-db/pull/975), in the cumulative stack
-merged by [PR #996](https://github.com/HelixDB/helix-db/pull/996), then extended
-with bounded runtime equality domains in [PR #1015](https://github.com/HelixDB/helix-db/pull/1015)
-and adjacent-filter canonicalization in [PR #1017](https://github.com/HelixDB/helix-db/pull/1017).
-Public DSL and JSON syntax are unchanged.
+[PR #975](https://github.com/HelixDB/helix-db/pull/975) (merged in
+[PR #996](https://github.com/HelixDB/helix-db/pull/996)), bounded runtime
+equality domains ([PR #1015](https://github.com/HelixDB/helix-db/pull/1015)) and
+adjacent-filter canonicalization ([PR #1017](https://github.com/HelixDB/helix-db/pull/1017)).
+Public DSL and JSON syntax are unchanged. Contracts and rules are in `SKILL.md`.
 
 ## Source Map
 
-The links are pinned to reviewed main commit `5ec14e5f`; prefer paths and symbols
-over brittle line-number citations.
+Pinned to main commit `5ec14e5f`; cite paths and symbols, not line numbers.
 
 | Concern | Canonical sources |
 | --- | --- |
@@ -26,12 +25,9 @@ over brittle line-number citations.
 | Equality/range execution | [`secondary_set.rs`](https://github.com/HelixDB/helix-db/blob/5ec14e5f8cf059aa03f42917d560b3cded09fb26/crates/db/src/execution/interpreter/access/secondary_set.rs), [`range.rs`](https://github.com/HelixDB/helix-db/blob/5ec14e5f8cf059aa03f42917d560b3cded09fb26/crates/db/src/execution/interpreter/access/range.rs) |
 | Count execution | [`interpreter/count.rs`](https://github.com/HelixDB/helix-db/blob/5ec14e5f8cf059aa03f42917d560b3cded09fb26/crates/db/src/execution/interpreter/count.rs) |
 
-The planner directory is intentionally decomposed; do not describe the runtime as
-one monolithic interpreter-only model.
-
 ## Sources
 
-| Source | Typical cost characteristic |
+| Source | Typical cost |
 |---|---|
 | `n` / `e` with exact IDs | direct lookup |
 | `nWithLabelWhere` / `eWithLabelWhere` | index-eligible label-scoped predicate |
@@ -41,9 +37,8 @@ one monolithic interpreter-only model.
 | vector search | HNSW top-k |
 | text search | BM25 top-k |
 
-`SourcePredicate` is the source-position predicate surface. `Predicate` is the
-general filter expression used by `where`. Prefer a label-scoped source predicate
-when the filter is known before traversal.
+`SourcePredicate` is the source-position predicate; `Predicate` is the general
+`where` filter.
 
 ## Index families
 
@@ -56,130 +51,78 @@ when the filter is known before traversal.
 | text | BM25 full-text search | tenant and `k` remain part of the plan |
 | authoritative scan | null/non-indexable/residual fallback | correctness path, not necessarily a planner failure |
 
-Node and edge indexes are distinct. Index label, property, vector dimension, distance
-metric, and tenant property must match the query.
+Node and edge indexes are distinct. Label, property, vector dimension, distance
+metric and tenant property must match the query.
 
-Index DDL is durable and asynchronous. A create request returns a receipt; poll its
-status and wait for the index to be active before benchmarking the read path.
+### Index build status
 
-## Exact Value Semantics
+Index DDL is durable. `get_index_operation` returns `status` (`queued`,
+`running`, `blocked`, `succeeded`, `aborted`) with `stage`, `attempt` and
+`progress`. While a unique index builds, a write is rejected only if its value is
+already claimed, by an entity the build has scanned or by a write since the build
+started. A duplicate of a value held only by a not-yet-scanned entity is written,
+and the build blocks (`uniqueness_violation`) when its scan reaches that entity;
+duplicates in existing data block the build, not the writes.
+
+## Exact value semantics
 
 `helix_value_semantics::CanonicalNumber` is shared by planner proofs and storage
-codecs.
+codecs. Numbers compare by exact mathematical value, not enum variant;
+`42_i64 == 42.0_f64` only when the float represents the integer exactly. Finite
+values and infinities have an exact total order for range planning.
 
-- Integer and floating representations compare by exact mathematical value, not
-  by enum variant and not by converting integers through `f64`.
-- `42_i64 == 42.0_f64` when the floating value represents the integer exactly.
-- `-0.0` and `0.0` canonicalize to the same zero.
-- Finite values and infinities have an exact total ordering for range planning.
-- NaN stays non-reflexive and cannot be an equality bitmap key.
+## Equality set programs
 
-Keep parameter types truthful, but do not add client-side coercion merely to
-match an index representation.
-
-## Equality Set Programs
-
-A proven non-unique equality lookup reads one bitmap row. Equalities on the same
-index can become a batched multi-get whose bitmaps are unioned; surface forms
-include an indexable `or` or equivalent membership predicate.
-
-Intersections combine equality bitmaps and compatible range candidates before
-row materialization. Keep all arms in one logical expression. If an arm changes
-label/property/index identity, is null/NaN, or otherwise lacks proof, the fast
-path is declined. The planner owns selected-child order; hand-ordering AST nodes
-is not a substitute for catalog and cardinality selection.
+A proven non-unique equality lookup reads one bitmap row; same-index equalities
+(an indexable `or` or membership predicate) become a batched multi-get whose
+bitmaps are unioned. Intersections combine equality bitmaps and compatible range
+candidates before row materialization. An arm that changes label/property/index
+identity, is null/NaN, or lacks proof declines the fast path. The planner owns
+selected-child order; hand-ordering AST nodes does not replace catalog and
+cardinality selection.
 
 ### Bounded runtime equality domains
 
-Request parameters are specialized before predicate planning when their values
-are immutable and available. If `is_in_param` remains runtime-bound, a proven
-node or edge equality index can still use a `RuntimeEqualitySet` bounded by the
-planner's `max_index_union_branches` limit.
-
-At execution, typed arrays, general arrays, and scalars normalize into one exact
-equality domain. Duplicate values collapse by query equality, while
-non-reflexive values are omitted. If the domain contains null, an unsupported or
-oversized equality value, or more unique values than the bound, execution uses
-authoritative scoped membership evaluation instead of a partial index answer.
-An empty proven domain remains an empty collection, preserving the public return
-shape. Finite `$label` membership can use the same branch bound to union node or
-edge label scans.
-
-### Adjacent filter canonicalization
-
-Canonical logical pipelines flatten each contiguous filter run into one
-conjunction. This makes separate adjacent filters eligible for combined
-label-scoped and property-index planning regardless of their original order.
-Every non-filter operation flushes the run; canonicalization never moves a
-predicate across a traversal, window, order, projection, mutation, or other
-semantic boundary.
-
-## Label scope
-
-Equality and range definitions include a label and property. Preserve that scope in
-the source:
-
-```rust
-g().n_with_label_where(
-    "Order",
-    SourcePredicate::eq("status", "active"),
-)
-```
-
-This is clearer and more index-friendly than starting from all nodes and applying a
-mid-stream status filter.
+Immutable, available request parameters are specialized before predicate
+planning. A still runtime-bound `is_in_param` on a proven node or edge equality
+index uses a `RuntimeEqualitySet` bounded by `max_index_union_branches`. At
+execution, typed arrays, general arrays and scalars normalize into one exact
+domain. A domain containing null, an unsupported or oversized value, or more
+unique values than the bound uses authoritative scoped membership evaluation,
+never a partial index answer.
 
 ## Stream bounds
 
-Place `limit`, `range`, or `skip` as close as possible to the operation it should
-bound, after every filter/order operation that must semantically precede it.
-`dedup().limit(n)` is a common pattern after graph expansion.
-
-Limit and skip values are stream bounds. Literal values serialize as:
+Literal and parameterized bounds serialize as:
 
 ```json
-{
-  "count": { "literal": 25 }
-}
+{ "count": { "literal": 25 } }
+{ "count": { "expr": { "param": "limit" } } }
 ```
 
-Parameterized values serialize as expressions:
-
-```json
-{
-  "count": { "expr": { "param": "limit" } }
-}
-```
-
-Count plans normalize compatible `limit`, `skip`, and `range` chains with
+Count plans normalize compatible `limit` / `skip` / `range` chains with
 saturating/min/subtract arithmetic so large values do not wrap. Do not move a
-window across a filter, distinctness, ordering, mutation, or identity-sensitive
-operation unless equivalence is proven; the fallback retains semantic order.
+window across a filter, distinctness, ordering, mutation or identity-sensitive
+operation unless equivalence is proven.
 
-## Ordering
+## Ordered range driver
 
-Ordering a large property stream without a matching range index can require a full
-materialize-and-sort path. With a compatible ordered range index, execution can:
+Without a matching range index, ordering a large property stream can
+materialize and sort everything. With one, execution:
 
-1. build/intersect equality or range filter ID sets
-2. scan the range index in the requested direction
-3. admit only IDs present in the filter set
-4. stop after the post-filter limit/window is satisfied
-5. materialize only surviving rows
+1. builds/intersects equality or range filter ID sets
+2. scans the range index in the requested direction
+3. admits only IDs in the filter set
+4. stops after the post-filter limit/window is satisfied
+5. materializes only surviving rows
 
-This filters before the limit and avoids a redundant sort. Direction, property,
-label, and catalog identity must match; range candidates remain authoritatively
-verified. Unsupported multi-key order or residual expressions can still require
-sorting/materialization. This is stronger than an old immediate
-`OrderBy -> Limit` lookahead claim.
+Direction, property, label and catalog identity must match. Cursor pagination:
+add an indexed comparison such as "`created_at` less than the last returned
+value", keep the same order, and limit the page.
 
-For cursor pagination, add an indexed comparison such as “created_at less than the
-last returned value,” preserve the same order, and limit the page.
+## Count programs
 
-## Count Programs
-
-`Count` has dedicated physical alternatives rather than always consuming a fully
-materialized row stream. Alternatives include:
+Physical alternatives to consuming a materialized row stream:
 
 - constant or runtime-input cardinality
 - node/edge equality bitmap cardinality
@@ -189,13 +132,12 @@ materialized row stream. Alternatives include:
 - verified range cardinality, optionally with bitmap filters
 - vector/text search cardinality
 - streaming cursors for residual filters, expansion, order, distinctness,
-  variables, identity-sensitive work, and unsupported compositions
+  variables, identity-sensitive work and unsupported compositions
 
-Use `.count()` directly after the logical operations whose cardinality is needed.
-Adding `.id()`, `.project(...)`, or client-side length forces work the count
-planner could otherwise avoid.
+Adding `.id()`, `.project(...)` or client-side length forces work the count
+planner could avoid.
 
-## Correctness Fallbacks
+## Correctness fallbacks
 
 | Case | Why the direct fast path is declined or supplemented | Expected shape |
 | --- | --- | --- |
@@ -209,134 +151,59 @@ planner could otherwise avoid.
 | identity-sensitive count | row identity/distinct/order semantics matter | streaming/materialized count cursor |
 | residual predicate | no exact set proof exists | narrow indexed candidate plus residual evaluation, or scan |
 
-Literal equality can be encoded during planning. A genuinely late-bound parameter
-can remain dynamic and resolve from execution context, with index identity
-validated before lookup. Parameterized equality is therefore neither always
-unindexed nor identical to a fully proven literal bitmap program.
+Literal equality can be encoded during planning. A late-bound parameter can stay
+dynamic and resolve from execution context, with index identity validated before
+lookup: parameterized equality is neither always unindexed nor identical to a
+proven literal bitmap program.
 
 ## Projections
 
-`valueMap`/`value_map` returns selected properties. Use `project` for aliases,
-expressions, binding projections, and endpoint projections.
-
-Virtual fields include:
-
-- `$id`
-- `$label`
-- `$from` and `$to` for edges
-- `$distance` for vector hits
-- `$score` for text hits
-
-Search rank values belong to the current ranked stream. Project them before graph
-traversal changes the stream to neighbors or endpoints.
+`valueMap` / `value_map` returns selected properties; `project` handles aliases,
+expressions, binding projections and endpoint projections. Virtual fields: `$id`,
+`$label`, `$from` / `$to` (edges), `$distance` (vector hits), `$score` (text
+hits). Rank values belong to the ranked stream.
 
 ## Search
 
-Vector search requires:
+Vector search requires a matching node/edge vector index, label and property,
+dimension, query vector, top-k bound, and the tenant value when the index is
+tenant-partitioned. Text search requires the analogous text index and query
+text. Source-level search ranks the whole selected tenant partition; traversal-scoped
+membership is exact even when approximate structures accelerate ranking.
 
-- matching node/edge vector index
-- matching label and property
-- matching dimension
-- query vector
-- top-k bound
-- tenant value when the index is tenant-partitioned
-
-Source-level vector search ranks the whole selected tenant partition. If a
-traversal defines eligible node or edge IDs, call traversal-scoped vector search
-on that stream. Membership is exact even when approximate index structures
-accelerate ranking.
-
-Text search requires the analogous text index and query text. Source-level text
-search ranks the whole selected tenant partition. If a traversal defines eligible
-node or edge IDs, call traversal-scoped text search on that stream instead of
-post-filtering source top-k hits.
-
-Restricted BM25 search is exact: it deduplicates candidate IDs, preserves full
-tenant-partition BM25 statistics, and returns at most `k` ordered by score
-descending then entity ID ascending. It is a materializing barrier with a
-1,000,000-unique-candidate limit. Common query terms can still enumerate many BM25
-matches, so candidate selectivity does not guarantee proportional latency.
+Restricted BM25 is exact: it deduplicates candidate IDs, keeps full
+tenant-partition BM25 statistics, and orders by score descending then entity ID
+ascending. It is a materializing barrier. Common query terms can still enumerate
+many BM25 matches, so candidate selectivity does not guarantee proportional
+latency.
 
 ## Batch cost
 
-Batch entries execute in order. Later entries can refer to earlier named results.
-Only names in `returns` become response members, but non-returned entries still run.
-An empty at-most-one return is `null`; empty collections, folds, and mutations
-are `[]`; scalar `0` and `false` remain scalars. Adding `limit(1)` therefore
-requires a nullable response field even though populated values remain arrays.
+Entries execute in order; later entries can reference earlier names. Only names
+in `returns` are returned, but every entry runs. Conditional entries avoid work:
+`var_not_empty`, `var_empty`, `var_min_size`, `prev_not_empty`. `for_each` cost
+is array length times body cost; keep it bounded.
 
-Conditional entries can avoid unnecessary work:
+## Write cost
 
-- `var_not_empty`
-- `var_empty`
-- `var_min_size`
-- `prev_not_empty`
-
-`for_each` repeats its body once per parameter object. Its cost grows with both array
-length and body cost; keep it bounded.
-
-## Write cost and safety
-
-- `add_n` creates a node for each applicable input row.
-- `add_e` can create a product of source and target rows.
-- property mutation touches every element in the current stream.
-- broad drop operations should be reviewed for graph cardinality.
-- upsert existence checks should use an equality-indexed key.
-
-Use a write batch so the lookup, conditional update/create, and any related edge
-write share one transaction. Awaiting durability can reduce concurrent-write
-conflicts, but classify them with the stable `transaction_conflict` code, reload
-current state before rebuilding, and replay only safe operations; see
-`../../docs/error-handling.md`.
+- `add_n` creates a node per applicable input row; `add_e` with an empty target
+  fails the whole batch.
+- Property mutation touches every element in the current stream.
+- Review broad drops for graph cardinality.
+- Keep the lookup, conditional update/create and related edge writes in one write
+  batch so they share one transaction.
 
 ## Wire shape
 
-Every SDK emits the same nested operation tree:
+Every SDK emits the same nested operation tree (full example in `EXAMPLES.md`).
+There is no step array, stored route, registration table or bundle layer.
 
-```json
-{
-  "request_type": "read",
-  "query_name": "active_users",
-  "query": {
-    "read": {
-      "entries": [
-        {
-          "query": {
-            "name": "users",
-            "root": {
-              "limit": {
-                "input": {
-                  "nodes_where": {
-                    "predicate": {
-                      "and": {
-                        "predicates": [
-                          {
-                            "eq": {
-                              "left": { "property": "$label" },
-                              "right": { "constant": { "string": "User" } }
-                            }
-                          },
-                          {
-                            "eq": {
-                              "left": { "property": "status" },
-                              "right": { "constant": { "string": "active" } }
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  }
-                },
-                "count": { "literal": 25 }
-              }
-            }
-          }
-        }
-      ],
-      "returns": ["users"]
-    }
-  }
-}
-```
+## Cypher and SQL plans
 
-There is no step array, stored route, registration table, or bundle layer.
+`POST /v2/cypher/explain` and `POST /v2/sql/explain` take the `/v2/cypher` /
+`/v2/sql` body (`{"query", "parameters", "query_name"}`; SQL also accepts a
+positional `parameters` list and `mappings`). The plan reports its `effect`
+(`Read` or `Write`), selected access paths such as index lookups, estimated
+cardinalities, blocking work, Cartesian products and optimizer warnings. Supply
+every parameter the statement uses. An index is used only when every other
+condition on that node cannot fail.

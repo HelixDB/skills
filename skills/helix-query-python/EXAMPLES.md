@@ -4,26 +4,9 @@ All snippets assume:
 
 ```python
 from helixdb import (
-    AsyncClient,
-    BatchCondition,
-    BindingProjection,
-    Client,
-    DateTime,
-    EdgeRef,
-    Expr,
-    IndexSpec,
-    NodeRef,
-    Order,
-    Predicate,
-    Projection,
-    PropertyInput,
-    PropertyValue,
-    RepeatConfig,
-    define_params,
-    g,
-    param,
-    read_batch,
-    sub,
+    AsyncClient, BatchCondition, BindingProjection, Client, DateTime, EdgeRef, Expr,
+    IndexSpec, NodeRef, Order, Predicate, Projection, PropertyInput, PropertyValue,
+    RepeatConfig, ShortestPathDirection, define_params, g, param, read_batch, sub,
     write_batch,
 )
 ```
@@ -78,26 +61,37 @@ request = find_users().to_query_request(
 )
 ```
 
-Direct values such as `Predicate.eq("tenantId", "acme")` are literals in the AST. Use params for values that vary per request.
-
 ## 3. Execute A Query
 
 ```python
 client = Client("http://localhost:6969")
+# Helix Cloud: Client("https://helix.example.com", api_key="hx_secret")
 response = client.query(request)
-users = response["users"]
+users = response["users"]  # always a list; [] when nothing matched
 ```
 
-With Helix Cloud auth:
+Single-row lookup (a list, never `None`):
 
 ```python
-client = Client("https://helix.example.com", api_key="hx_secret")
-response = client.query(request)
+user_by_id_params = define_params({"user_id": param.i64()})
+
+
+def user_by_id(p=user_by_id_params):
+    return (
+        read_batch()
+        .var_as(
+            "user",
+            g().n(NodeRef.param("user_id")).project([Projection.property("$id", "id"), Projection.property("name")]),
+        )
+        .returning(["user"])
+    )
+
+
+rows = client.query(user_by_id().to_query_request(user_by_id_params, {"user_id": 42}))["user"]
+user = rows[0] if rows else None
 ```
 
 ## 3a. Execute Concurrent Queries Asynchronously
-
-Reuse one client so its HTTPX connection pool serves every request:
 
 ```python
 import asyncio
@@ -114,8 +108,7 @@ async def fetch_users_twice():
 responses = asyncio.run(fetch_users_twice())
 ```
 
-For embedded execution, also install `helix-db-embedded` and await the native
-writer or reader constructor:
+Embedded (install `helix-db-embedded`):
 
 ```python
 from helixdb import InMemory
@@ -148,11 +141,8 @@ create_request = create_user().to_query_request(
     {"name": "Alice", "tenant_id": "acme"},
     query_name="create_user",
 )
-created = client.execute(
-    create_request,
-    writer_only=True,
-    await_durability=True,
-)
+created = client.execute(create_request, writer_only=True)
+# {"user": [{"$id": 7}]}
 ```
 
 ## 5. Explicit Create Or Update
@@ -177,6 +167,24 @@ def upsert_user(p=upsert_user_params):
         )
         .returning(["updated", "created"])
     )
+# Exactly one of updated / created is non-empty; the skipped one is [].
+```
+
+With a unique equality index on `userId` (§14), a concurrent duplicate create
+fails with `unique_constraint_violation`; re-run once:
+
+```python
+from helixdb import HelixError
+
+upsert_request = upsert_user().to_query_request(
+    upsert_user_params, {"user_id": "u-1", "name": "Ada"}, query_name="upsert_user"
+)
+try:
+    result = client.query(upsert_request)
+except HelixError as error:  # code / is_retryable() (main)
+    if error.code != "unique_constraint_violation" and not error.is_retryable():
+        raise
+    result = client.query(upsert_request)
 ```
 
 ## 6. Vector Prefiltering Over Traversal Candidates
@@ -215,10 +223,6 @@ def nearest_documents(p=nearest_documents_params):
     )
 ```
 
-The label, tenant, and publication predicates build the exact candidate stream
-before vector ranking. Source vector search followed by `where` can underfill
-top-k. Project `$distance` before navigating off the search hit stream.
-
 ## 7. Full Text Search Prefiltering Over Traversal Candidates
 
 ```python
@@ -245,9 +249,8 @@ def search_documents(p=search_documents_params):
     )
 ```
 
-The label, tenant, and publication predicates build the candidate stream
-before BM25 ranking. This refills exactly to `k` when enough matching
-candidates exist; source text search followed by `where` does not.
+This fills exactly `k` when enough matching candidates exist; source text search
+followed by `where` does not.
 
 ## 8. Repeat And Branching
 
@@ -262,7 +265,7 @@ def friends_and_followers(p=friends_params):
             "network",
             g()
             .n(NodeRef.param("user_ids"))
-            .repeat(RepeatConfig.new(sub().out("FOLLOWS")).times(2).emit_all().max_depth(4))
+            .repeat(RepeatConfig.new(sub().out("FOLLOWS")).times(2).emit_after().max_depth(4))
             .union([sub().out("FOLLOWS"), sub().in_("FOLLOWS")])
             .dedup()
             .value_map(["$id", "name"]),
@@ -271,10 +274,12 @@ def friends_and_followers(p=friends_params):
     )
 ```
 
+`emit_after()` returns nodes reached at depth 1 and 2, not the seeds;
+`emit_all()` would add the seeds and repeat every intermediate level.
+
 ## Edge Endpoint Projection
 
-Use this when an edge list needs stable source/target resource ids. It keeps one
-output row per edge and avoids traversing to every endpoint node.
+One row per edge, with source/target resource ids and no endpoint traversal:
 
 ```python
 def list_describes_relationships():
@@ -314,7 +319,28 @@ def create_events(p=create_events_params):
         ),
     )
 
-    return write_batch().for_each_param("rows", body).returning(["created"])
+    # Do not return "created": it holds only the last iteration's node.
+    return write_batch().for_each_param("rows", body)
+```
+
+Read every created row back after the write commits:
+
+```python
+events_by_id_params = define_params({"event_ids": param.array(param.string())})
+
+
+def events_by_id(p=events_by_id_params):
+    return (
+        read_batch()
+        .var_as(
+            "events",
+            g()
+            .n_with_label("Event")
+            .where(Predicate.is_in_expr("eventId", p.event_ids))
+            .project([Projection.property("$id", "id"), Projection.property("eventId")]),
+        )
+        .returning(["events"])
+    )
 ```
 
 ## 10. Correlated Row Bindings
@@ -339,30 +365,26 @@ def user_friend_pairs():
     )
 ```
 
-The v3 Python SDK does not expose stored routes or query bundles.
-
-## 11. Handle Stable Error Codes
+## 11. Handle Errors By Class
 
 ```python
+import random
+import time
+
 from helixdb import HelixError
 
-try:
-    response = client.query(request)
-except HelixError as error:
-    if error.code == "transaction_conflict" and error.status_code == 409:
-        # Reload current state before rebuilding; replay only when safe.
-        pass
-    else:
-        raise
-```
 
-Use `error.kind` to distinguish transport from remote/embedded failures and
-`error.details` for diagnostics. Preserve unfamiliar `error.code` strings and
-never classify failures by parsing `details`. In v0.3.4, a generic noncanonical
-`message`/`code` remote body remains raw `details` and does not populate `code`,
-so keep status-aware fallback handling; it is not the gateway contract.
-Reconcile a `query_timeout` write before resubmitting. Python 0.3.4 does not
-expose `Retry-After`; use direct HTTP when the exact Cloud delay is required.
+def run_with_retry(client, request, attempts=5):
+    for attempt in range(attempts):
+        try:
+            return client.query(request)
+        except HelixError as error:  # is_retryable() (main)
+            # transaction_conflict, request_read_view_changed, stale_index_generation,
+            # index_backpressure: the request committed nothing, resend it.
+            if not error.is_retryable() or attempt == attempts - 1:
+                raise
+            time.sleep(min(2.0, 0.05 * 2**attempt) * random.random())
+```
 
 ## 12. Inspect Request JSON In A Test
 
@@ -375,4 +397,143 @@ def test_find_users_request_json():
     )
     assert '"query_name":"find_users"' in body
     assert '"parameter_types":{"tenant_id":"string","limit":"i64"}' in body
+```
+
+## 13. Optional Match With Bindings
+
+```python
+# OPTIONAL MATCH (u:User)-[:WORKS_AT]->(c:Company)
+def users_with_employer():
+    return (
+        read_batch()
+        .var_as(
+            "rows",
+            g()
+            .n_with_label("User")
+            .bind("user")
+            .optional(sub().out("WORKS_AT").has_label("Company").bind("employer"))
+            .project_bindings([
+                BindingProjection.binding("user", "name", "name"),
+                BindingProjection.binding("employer", "name", "employer"),
+            ]),
+        )
+        .returning(["rows"])
+    )
+# {"rows": [{"name": "Ada", "employer": "Acme"}, {"name": "Bob"}]}  # no employer: key absent
+```
+
+## 14. Create An Index And Wait For It
+
+```python
+import time
+
+from helixdb import IndexDdlAlreadyActive, parse_index_ddl_receipt, parse_index_operation_status
+
+
+def wait_for_index(client, spec, poll_seconds=1.0):
+    created = client.query(
+        write_batch()
+        .var_as("index", g().create_index_if_not_exists(spec))
+        .returning(["index"])
+        .to_query_request(query_name="create_index")
+    )
+    receipt = parse_index_ddl_receipt(created["index"])  # accepted | existing_operation | already_active
+    if isinstance(receipt, IndexDdlAlreadyActive):
+        return
+    while True:
+        status = parse_index_operation_status(
+            client.query(
+                read_batch()
+                .var_as("op", g().get_index_operation(receipt.operation_id))
+                .returning(["op"])
+                .to_query_request(query_name="index_operation")
+            )["op"]
+        )
+        if status.status == "succeeded":
+            return
+        if status.status in ("blocked", "aborted"):
+            raise RuntimeError(f"{status.status}: {getattr(status, 'blocker_code', None)}")
+        time.sleep(poll_seconds)
+
+
+wait_for_index(client, IndexSpec.node_unique_equality("User", "userId"))
+```
+
+After fixing what a `blocked` operation's `blocker_code` names (for a unique
+index, the duplicate values):
+
+```python
+def retry_index(operation_id: str):
+    return write_batch().var_as("op", g().retry_index_operation(operation_id)).returning(["op"])
+
+
+def abort_index(operation_id: str):
+    return write_batch().var_as("op", g().abort_index_operation(operation_id)).returning(["op"])
+```
+
+## 15. Value Choice With `Expr.case`
+
+```python
+# CASE WHEN score >= 100 THEN 'gold' ELSE 'standard' END
+def user_tiers():
+    return (
+        read_batch()
+        .var_as(
+            "users",
+            g()
+            .n_with_label("User")
+            .project([
+                Projection.property("name"),
+                Projection.expr(
+                    "tier",
+                    Expr.case([(Predicate.gte("score", 100), Expr.val("gold"))], Expr.val("standard")),
+                ),
+            ]),
+        )
+        .returning(["users"])
+    )
+```
+
+## 16. Shortest Path
+
+```python
+path_params = define_params({"from_id": param.i64(), "to_id": param.i64()})
+
+
+def follow_path(p=path_params):
+    return (
+        read_batch()
+        .var_as(
+            "path",
+            g().shortest_path(
+                NodeRef.param("from_id"),
+                NodeRef.param("to_id"),
+                6,
+                label="FOLLOWS",
+                direction=ShortestPathDirection.BOTH,
+            ),
+        )
+        .returning(["path"])
+    )
+# {"path": [3, 9, 12]} (node IDs, source first) or {"path": []}
+```
+
+## 17. Send Cypher Or SQL Directly
+
+```python
+# (main)
+result = client.cypher(
+    "MATCH (u:User {userId: $userId}) RETURN u.name AS name",
+    {"userId": "u-1"},
+    query_name="user_name",
+)
+
+# helix-db 0.3.4: plain HTTP
+import httpx
+
+rows = httpx.post(
+    "http://localhost:6969/v2/sql",
+    json={"query": "SELECT p.name AS name FROM Person p WHERE p.age >= ?", "parameters": [30]},
+).json()
+# {"columns": ["name"], "rows": [["Ada"], ...]}
 ```

@@ -1,122 +1,98 @@
 # Source Canon
 
-This repository should use public Helix documentation and repo-local canonical examples as its primary references. The SDK, error-transport, CLI-auth, HTTP/OpenAPI, and planner guidance was last reviewed against `HelixDB/helix-db` main at `5ec14e5f8cf059aa03f42917d560b3cded09fb26`.
+The release the skills target and the contracts every query skill repeats. Change a
+version or contract here first, then in every skill that inlines it (installed skills
+contain only `skills/<name>/` and cannot link here). Checked against `HelixDB/helix-db`
+main at `5be60bdaa` ("Release CLI v3.7.0 with Docker v0.0.16 default").
 
-## Verified release boundaries
+## Release set
 
-On 2026-11-06, the published package artifacts were Rust 3.0.0, TypeScript 3.2.0,
-Python 0.3.4, and Go v0.3.1. TypeScript 3.2.0 accepts Cloud warm success 204 and
-sends the GA `x-helix-database-id` header through `withDatabaseId`. Rust, Python,
-and Go accept only HTTP 200, so they reject Cloud warm success 204, and expose no
-GA database selection. Current SDK source has both; a main-branch implementation
-is not evidence that the same behavior has shipped in a package version. From
-those three SDKs, use direct HTTP for Cloud warming and GA shared-gateway
-requests, since the current CLI's `--warm` flag is local-only.
+| Component | Version | Install |
+| --- | --- | --- |
+| Docker image | `ghcr.io/helixdb/helixdb:v0.0.16` | Default of Helix CLI 3.7.0. With an older CLI set `tag = "v0.0.16"` in `[local.dev]` of `helix.toml`. |
+| Helix CLI | 3.7.0 | `curl -sSL "https://install.helix-db.com" \| bash` |
+| Rust SDK | crates.io `helix-db` 3.0.0 (import `helix_db`) | `cargo add helix-db` |
+| TypeScript SDK | npm `@helix-db/helix-db` 3.2.0 | `npm install @helix-db/helix-db` |
+| Python SDK | PyPI `helix-db` 0.3.4 (import `helixdb`) | `pip install helix-db` |
+| Go SDK | `github.com/helixdb/helix-db/sdks/go` v0.3.1 (tag `sdks/go/v0.3.1`) | `go get github.com/helixdb/helix-db/sdks/go@latest`, then `import helix "github.com/helixdb/helix-db/sdks/go"` (no `/v3` suffix) |
 
-The published Docker image `ghcr.io/helixdb/helixdb:v0.0.5` supports Linux amd64
-and arm64. Native-volume persistence and typed `f32`/`f64` JSON parameters were
-verified against the released arm64 image, including integer JSON values for
-typed floats. [HelixDB PR #1099](https://github.com/HelixDB/helix-db/pull/1099)
-has merged the CLI default and public Docker/OpenAPI corrections for those behaviors.
-Until a CLI containing that update is installed, pin `tag = "v0.0.5"` explicitly
-in `helix.toml`; existing projects also retain their saved tag.
+Snippets follow the SDK source at that commit. Not yet in the published packages:
 
-Planner source links describe the current main-branch model. Verify the deployed
-engine's version and actual plan before promising that a specific optimization
-is present in an older image.
+| Feature | Missing from | Use instead |
+| --- | --- | --- |
+| Cypher and SQL client methods (`cypher`, `sql`, `explain_*`) | all four packages | `POST /v2/cypher`, `/v2/sql` and their `/explain` routes over HTTP |
+| Search consistency on the request builder | all four packages | `"search_consistency": "eventual"` in a direct HTTP body |
+| Structured remote errors (`status_code()`, `remote_code()`, `retryable()`, `is_retryable()`) | Rust 3.0.0 (`RemoteError { details }` holds the raw body) | Parse `details` as the JSON envelope |
+| `IsRetryable`, `HelixError.Retryable` | Go v0.3.1 (has `HelixError.Code` and `StatusCode`) | Branch on `HelixError.Code` |
+| `isConflict()` / `IsConflict` limited to `transaction_conflict` | TypeScript 3.2.0 and Go v0.3.1 report `true` for every 409, including `unique_constraint_violation` | `isRetryable()` (TypeScript) or `Code` (Go) |
 
-## Working Order
+If an error helper is missing from the installed package, read the body's `error` and
+`retryable` fields directly.
 
-When an agent is writing or reviewing Helix query code, it should use sources in this order:
+## Contracts every query skill repeats
 
-1. the user's local repo and schema
-2. this repository's canonical docs in `docs/`
-3. this repository's generic examples in `examples/`
-4. public Helix documentation for product semantics and public behavior
-5. the v3 SDK source on `HelixDB/helix-db` `main` for exact public names
-6. public skill-format docs for packaging and discovery behavior
+| Contract | Rule | Source (helix-db) |
+| --- | --- | --- |
+| Empty returns | Every row-stream return is `[]` when empty, including at-most-one lookups (`n(id)`, `limit(1)`, a skipped `var_as_if`); decode a single lookup as a list and take the first element. Only `count` (`0`), `exists` (`false`) and index DDL / lifecycle operations return scalars. Docker v0.0.13+ (older images returned `null` for at-most-one). | `crates/planner/src/exec/returns.rs` |
+| IDs | Node and edge `$id` values are unsigned integers. Bind ID parameters as integers (`param.i64`, `ParamI64`, `PropertyInput::param` with an integer value); a string ID fails at runtime. | `crates/db/src/execution/interpreter/access/params.rs` |
+| Element output | An unprojected node or edge stream, read or mutation, returns `{"$id": N}` per element (search adds `$distance` or `$score`); project (`project`, `value_map`, `values`) for properties. Rows still carrying bindings, a path or a sack return as `{"bindings": {...}, "current": {...}, ...}`. `shortest_path` returns node IDs. Index receipts and statuses carry `index_id` and `generation` as decimal strings. | `crates/db/src/query_service.rs` (`QueryResponse`), `sdks/rust/src/lifecycle.rs` |
+| Error envelope | `{"error": "<code>", "msg": "<diagnostic>", "retryable": true\|false}`; `retryable` is present only when the class settles it. There is no `code` field. | `crates/server/src/http.rs`, `crates/ast/src/error_code.rs` |
+| 409 | Two classes. Retryable (`retryable: true`): `transaction_conflict`, `request_read_view_changed`, `stale_index_generation`. Not retryable unchanged (`retryable: false`): `unique_constraint_violation`, `index_already_exists`, `index_definition_conflict`, `index_busy`, `index_operation_not_abortable`, `index_build_blocked`. Branch on `retryable`, never on the status alone. | `crates/ast/src/error_code.rs` |
+| Durability | Writes wait for durability by default. `X-Helix-Await-Durable: false` skips the wait for latency (a crash before the WAL upload loses the write) and does not reduce conflicts. `true` on a read is `400 invalid_request_option`. | `crates/server/src/http.rs` |
+| Reserved steps | `fold`, `unfold`, `path`, `simple_path`, `with_sack`, `sack_set`, `sack_add`, `sack_get` execute; they are not no-ops. | `crates/db/src/execution/interpreter/reserved.rs` |
+| `optional(sub)` | An empty branch passes the input row through unchanged, so the current element is still the input. For OPTIONAL MATCH bind the anchor, bind inside the branch, and read through `project_bindings`; a missing binding's key is absent from the row. | `crates/db/src/execution/interpreter/control/branch.rs` |
+| `choose` | Without an else branch, rows that fail the condition are dropped. A per-row value choice is `Expr::case`. | `crates/db/src/execution/interpreter/control/branch.rs` |
+| Ordering | Rows missing the sort property sort first for `Asc` and last for `Desc` (the opposite of Cypher and SQL `NULLS` defaults). | `crates/db/src/execution/interpreter/stream/order.rs` |
+| After `bind` | `order_by`, `choose`, `repeat`, `values`, `value_map`, `project`, `id`, `label` and `edge_properties` are rejected (`invalid_after_bind_operation`). Order before binding; finish with `project_bindings`, `count` or `exists`. `bind` and `project_bindings` are read-only: a write batch rejects them (`read_only_traversal_in_write_batch`). | `crates/planner/src/planning/selected/native/context_usage.rs`, `crates/planner/src/planning/envelope/write_contract.rs` |
+| `repeat` emit | `emit_after` emits each iteration's output (Gremlin postfix `.emit()`); `emit_before` emits each iteration's input; `emit_all` emits both, so a row reached at depth 1 appears twice. Gremlin prefix `emit()` with `times(n)` is `emit_before()` with `times(n + 1)`. `until(pred)` stops the whole loop once any row of the new frontier matches and returns that whole frontier; it is not per-traverser like Gremlin. | `crates/db/src/execution/interpreter/control/repeat.rs` |
+| `add_e` | Always creates one edge per (source, target) pair; it is not idempotent. An empty target fails the whole batch; an empty source creates nothing. | `crates/db/src/execution/interpreter/mutation/ops.rs` |
+| Upsert | One write batch: read into a variable, then `var_as_if(VarNotEmpty, update)` and `var_as_if(VarEmpty, create)`. A unique equality index (`IndexSpec::node_unique_equality`) on the key makes concurrent creates fail with `unique_constraint_violation` instead of duplicating; re-running the upsert once takes the update branch. | `crates/ast/src/batch.rs`, `crates/ast/src/index.rs` |
+| Index DDL | Asynchronous. `create_index_if_not_exists` / `drop_index` return a receipt `{"kind": "accepted", "operation_id", "index_id", "generation"}`, `{"kind": "existing_operation", "operation_id"}` or `{"kind": "already_active", "index_id", "generation"}`. Poll `get_index_operation(operation_id)` until `status` is `succeeded`; `blocked` carries `blocker_code` and needs a fix then `retry_index_operation`, or `abort_index_operation`. | `sdks/rust/src/lifecycle.rs`, `crates/ast/src/traversal.rs` |
+| Search consistency | Read requests take `search_consistency`: `strong` (default; includes committed but unpublished vector/text work) or `eventual` (bounded unpublished work, can return stale tenant/label/property matches). Writes are always strong. | `crates/ast/src/query.rs` |
+| Search limits | Whole-index vector search caps the effective result count at 800. A traversal-scoped (prefiltered) vector search fails when `min(k, unique candidates)` exceeds 800; text returns at most `min(candidates, k, 800)`. More than 1,000,000 unique candidates fails. | `crates/db/src/search/vector/hnsw/restricted.rs` |
+| Request limits | Body 16 MiB locally (2 MiB on Helix Cloud); JSON nesting at most 255 levels. A larger body is `400 invalid_request_body` (Helix Cloud: `413 payload_too_large`); deeper nesting is `400 invalid_query_json`. | `crates/server/src/lib.rs`, `crates/ast/src/query.rs` |
+| Native Cypher and SQL | `POST /v2/cypher`, `/v2/cypher/explain`, `/v2/sql`, `/v2/sql/explain` (Docker v0.0.13+ for Cypher). Body `{"query", "parameters", "query_name"}`; SQL also takes positional `parameters` and `mappings`. Send supported statements directly; hand-translate only what the profile rejects (`MERGE`, variable-length paths, `shortestPath`, `UNION`, subqueries, `FOREACH`, outer joins, upserts, vector/text search, index management). | `crates/cypher/src/api.rs`, `crates/cypher/src/request.rs`, `crates/cypher/src/sql/request.rs` |
 
-This ordering is intentional. The skills track the published Rust 3.0.0,
-TypeScript 3.2.0, Python 0.3.4, and Go 0.3.1 SDK lines. Public documentation is
-the behavior contract; use the SDK source to confirm exact identifiers rather
-than guessing from an older release.
+## Working order
 
-## Public Helix References
+Agents writing or reviewing Helix query code use, in order:
 
-Use these for product semantics and supported behavior:
+1. the user's repo and schema
+2. this repository's `docs/` and `examples/`
+3. the public Helix documentation for behavior
+4. the SDK source on `HelixDB/helix-db` `main` for exact identifiers
 
-- `https://docs.helix-db.com/database/helix-db/start-here/quickstart`
-- `https://docs.helix-db.com/database/helix-db/start-here/local-development/local-server`
-- `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/rust-project-setup`
-- `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/typescript-project-setup`
-- `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/go-project-setup`
-- `https://docs.helix-db.com/database/helix-db/start-here/sdk-setup/python-project-setup`
-- `https://docs.helix-db.com/database/helix-cloud/connect/mcp`
-- `https://docs.helix-db.com/database/helix-db/core-concepts/overview`
-- `https://docs.helix-db.com/database/helix-db/query-guides/writing-data`
-- `https://docs.helix-db.com/database/helix-db/query-guides/reading-data`
-- `https://docs.helix-db.com/database/helix-db/query-guides/traversals`
-- `https://docs.helix-db.com/database/helix-db/query-guides/filtering`
-- `https://docs.helix-db.com/database/helix-db/query-guides/projections`
-- `https://docs.helix-db.com/database/helix-db/query-guides/secondary-indexes`
-- `https://docs.helix-db.com/database/helix-db/query-guides/vector-indexes`
-- `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
-- `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
-- `https://docs.helix-db.com/database/helix-db/query-guides/parameters`
-- `https://docs.helix-db.com/database/helix-db/query-guides/http-api`
-- `https://docs.helix-db.com/database/helix-cloud/operate/error-handling`
-- `https://docs.helix-db.com/database/helix-cloud/operate/limits`
-- `https://docs.helix-db.com/database/helix-db/query-guides/traversals`
-- `https://docs.helix-db.com/database/helix-db/query-guides/filtering`
-- `https://docs.helix-db.com/database/helix-db/query-guides/advanced`
-- `https://docs.helix-db.com/database/helix-db/query-guides/projections`
-- `https://docs.helix-db.com/database/helix-db/query-guides/vector-indexes`
-- `https://docs.helix-db.com/database/helix-db/query-guides/text-indexes`
+## Public Helix references
 
-Use these for skill packaging and discovery behavior:
+- Start: `https://docs.helix-db.com/database/helix-db/start-here/quickstart`,
+  `.../start-here/local-development/local-server`,
+  `.../start-here/sdk-setup/{rust,typescript,go,python}-project-setup`
+- Query guides (`https://docs.helix-db.com/database/helix-db/query-guides/<page>`):
+  `writing-data`, `reading-data`, `traversals`, `filtering`, `projections`,
+  `parameters`, `advanced`, `secondary-indexes`, `vector-indexes`,
+  `text-indexes`, `prefiltering`, `search-consistency`, `cypher`, `sql`,
+  `error-handling`, `http-api`, `troubleshooting`
+- Core concepts: `https://docs.helix-db.com/database/helix-db/core-concepts/overview`
+- Helix Cloud: `https://docs.helix-db.com/database/helix-cloud/connect/mcp`,
+  `.../helix-cloud/operate/error-handling`, `.../helix-cloud/operate/limits`
+- SDK source: `https://github.com/HelixDB/helix-db/tree/main/sdks/{rust,typescript,go,python}`
+- Skill packaging: `https://skills.sh/docs`, `https://opencode.ai/docs/skills`
 
-- `https://skills.sh/docs`
-- `https://opencode.ai/docs/skills`
+## Repo-local references
 
-Use these `main` branches for exact v3 SDK identifiers:
+`docs/dsl-cheatsheet.md`, `docs/go-dsl-cheatsheet.md`, `docs/cypher-rosetta.md`,
+`docs/gremlin-rosetta.md`, `docs/dynamic-query-examples.md`,
+`docs/optimization-checklist.md`, `docs/error-handling.md`,
+`examples/authoring-patterns.md`, `examples/search-patterns.md`,
+`examples/optimization-patterns.md`.
 
-- `https://github.com/HelixDB/helix-db/tree/main/sdks/rust`
-- `https://github.com/HelixDB/helix-db/tree/main/sdks/typescript`
-- `https://github.com/HelixDB/helix-db/tree/main/sdks/go`
-- `https://github.com/HelixDB/helix-db/tree/main/sdks/python`
-
-## Repo-Local Canonical References
-
-Use these as the main references inside this published skills repo:
-
-- `docs/dsl-cheatsheet.md`
-- `docs/go-dsl-cheatsheet.md`
-- `docs/cypher-rosetta.md`
-- `docs/gremlin-rosetta.md`
-- `docs/dynamic-query-examples.md`
-- `docs/optimization-checklist.md`
-- `examples/authoring-patterns.md`
-- `examples/search-patterns.md`
-- `examples/optimization-patterns.md`
-
-These files should be self-contained enough that public skills can point to them directly without sending readers to machine-local paths.
+These are authoring sources: a published skill inlines what it needs or links the public
+docs, never `../../docs/...`.
 
 ## Rules
 
-- Do not use machine-local filesystem paths as published source pointers.
-- Do not treat application-specific implementations as canonical Helix references.
-- If a useful idea is learned from an implementation, convert it into a generic documented pattern before publishing it here.
-- Keep installation commands unpinned and verify registry availability before claiming that an SDK is published.
-- Do not use a feature branch in a published source link. The coordinated repositories are consumed from `main`.
-- Prefer generic labels, properties, and edge names in published examples unless a public Helix doc requires a more specific term.
-- Use the user's local repo as the authority for their actual schema, naming, and route style.
-
-## Publication Standard
-
-Before publishing a skill or support doc, ask:
-
-1. would this still make sense if the reader had never seen our internal or local repos?
-2. does it point to public docs or repo-local docs rather than machine-local files?
-3. is it teaching Helix behavior rather than one application's habits?
-
-If the answer is no, rewrite it before shipping.
+- No machine-local paths or feature-branch links in published content.
+- No application-specific implementations as canonical references; generalize first.
+- Install commands stay unpinned; the release set above records what was verified.
+- Generic labels, properties and edge names in examples.
+- The user's repo is the authority for their schema, naming and route style.

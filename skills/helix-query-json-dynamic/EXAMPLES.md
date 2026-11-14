@@ -1,7 +1,6 @@
 # HelixDB v3 JSON Examples
 
-These are direct request bodies for `POST /v2/query`. They use the same nested AST as
-the published v3 SDKs.
+Direct request bodies for `POST /v2/query`, using the same nested AST as the v3 SDKs.
 
 ## Count nodes by label
 
@@ -233,7 +232,7 @@ Expected shape:
 }
 ```
 
-Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.5` instance:
+Response from a clean `ghcr.io/helixdb/helixdb:v0.0.16` instance:
 
 ```json
 {
@@ -352,10 +351,250 @@ Expected response from a clean `ghcr.io/helixdb/helixdb:v0.0.5` instance:
 }
 ```
 
+## Upsert by a unique key
+
+Create the unique index once (build-time semantics: REFERENCE.md, Index specs):
+
+```json
+{
+  "request_type": "write",
+  "query_name": "create_user_id_index",
+  "query": {
+    "write": {
+      "entries": [
+        {
+          "query": {
+            "name": "index",
+            "root": {
+              "create_index": {
+                "spec": { "node_equality": { "label": "User", "property": "userId", "unique": true } },
+                "if_not_exists": true
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["index"]
+    }
+  }
+}
+```
+
+The response is a receipt, e.g.
+`{"index": {"kind": "accepted", "operation_id": "07070707-0707-0707-0707-070707070707", "index_id": "1", "generation": "1"}}`.
+Poll until `status` is `succeeded`:
+
+```json
+{
+  "request_type": "read",
+  "query_name": "index_status",
+  "query": {
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "status",
+            "root": { "get_index_operation": { "operation_id": "07070707-0707-0707-0707-070707070707" } }
+          }
+        }
+      ],
+      "returns": ["status"]
+    }
+  }
+}
+```
+
+On `blocked`, fix the data its `blocker_code` names (for `uniqueness_violation`, the
+existing duplicates) and send `{"retry_index_operation": {"operation_id": "..."}}` in a
+write request. Then upsert in one atomic write batch:
+
+```json
+{
+  "request_type": "write",
+  "query_name": "upsert_user",
+  "query": {
+    "write": {
+      "entries": [
+        {
+          "query": {
+            "name": "existing",
+            "root": {
+              "nodes_where": {
+                "predicate": {
+                  "and": {
+                    "predicates": [
+                      { "eq": { "left": { "property": "$label" }, "right": { "constant": { "string": "User" } } } },
+                      { "eq": { "left": { "property": "userId" }, "right": { "param": "user_id" } } }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "query": {
+            "name": "updated",
+            "condition": { "var_not_empty": "existing" },
+            "root": {
+              "set_property": {
+                "input": { "nodes": { "reference": { "var": "existing" } } },
+                "name": "name",
+                "value": { "expr": { "param": "name" } }
+              }
+            }
+          }
+        },
+        {
+          "query": {
+            "name": "created",
+            "condition": { "var_empty": "existing" },
+            "root": {
+              "add_n": {
+                "label": "User",
+                "properties": [
+                  ["userId", { "expr": { "param": "user_id" } }],
+                  ["name", { "expr": { "param": "name" } }]
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["updated", "created"]
+    }
+  },
+  "parameters": { "user_id": "u-1", "name": "Ada" }
+}
+```
+
+One of `updated` / `created` is `[{"$id": N}]`, the other `[]`. A racing loser gets
+`409 unique_constraint_violation` (`retryable: false`) or `409 transaction_conflict`
+(`retryable: true`); re-run the upsert once and it takes the update branch.
+
+## Optional neighbor (OPTIONAL MATCH)
+
+`optional` passes the input row through when its branch is empty, so read the optional
+side through a binding (a missing binding omits its key). `bind` and `project_bindings`
+are read-only.
+
+```json
+{
+  "request_type": "read",
+  "query_name": "users_with_employer",
+  "query": {
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "rows",
+            "root": {
+              "project_bindings": {
+                "input": {
+                  "optional": {
+                    "input": {
+                      "bind": {
+                        "input": {
+                          "nodes_where": {
+                            "predicate": { "eq": { "left": { "property": "$label" }, "right": { "constant": { "string": "User" } } } }
+                          }
+                        },
+                        "name": "user"
+                      }
+                    },
+                    "traversal": {
+                      "root": {
+                        "bind": {
+                          "input": {
+                            "has_label": {
+                              "input": { "out": { "input": "context", "label": "WORKS_AT" } },
+                              "label": "Company"
+                            }
+                          },
+                          "name": "employer"
+                        }
+                      }
+                    }
+                  }
+                },
+                "projections": [
+                  { "property": { "target": { "binding": "user" }, "source": "name", "alias": "name" } },
+                  { "property": { "target": { "binding": "employer" }, "source": "name", "alias": "employer" } }
+                ],
+                "distinct": false
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["rows"]
+    }
+  }
+}
+```
+
+```json
+{ "rows": [{ "name": "Ada", "employer": "Acme" }, { "name": "Bob" }] }
+```
+
+## Eventual search consistency
+
+A read trading freshness of unpublished vector/text work for never failing with
+`index_backpressure`:
+
+```json
+{
+  "request_type": "read",
+  "query_name": "similar_docs",
+  "search_consistency": "eventual",
+  "query": {
+    "read": {
+      "entries": [
+        {
+          "query": {
+            "name": "hits",
+            "root": {
+              "value_map": {
+                "input": {
+                  "vector_search_nodes": {
+                    "label": "Doc",
+                    "property": "embedding",
+                    "query_vector": { "expr": { "param": "vector" } },
+                    "k": { "literal": 10 }
+                  }
+                },
+                "properties": ["$id", "title", "$distance"]
+              }
+            }
+          }
+        }
+      ],
+      "returns": ["hits"]
+    }
+  },
+  "parameters": { "vector": [0.1, 0.8, 0.2] }
+}
+```
+
+## Cypher instead of the operation tree
+
+A statement in the Cypher profile goes to `POST /v2/cypher`:
+
+```json
+{
+  "query": "MATCH (u:User) OPTIONAL MATCH (u)-[:WORKS_AT]->(c:Company) RETURN u.name AS name, c.name AS employer ORDER BY name",
+  "parameters": {},
+  "query_name": "users_with_employer"
+}
+```
+
+```json
+{ "columns": ["name", "employer"], "rows": [["Ada", "Acme"], ["Bob", null]] }
+```
+
 ## Invalid legacy shapes
 
-The following are intentionally invalid and shown as `text` so JSON validation does
-not mistake them for supported requests:
+Intentionally invalid (shown as `text` so JSON validation skips them):
 
 ```text
 {"queries":[{"Query":{"steps":["Count"]}}],"returns":["count"]}
@@ -369,54 +608,20 @@ not mistake them for supported requests:
 {"request_type":"read","queries.json":{}}
 ```
 
-Use an SDK serializer when constructing a shape not covered here. Equivalent builders
-in the Rust, TypeScript, Python, and Go skills must serialize to the same JSON
-structure.
+For a shape not covered here, use an SDK serializer; the Rust, TypeScript, Python and Go
+builders serialize to the same JSON.
 
 ## Interpret A Query Failure
 
-Current servers return the stable code in `error` and the diagnostic in `msg`:
+Both of these are HTTP 409; only the first is worth resending:
 
-```http
-HTTP/1.1 409 Conflict
-Content-Type: application/json
+```json
+{ "error": "transaction_conflict", "msg": "<diagnostic>", "retryable": true }
 ```
 
 ```json
-{
-  "error": "transaction_conflict",
-  "msg": "transaction commit conflicted with another writer"
-}
+{ "error": "unique_constraint_violation", "msg": "<diagnostic>", "retryable": false }
 ```
 
-Use the HTTP 409 plus `transaction_conflict` for classification. Reload current
-state before rebuilding, then replay with bounded backoff only if the operation
-is idempotent or protected by an idempotency key. Do not parse `msg`.
-
-During a rolling upgrade, also accept the legacy shape:
-
-```json
-{
-  "error": "transaction commit conflicted with another writer",
-  "code": "transaction_conflict"
-}
-```
-
-A defensive client may also preserve a noncanonical proxy shape:
-
-```json
-{
-  "code": "external_error",
-  "message": "upstream rejected the request",
-  "details": { "request_id": "req_123" }
-}
-```
-
-Decode canonical Helix, legacy Helix, then generic remote fields. Preserve
-`details`, the raw body, and unknown codes, but do not call the generic shape
-the gateway contract. Honor `Retry-After` on 429 when available. A 503
-`rate_limit_unavailable` fails closed before execution and can use bounded
-backoff with jitter; a 408 `query_timeout` write has an unknown commit outcome
-and must be reconciled before resubmission. For a 409 write conflict, reload
-current state before rebuilding and replay only when safe; do not blindly retry
-writes.
+`retryable: false` on a 409 means the database's state rejects the request: report the
+duplicate or fix the state. Rules: SKILL.md, Failure envelope.
