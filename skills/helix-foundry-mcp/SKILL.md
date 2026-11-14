@@ -4,7 +4,7 @@ description: Answer questions about a business's own customers, accounts, people
 license: MIT
 metadata:
   author: HelixDB
-  version: 1.10.0
+  version: 1.11.0
 ---
 
 # Helix Foundry MCP
@@ -27,13 +27,13 @@ token; never put an MCP credential in a query or report.
 | Group | Tools |
 | --- | --- |
 | Ontologies, versions | `helix_foundry_list_ontologies`, `helix_foundry_get_ontology`, `helix_foundry_get_version` |
-| Connectors, syncs (users only) | `helix_foundry_list_connectors`, `helix_foundry_list_connector_kinds`, `helix_foundry_list_syncs`, `helix_foundry_get_sync`, `helix_foundry_connector_link` (connector managers) |
+| Connectors, syncs (users only) | `helix_foundry_list_connectors`, `helix_foundry_list_connector_kinds`, `helix_foundry_get_sync`, `helix_foundry_connect` and `helix_foundry_get_sign_in` (connector managers) |
 | Jobs, documents, reviews | `helix_foundry_get_generation`, `helix_foundry_get_load`, `helix_foundry_list_documents`, `helix_foundry_list_review_decisions` |
 | Graph | `helix_foundry_read_guide`, `helix_foundry_read_graph` |
-| Ask | `helix_foundry_ask`, `helix_foundry_get_question`, `helix_foundry_cancel_question`, `helix_foundry_list_questions`, `helix_foundry_list_question_events` |
+| Ask | `helix_foundry_ask`, `helix_foundry_get_question`, `helix_foundry_cancel_question`, `helix_foundry_list_questions` |
 | API sources | `helix_foundry_send_pieces` (connector managers, send tokens) |
 | Workflows | `helix_foundry_list_workflows`, `helix_foundry_start_workflow_run`, `helix_foundry_finish_workflow_run`, `helix_foundry_get_workflow_run`, `helix_foundry_create_workflow` (ontology managers) |
-| Same server | `helix_list_workspaces` (users only), `helix_feedback` |
+| Same server | `helix_list_workspaces`, `helix_create_workspace` (users only), `helix_feedback` |
 
 Missing tools: see Sign-in. Never substitute direct API calls, database keys or raw queries.
 
@@ -60,7 +60,9 @@ Missing tools: see Sign-in. Never substitute direct API calls, database keys or 
 ## Resolve the ontology
 
 1. **Users:** `helix_list_workspaces`, pick the workspace; every Foundry read takes its
-   `workspace_id`. **Service keys** lack that tool: leave `workspace_id` empty for the key's own.
+   `workspace_id`, which a user of exactly one workspace may leave empty. A new one:
+   `helix_create_workspace` (helix-foundry-onboarding). **Service keys** lack those tools: leave
+   `workspace_id` empty for the key's own.
 2. `helix_foundry_list_ontologies`: each with current version, current load, and any running load,
    extract or delete. Service keys see only ontologies they can query.
 3. `helix_foundry_get_ontology`: current version, newest 20 versions and generations, loads, the
@@ -86,15 +88,15 @@ when the user should look at something or do something only the website does; ne
 | --- | --- |
 | What the ontology models; whether a version can load | `helix_foundry_get_version` (`load_refusal`) |
 | Which sources feed the workspace, last sync; an API source's fields, pending pieces, capacity, extraction | `helix_foundry_list_connectors` (`event_source`) |
-| Kinds the workspace can add / add one | `helix_foundry_list_connector_kinds` / `helix_foundry_connector_link` (user enters credentials on the website) |
-| Sync history, why it failed / one sync | `helix_foundry_list_syncs` (newest 20, `limit` ≤100) / `helix_foundry_get_sync` |
+| Kinds the workspace can add / add one | `helix_foundry_list_connector_kinds` / `helix_foundry_connect` (user signs in at the provider or enters credentials on the website) |
+| A connector's latest sync, why it failed | `helix_foundry_list_connectors` (`last_sync`), then `helix_foundry_get_sync` |
 | Send pieces to an API source | `helix_foundry_send_pieces`; an app without an MCP client: the source's `send_url` (REFERENCE.md) |
 | Documents, whether each was read, what loads made of them | `helix_foundry_list_documents`; sets via `helix_foundry_get_ontology` |
 | A generation or revision, a revision's findings | `helix_foundry_get_generation` |
 | A load, its jobs, failures, what it read of the documents | `helix_foundry_get_load` (`documents`) |
 | Sets a version reads, what it left out or asks; which table a `src_…` id is | `helix_foundry_get_version` (`document_reads`, `definition.left_out`, `definition.questions`, `tables`) |
 | Settled reviews | `helix_foundry_list_review_decisions` |
-| Past questions; a question's agent steps | `helix_foundry_list_questions`, `helix_foundry_list_question_events` |
+| Past questions | `helix_foundry_list_questions` |
 | Exact records, counts, groups, paths | `helix_foundry_read_guide`, then a `query` read |
 | Why a fact holds, rule breaks / where a value came from | `explain`, `entity`, `violations` read / `evidence` read |
 | Plain-language answer with citations | `helix_foundry_ask` |
@@ -149,8 +151,7 @@ Cancel (`helix_foundry_cancel_question`, no confirmation) only when the user ask
 wrong question; cancelling a cancelled question returns it; one that ended otherwise is
 `failed_precondition` ("the question already ended"): read it instead.
 `helix_foundry_list_questions` lists an ontology's or thread's questions newest first, without
-answers, with the question budget. `helix_foundry_list_question_events` pages a question's agent
-steps after `after_seq`; continue with `next_after_seq` until `done`.
+answers, with the question budget.
 
 Limits: past the hourly question limit → `resource_exhausted`; monthly budget spent →
 `failed_precondition`. Either way tell the user and stop asking.

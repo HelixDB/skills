@@ -111,15 +111,21 @@ Reviews are `FoundryReview` records in a load; find them with a `query` read.
 ## Connectors
 
 - `helix_foundry_list_connector_kinds`: each kind's `display_name`, `requires_pro`, `available`
-  (false if the plan excludes it), and `create`. Every plan includes every kind (expect
-  `available: true`, `requires_pro: false`); plans differ in self-sync frequency (Free daily, Pro
-  hourly, Max every 15 minutes). If a kind ever shows `available: false`, the link's page shows
+  (false if the plan excludes it), `sign_in` (connects by signing in at its provider), and
+  `create`. Every plan includes every kind (expect `available: true`, `requires_pro: false`); plans
+  differ in self-sync frequency (Free daily, Pro hourly, Max every 15 minutes). If a kind ever shows `available: false`, the link's page shows
   owners and admins how to change plan.
-- `helix_foundry_connector_link` takes the workspace and a kind (`stripe`, `workos`, `posthog`,
+- `helix_foundry_connect` takes the workspace and a kind (`stripe`, `workos`, `posthog`,
   `github`, `linear`, `calcom`, `granola`, `slack`, `notion`, `google`, `postgres`, `mysql`, `s3`,
   `events`) and returns a website link opening that kind's form in the workspace. Give it to the
   user; once saved, find the connector with `helix_foundry_list_connectors`. The website starts its
   first sync: follow `last_sync` with `helix_foundry_get_sync`.
+- A kind whose `sign_in` is true connects by signing in at its provider: add a new
+  `client_token` (and `name`, GitHub's `repos` or PostHog's `project_id` if wanted). The result's
+  `sign_in_id` binds the link to that sign-in; the user authorizes Helix Foundry at the provider,
+  and `helix_foundry_get_sign_in` with `wait: true` follows it until done, with the new connector.
+  `with_key: true` opens the key form instead (PostHog EU Cloud or self-hosted). Where no kind has
+  `sign_in`, the tool takes only `workspace_id` and `kind`.
 - Kind `events` (API source) has no credential and doesn't sync until pieces arrive. Its link opens
   a form to name it and describe its pieces; `create` says an agent can instead use the
   `create_event_source` operation (helix-foundry-actions-mcp).
