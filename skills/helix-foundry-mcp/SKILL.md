@@ -261,10 +261,10 @@ Read them here; create, change, run, pin, publish or delete them with helix-foun
 - Reviews and review decisions, past questions and steps, cancelling, listing use cases and
   starting, finishing and reading their runs need the same query read. Creating a use case needs
   ontology management (users only).
-- Workflows, dashboards and AI settings are users-only (workspace read); service keys and source
-  grantees see no workflows, and only pinned dashboards (no creating or changing them). Previewing a
-  tile also needs query read on its ontology. A host with workflows off doesn't list the workflow
-  tools or operations at all.
+- Workflows, dashboards and AI settings are users-only (workspace read): service keys get none of
+  their tools. Source grantees see no workflows, and only pinned dashboards (no creating or
+  changing them). Previewing a tile also needs query read on its ontology. A host with workflows
+  off doesn't list the workflow tools or operations at all.
 - `helix_foundry_send_pieces`: users who manage some workspace's connectors (owners, admins; send as
   themselves) and send tokens (own source only). Never service keys or agent registrations.
 - `not_found` means the caller can't see it (every denial of access looks like that). Something
