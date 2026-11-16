@@ -10,7 +10,7 @@ metadata:
 # Helix Foundry MCP
 
 Foundry connects a workspace's sources (Stripe, WorkOS, PostHog, GitHub, Linear, Cal.com, Granola,
-Slack, Notion, Google, PostgreSQL, MySQL, Amazon S3, API sources, documents), drafts an ontology over
+Slack, Notion, Google, Databuddy, PostgreSQL, MySQL, Amazon S3, API sources, documents), drafts an ontology over
 them, and loads it into a Helix database. These tools read Foundry, ask its query agent, preview
 dashboard tiles, send pieces to API sources, and record use case runs. They change nothing else;
 asking spends the workspace's question budget. `REFERENCE.md` has field-level detail: versions,
