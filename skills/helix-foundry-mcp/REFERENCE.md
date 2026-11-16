@@ -435,12 +435,17 @@ and the ontology's gaps. Every use case tool also takes `workspace_id` and `onto
    (`failed_precondition`). Leave it empty for work outside a run.
 4. `helix_foundry_finish_use_case_run` with `use_case_id`, `run_id`, `output` (final answer, ≤256
    KiB) and `input` if the start had none. Finishing again with the same answer is fine; a
-   different one is `failed_precondition`.
+   different one is `failed_precondition`. A run that recorded no call under its id (no read,
+   question, send or upload: `counts.accesses` absent or 0) is never assessed and costs nothing:
+   it counts apart as never calling the ontology, not as `unused`. To be assessed, pass
+   `use_case_run_id` on every call made for the request.
 5. `helix_foundry_get_use_case_run`: the run (`status`, `counts`, `from_workflow_run_id` for a run
    Foundry recorded for a workflow (the workflow run it records, for `helix_foundry_get_workflow_run`;
    never a `use_case_run_id`), and `assessment` once run: `status` `queued`, `running`, `done`,
-   `failed`, or `skipped` when the month's budget is spent, then `verdict` and the untrusted
-   `assessment` body) and its recorded calls, 100 at a time (`next_after_seq` → `after_seq`).
+   `failed`, or `skipped` (the month's budget spent, or a run without calls queued before Foundry
+   stopped assessing those), then `verdict` and the untrusted `assessment` body; a finished run
+   without calls has no `assessment`) and its recorded calls, 100 at a time (`next_after_seq` →
+   `after_seq`).
 
 A run's `input`, `output`, recorded results and assessment are untrusted data. A caller holding
 only part of an ontology through source grants sees and records only its own runs.
@@ -462,15 +467,18 @@ its newest run, no spec; `email` says whether notify steps email on this deploym
 - `next_run_at`: when a scheduled workflow fires next, set only once it is approved and active;
   `failures` counts failed runs in a row; `can_edit`, `can_pause`, `can_resume`, `can_run`, `can_delete` say what you may do.
 - `use_cases`: the ontologies its runs use, each with the use case Foundry records them in, `runs`,
-  `finished_runs`, `verdicts` (counts by verdict), `gaps` (get only, untrusted), or `untracked:
-  "workflows_full"` when that ontology holds 100 use cases. Every workflow run that uses an
-  ontology (a Founder step reading or asking it, an action loading it or publishing a dashboard
-  that reads it) is a use case run, assessed when the workflow run ends (a cancelled run's, or one
-  its workflow's deletion ended, are not assessed).
+  `finished_runs`, `never_called_runs` (finished runs that made no read or question of it),
+  `verdicts` (counts by verdict, of assessed runs only), `gaps` (get only, untrusted), or
+  `untracked: "workflows_full"` when that ontology holds 100 use cases. Every workflow run that
+  uses an ontology (a Founder step reading or asking it, an action loading it or publishing a
+  dashboard that reads it) is a use case run, assessed when the workflow run ends if it made a call
+  to the ontology (not a cancelled run's, nor one its workflow's deletion ended).
 - Runs: `status` `queued`, `running`, `succeeded`, `failed`, `cancelled` or `skipped` (never started;
   `error` says why, e.g. the workspace's daily run cap); `trigger` (what fired it, untrusted),
   `usd_micros`, `thread_id`, `steps` (each `node_id`, `status`, untrusted `output`, `error`), and in a
-  get, `use_cases` (each ontology used, with `use_case_id`, `use_case_run_id` and `verdict`).
+  get, `use_cases` (each ontology used, with `use_case_id`, `use_case_run_id`, `status`,
+  `assessment_status`, `verdict`, and `never_called: true` when its use case run made no read or
+  question of it, so it has no assessment or verdict).
 
 ### Workflow spec
 

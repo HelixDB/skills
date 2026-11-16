@@ -226,7 +226,9 @@ Only when the user set one up or asks you to record your work: `helix_foundry_li
 `helix_foundry_create_use_case`), start a run per request (`helix_foundry_start_use_case_run`,
 `use_case_id`), pass its id as `use_case_run_id` to reads, asks, sends and upload completions, then
 `helix_foundry_finish_use_case_run` (`use_case_id`, `run_id`, `output`) with your answer; `helix_foundry_get_use_case_run` gives the
-assessment. A use case of `origin: "workflow"` is Foundry's record of a workflow's runs: never start
+assessment. A run that made no read, ask, send or upload under its `use_case_run_id` is never
+assessed (no `assessment`) and counts apart as never calling the ontology, so pass the id on every
+call. A use case of `origin: "workflow"` is Foundry's record of a workflow's runs: never start
 or finish its runs (REFERENCE.md, Use cases).
 
 ## Workflows and dashboards
@@ -237,8 +239,10 @@ Read them here; create, change, run, pin, publish or delete them with helix-foun
   what you may do: `can_edit`, `can_pause`, `can_resume`, `can_run`, `can_delete`; no spec),
   `helix_foundry_get_workflow` (`spec`, `revision`, `use_cases`), `helix_foundry_list_workflow_runs`,
   `helix_foundry_get_workflow_run` (each step's `status`, `output`, `error`; the ontologies it used
-  with their use case run and verdict). Status `needs_approval` = its owner must approve its spec at
-  its `url` before it runs; no tool approves (REFERENCE.md, Workflows).
+  with their use case run and verdict, or `never_called` when that run made no read or question of
+  it, so it isn't assessed; the workflow's `use_cases` count those as `never_called_runs`). Status
+  `needs_approval` = its owner must approve its spec at its `url` before it runs; no tool approves
+  (REFERENCE.md, Workflows).
 - **Dashboards**: `helix_foundry_list_dashboards` (pinned first, `can_create`),
   `helix_foundry_get_dashboard` (`spec`, `revision`, `share`), `helix_foundry_preview_dashboard_tile`
   (reads one tile once, as you; needs query read on its ontology). To share a dashboard, give its
