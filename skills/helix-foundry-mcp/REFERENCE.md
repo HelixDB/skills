@@ -518,11 +518,21 @@ A dashboard holds queries, never data: each tile is one typed query of an ontolo
 every viewer reads as themselves (a source grantee sees only pinned dashboards). Read with
 `helix_foundry_list_dashboards` (pinned first, no specs, `can_create`) and
 `helix_foundry_get_dashboard` (`spec`, `revision`, `pinned`, `can_edit`, `can_pin`, `can_publish`,
-`can_unpublish`, `can_delete`, `share`, `url`).
+`publish_block`, `can_unpublish`, `can_delete`, `share`, `url`).
 
-`share` is present while it has a public link: `published: true`, `spec_revision` (the revision the
-snapshot shows; older than `revision` after an edit, until published again), `published_at`. **No
-tool returns the link**: send the user to the dashboard's `url`, where owners and admins copy it.
+**Sharing.** Inside the workspace, share the dashboard's `url` (its page in Foundry): every member
+who opens it signs in and reads it live, as themselves. That is what to give people. A public link
+is optional, for people outside the workspace: a snapshot of every tile as its publisher saw it,
+shown to anyone with the link without sign-in. Only owners and admins publish one, and **no tool
+returns the link**: they copy it from the `url` page.
+
+- `publish_block`, when `can_publish` is false: `admin_only` (only owners and admins publish),
+  `workspace_off` (an owner turned public links off for the workspace, in Foundry's Settings ›
+  Sharing; no tool changes it) or `unavailable` (this host has none).
+- `share`, while it has a public link: `published: true`, `status` (`live` shows the snapshot;
+  `expired`: publishing again makes a new link; `workspace_off`; `unavailable`; only `live` shows
+  anything), `expires_at` (absent: never), `spec_revision` (the revision the snapshot shows; older
+  than `revision` after an edit, until published again), `published_at`.
 
 ### Dashboard spec
 

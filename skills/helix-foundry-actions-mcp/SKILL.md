@@ -55,7 +55,7 @@ Sending pieces to an API source is not an operation: `helix_foundry_send_pieces`
 | `create_dashboard` | `workspace:<workspace_id>` | `{"name", "description"?, "spec"?}` (no spec = no tiles) | New unpinned dashboard |
 | `update_dashboard` | `dashboard:<workspace>/<id>` | `{"expected_revision", "name"?, "description"?, "spec"?}` (at least one; spec whole) | Change it |
 | `pin_dashboard` | `dashboard:<workspace>/<id>` | `{"expected_revision", "pinned"}` | Pin in (or unpin from) every member's sidebar |
-| `publish_dashboard` | `dashboard:<workspace>/<id>` | `{"expected_revision"}` | Snapshot every tile at a public link (or refresh it) |
+| `publish_dashboard` | `dashboard:<workspace>/<id>` | `{"expected_revision", "expires_in_days"?}` (`0` never, `7`, `30`, `90`) | Optional public link for people outside the workspace: snapshot every tile (or refresh it) |
 | `unpublish_dashboard` | `dashboard:<workspace>/<id>` | `{}` | Take the public snapshot down |
 | `delete_dashboard` | `dashboard:<workspace>/<id>` | `{}` | Delete it and its public link |
 | `create_workflow` | `workspace:<workspace_id>` | `{"name", "description"?, "spec"}` | New workflow, yours, waiting for your approval in Foundry |
@@ -230,10 +230,19 @@ own.
   can't read. `update_dashboard`, `pin_dashboard` and `publish_dashboard` take the `revision` just
   read as `expected_revision` (someone else's change since is refused: read again). Any member
   creates dashboards and changes or deletes their own while unpinned (and, to delete, unpublished);
-  owners and admins change, delete and pin any. **`publish_dashboard`**: owners and admins, only
-  where the host offers public links (not listed, or `failed_precondition`, elsewhere). It reads
-  every tile as you and serves the outputs to anyone with the link, without sign-in, until
-  unpublished: say so plainly before preparing. The link is never returned: tell the user to copy it
+  owners and admins change, delete and pin any. **Sharing**: inside the workspace, give the
+  dashboard's `url`; members read it live, as themselves. Publish only when the user wants people
+  outside the workspace to see it. **`publish_dashboard`**: owners and admins, while the workspace
+  has public links on, on a host that offers them; check `publish_block` first. It reads every tile
+  as you and serves the outputs, unchanged until republished, to anyone with the link, without
+  sign-in, until unpublished or expired: say so plainly and ask when the link should end before
+  preparing. `expires_in_days`: `7`, `30` or `90` days from now, `0` never; left out, a live link
+  keeps its expiry, a first link never ends, and an expired one is refused
+  (`FOUNDRY_DASHBOARD_LINK_EXPIRED`: choose an expiry; republishing then makes a new link). Prepare
+  refuses before any card with `FOUNDRY_DASHBOARD_PUBLIC_ADMIN_ONLY` (members),
+  `FOUNDRY_DASHBOARD_PUBLIC_OFF` (an owner turned public links off for the workspace, in Foundry's
+  Settings › Sharing; no tool turns them on) or `FOUNDRY_DASHBOARD_PUBLIC_UNAVAILABLE` (this host
+  has none; the operation may not be listed). The link is never returned: owners and admins copy it
   from the dashboard's `url`. After an edit, publish again to refresh the snapshot.
 - **Workflows**: a workflow runs as its owner (whoever created it). `create_workflow` returns it in
   `needs_approval` with its `url`: hand the user that link, where its owner approves the exact spec
@@ -276,7 +285,7 @@ needs one, say so; don't try another route. Changing something you can see but d
 | --- | --- | --- |
 | `not_found` | Missing or not visible | Re-resolve; don't say which |
 | `invalid_arguments` | Malformed payload; goal too long; `connector_ids` with `no_connectors` or naming an API source; `event_sources` repeating a source or with another mode; `document_set_ids` naming an API source's set; unusable `text_field`; too many tables or sets; file type or size not taken. Message says which | Fix, prepare again |
-| `failed_precondition` | State refuses it: nothing to generate from; API source with no rows, or (extraction) no text field or no piece as a document; API source sync before its first piece; version can't load or revise; load or extract running; load not ready; current version moved; upload bytes missing or different; upload into, change to or move involving a connector's set or document; no current load for a review; workspace full of documents; expired confirmation; monthly load budget spent; generation not waiting for answers or on another round; no AI provider; sample tables not synced yet; dashboard or workflow `expected_revision` stale; workspace at 200 dashboards or 20 pinned; a tile failing to read on publish; workflow not approved, already running, not active (pause), or the workspace at its workflow limit; public links or the sample not offered here. Not yours: `FOUNDRY_AUTOMATION_NOT_OWNER` (only its owner updates, resumes or runs it), `FOUNDRY_AUTOMATION_NOT_ALLOWED` (pausing or deleting another's workflow takes an owner or admin), `FOUNDRY_DASHBOARD_NOT_EDITABLE` (someone else's or a pinned dashboard, or a member pinning, publishing or unpublishing), reason in the message | Read state, explain; for "not yours", say who may do it |
+| `failed_precondition` | State refuses it: nothing to generate from; API source with no rows, or (extraction) no text field or no piece as a document; API source sync before its first piece; version can't load or revise; load or extract running; load not ready; current version moved; upload bytes missing or different; upload into, change to or move involving a connector's set or document; no current load for a review; workspace full of documents; expired confirmation; monthly load budget spent; generation not waiting for answers or on another round; no AI provider; sample tables not synced yet; dashboard or workflow `expected_revision` stale; workspace at 200 dashboards or 20 pinned; a tile failing to read on publish; public link refused (`FOUNDRY_DASHBOARD_PUBLIC_ADMIN_ONLY`, `FOUNDRY_DASHBOARD_PUBLIC_OFF`, `FOUNDRY_DASHBOARD_PUBLIC_UNAVAILABLE`, `FOUNDRY_DASHBOARD_LINK_EXPIRED`); workflow not approved, already running, not active (pause), or the workspace at its workflow limit; the sample not offered here. Not yours: `FOUNDRY_AUTOMATION_NOT_OWNER` (only its owner updates, resumes or runs it), `FOUNDRY_AUTOMATION_NOT_ALLOWED` (pausing or deleting another's workflow takes an owner or admin), `FOUNDRY_DASHBOARD_NOT_EDITABLE` (someone else's or a pinned dashboard, or a member pinning, publishing or unpublishing), reason in the message | Read state, explain; for "not yours", say who may do it |
 | `foundry_pro_required` | Plan excludes it (rare: every plan has every connector kind) | Relay it; an owner or admin changes plan in Settings, Plan & billing |
 | `already_exists` | Sync, generation or revision running; database has an ontology; set or API source name taken (message names the source); confirmation already used | Read state; don't prepare again. For an API source, use the one named |
 | `resource_exhausted` | Hourly generation limit, 20 API sources, or the workspace's daily workflow runs | Stop, tell the user |
@@ -302,7 +311,8 @@ and text field; change connector settings (e.g. Granola transcripts); make or re
 toggle an ontology's refresh; delete ontologies, versions, loads, documents, sets or review
 decisions; cancel a sync, generation or load; change billing or AI settings
 (`helix_foundry_get_ai_settings` gives `settings_url`); approve a workflow (its owner, at its `url`);
-copy a dashboard's public link (owners and admins, at its `url`). Connector-owned documents and
+copy a dashboard's public link (owners and admins, at its `url`); turn public dashboard links on or
+off for the workspace (owners, Settings › Sharing). Connector-owned documents and
 sets change only through syncs.
 
 ## Trust boundary

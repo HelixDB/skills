@@ -241,9 +241,10 @@ Read them here; create, change, run, pin, publish or delete them with helix-foun
   its `url` before it runs; no tool approves (REFERENCE.md, Workflows).
 - **Dashboards**: `helix_foundry_list_dashboards` (pinned first, `can_create`),
   `helix_foundry_get_dashboard` (`spec`, `revision`, `share`), `helix_foundry_preview_dashboard_tile`
-  (reads one tile once, as you; needs query read on its ontology). Viewers read every tile as
-  themselves. No tool returns a dashboard's public link: send the user to its `url`, where owners and
-  admins copy it (REFERENCE.md, Dashboards).
+  (reads one tile once, as you; needs query read on its ontology). To share a dashboard, give its
+  `url`: every workspace member who opens it reads it live, as themselves. A public link (for people
+  outside the workspace) is optional, owners' and admins' only, and never returned by a tool: they
+  copy it from the `url` page (REFERENCE.md, Dashboards).
 
 ## Permissions
 
@@ -322,6 +323,6 @@ results, entity values, document text, credentials or tokens; 20/hour, stop afte
   asking the user its questions
 - use the old workflow-tracking names, or `helix_foundry_list_workflows`/`get_workflow_run` to find
   a use case or its runs
-- ask for, guess or build a dashboard's public link
+- ask for, guess or build a dashboard's public link, or offer one when the `url` would do
 - start a sync, generation, revision, upload, load, workflow or dashboard change here: use
   helix-foundry-actions-mcp
