@@ -168,8 +168,9 @@ saved model work, waits for the next load; a reject goes to no load. A `prop` de
 setting work runs on now; absent on a local install no owner set up, where model work waits),
 `pending` (a save waiting for its test), `last_failed` (a save whose test failed, with `failure`),
 each with `source` (`default` or `workspace`), `kind` (`anthropic`, `openai`, `azure_openai`,
-`bedrock`, `ollama`, `openai_compatible`), `provider`, `models` (`draft`, `ask`, `extract`,
-`verify`), `test`, and `assistant` (whether Founder, Foundry's own agent, can run on it);
+`bedrock`, `cohere`, `ollama`, `openai_compatible`), `provider`, `models` (`draft`, `ask`,
+`extract`, `verify`), `test`, and `assistant` (whether Founder, Foundry's own agent, can run on it:
+`passed`, `auth`, `refused`, `no_tool_call`, or `unchecked`);
 `pro_required`; `settings_url`. Read only, keys never returned: only an owner changes it, at
 `settings_url`. Never take a key in chat.
 
