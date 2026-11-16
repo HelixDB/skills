@@ -101,9 +101,10 @@ say which.
 
 ## Links
 
-Ontologies carry `url`, `explore_url` (graph) and `ask_url`; versions, generations, loads, listed
-connectors, workflows, workflow runs and dashboards carry `url`. All are absolute, ending `?workspace=<id>`. Give the matching link
-when the user should look at something or do something only the website does; never build one.
+Ontologies carry `url`, `explore_url` (graph) and `ask_url` (Founder, Foundry's agent, to ask in
+Foundry); versions, generations, loads, listed connectors, workflows, workflow runs and dashboards
+carry `url`. All are absolute, ending `?workspace=<id>`. Give the matching link when the user should
+look at something or do something only the website does; never build one.
 
 ## Pick the tool
 

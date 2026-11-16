@@ -361,7 +361,7 @@ counts cover.
 
 ## 8. Hand back
 
-Read the ontology again; give `url` (Foundry page), `explore_url` (graph), `ask_url` (Ask). Recap
+Read the ontology again; give `url` (Foundry page), `explore_url` (graph), `ask_url` (Founder, to ask). Recap
 in a few lines: data connected, API sources made, documents uploaded, version loaded, what the load
 read (step 7, with unread sets), anything skipped or failed. Per API source: `token_url` again if
 apps or agents will send; `send_url` if returned (apps without an MCP client); and when later
