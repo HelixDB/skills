@@ -72,9 +72,10 @@ Missing tools: see Sign-in. Never substitute direct API calls, database keys or 
   its newest pieces as documents in its own set. A generation reads it only via `event_sources`
   (`structured` mappings or `extraction`).
 - A **workflow** is the workspace's: one trigger (by hand, a schedule, a sync ending, documents
-  arriving in a set, a load becoming ready, or a draft ending) and steps Foundry runs as its owner. A **dashboard** is the workspace's:
-  tiles, each a typed query of an ontology's load, which every viewer reads as themselves. A **use
-  case** belongs to one ontology: an agent's task whose runs record what the agent read and wrote.
+  arriving in a set, a load becoming ready, or a draft ending) and steps Foundry runs as its owner.
+  A **dashboard** is the workspace's: tiles, each a typed query of an ontology's load, which every
+  viewer reads as themselves. A **use case** belongs to one ontology: an agent's task whose runs
+  record what the agent read and wrote.
 
 ## Resolve the ontology
 
