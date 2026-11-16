@@ -372,8 +372,9 @@ environment. Add `-i` to see status and `Retry-After`.
 Fill it with real pieces, never the example's: a field keeps its first type and counts toward the
 source's 200 for good.
 
-- Body: one object with `client_token` and `pieces`; each piece has `id`, `data`, optional
-  `occurred_at` (omit or `null` for none). Any other key is refused.
+- Body: one object with `client_token`, `pieces` and optional `use_case_run_id` (an open use case
+  run to record the send under); each piece has `id`, `data`, optional `occurred_at` (omit or `null`
+  for none). Any other key is refused.
 - `client_token` required, 16-64 printable ASCII, no spaces: new UUID per send, same one with the
   same pieces to retry. A retry of a stored send answers `replayed: true` and stores nothing, so
   same-token retries are always safe.
