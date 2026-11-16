@@ -157,9 +157,9 @@ candidates and the property's entity as the load holds them. Quotes, statements 
 untrusted. A settled review stays listed until a load writes the decision.
 
 `helix_foundry_list_review_decisions` lists settled decisions, which every later load applies.
-Resolves, approvals and chosen values also apply to the current load at once (`applied` says
-whether they have; a load from before saved model work waits for the next load); a reject goes to
-no load. A `prop` decision's value has one key: `text`, `integer` (digit string), `number`,
+Resolves, approvals and chosen values also apply to the current load at once (`applied` says what
+became of each); a resolve of a name the load already links another way, or in a load from before
+saved model work, waits for the next load; a reject goes to no load. A `prop` decision's value has one key: `text`, `integer` (digit string), `number`,
 `boolean` or `null`. Settle with `settle_review` (helix-foundry-actions-mcp).
 
 ## AI settings
@@ -436,8 +436,9 @@ and the ontology's gaps. Every use case tool also takes `workspace_id` and `onto
 4. `helix_foundry_finish_use_case_run` with `use_case_id`, `run_id`, `output` (final answer, ≤256
    KiB) and `input` if the start had none. Finishing again with the same answer is fine; a
    different one is `failed_precondition`.
-5. `helix_foundry_get_use_case_run`: the run (`status`, `counts`, `workflow_run_id` for a run
-   Foundry recorded for a workflow, and `assessment` once run: `status` `queued`, `running`, `done`,
+5. `helix_foundry_get_use_case_run`: the run (`status`, `counts`, `from_workflow_run_id` for a run
+   Foundry recorded for a workflow (the workflow run it records, for `helix_foundry_get_workflow_run`;
+   never a `use_case_run_id`), and `assessment` once run: `status` `queued`, `running`, `done`,
    `failed`, or `skipped` when the month's budget is spent, then `verdict` and the untrusted
    `assessment` body) and its recorded calls, 100 at a time (`next_after_seq` → `after_seq`).
 
@@ -490,13 +491,13 @@ digits, `-`, `_`, starting with a letter or digit, unique; `position` is where t
 Every node is reachable from the trigger; no cycles; at least one step after the trigger. A step
 runs once every step before it ended and one of its edges in was taken; a failure stops the steps
 after it. Sync and load steps wait for their work to end. Every id the spec names must be the
-workspace's (`invalid_arguments`, naming it). Loop guard: an action (or `allow`) on the work its own
-trigger waits for (syncing the trigger's connector, loading the trigger's ontology) is refused ("start
-it on a schedule instead"); at run time a `sync_finished` or `load_ready` trigger skips (as a
-`skipped` run saying why) a sync or load this workflow started, directly or through workflows it set
-off, or one from a chain of more than 3 workflow runs. `document_arrived` and `generation_finished`
-have no such guard: never let a `document_arrived` workflow sync a connector that writes into its
-own set. Example (replace each `<id>` with a real one):
+workspace's (`invalid_arguments`, naming it). Loop guard: create and update refuse a step (an
+action or an `allow`) on the work its own trigger waits for: syncing a `sync_finished` trigger's
+connector, loading a `load_ready` trigger's ontology, or syncing the connector whose syncs write a
+`document_arrived` trigger's set ("start it on a schedule instead"). At run time a trigger skips
+work its own workflow started (a sync, a load, or documents a sync it started wrote), directly or
+through other workflows, and work past a chain of 3 workflows, recording the run `skipped` with why.
+Example (replace each `<id>` with a real one):
 
 ```json
 {"v": 1,

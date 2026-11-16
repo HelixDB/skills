@@ -143,7 +143,9 @@ own.
   true`) until it succeeds (generating before is `failed_precondition`), then generate with
   `{"sample": "acme", "connector_ids": [connector_id], "document_set_ids": [document_set_id]}`. Name
   the ontology "Acme Corp customers" so Foundry shows it as the sample. Hosts without a sample
-  database refuse both (`failed_precondition`); a workspace with no AI provider is refused too.
+  database refuse both (`failed_precondition`). The sample draft calls no model, so it needs no AI
+  provider; `add_sample_data` does on a local install with none (loads read its documents with the
+  workspace's model: `failed_precondition`, `FOUNDRY_AI_NOT_CONFIGURED`).
 - **`answer_generation_questions`**: only for a generation in `needs_input`, with its current
   `question_round` as `round` (read the generation right before). Put each question to the user one
   at a time and send exactly their answers: option labels as listed, or their own words (a
@@ -216,8 +218,9 @@ own.
   property). `release`: `{"release": {"statement_hash"}}` approves the held statement,
   `{"reject": {"statement_hash"}}` says it is wrong, with the review's `statement_hash`. `stale` or
   `none`: nothing to settle. Every decision but a reject also applies to the current load at once
-  (`applied` in the result and `helix_foundry_list_review_decisions` says whether it has; a load from
-  before saved model work waits for the next load) and every later load applies it; a resolve
+  (`applied` in the result and `helix_foundry_list_review_decisions` says what became of it) and
+  every later load applies it; a resolve of a name the load already links another way, or in a load
+  from before saved model work, waits for the next load. A resolve
   choosing an entity links that name to it in every document where the load would ask,
   `not_in_data` only in the review's document. A reject is only recorded. Only a person settles a
   review.
@@ -242,7 +245,11 @@ own.
   run is live or before approval; past the workspace's daily runs, `resource_exhausted`. Validate
   the spec against helix-foundry-mcp REFERENCE.md (Workflow spec); prepare's `invalid_arguments`
   says what's wrong. Keep `allow` lists to what the user agreed the Founder step may do unasked.
-  Follow a run with `helix_foundry_list_workflow_runs` / `helix_foundry_get_workflow_run`.
+  A step may not sync or load what its trigger waits on (including the connector whose syncs write
+  a `document_arrived` trigger's set); triggers skip work their own workflow set off (helix-foundry-mcp
+  REFERENCE.md, Workflow spec). Where the host has workflows off, the workflow operations and read
+  tools aren't listed. Follow a run with `helix_foundry_list_workflow_runs` /
+  `helix_foundry_get_workflow_run`.
 
 ## Permissions
 
@@ -260,8 +267,8 @@ Service keys can run `set_current_version`, `create_load`, `set_current_load`, `
 `upload_document` (and completion), set actions and `move_document` on ontologies whose project
 grants them query write. Syncs, generations and answers to their questions, the sample, new
 ontologies, API sources, settling reviews, dashboards and workflows need a user: if a headless run
-needs one, say so; don't try another route. Refusals for someone else's workflow or dashboard come
-back as `not_found`.
+needs one, say so; don't try another route. Changing something you can see but don't own is
+`failed_precondition` with its reason (below); `not_found` means you can't see it.
 
 ## Errors
 
@@ -269,7 +276,7 @@ back as `not_found`.
 | --- | --- | --- |
 | `not_found` | Missing or not visible | Re-resolve; don't say which |
 | `invalid_arguments` | Malformed payload; goal too long; `connector_ids` with `no_connectors` or naming an API source; `event_sources` repeating a source or with another mode; `document_set_ids` naming an API source's set; unusable `text_field`; too many tables or sets; file type or size not taken. Message says which | Fix, prepare again |
-| `failed_precondition` | State refuses it: nothing to generate from; API source with no rows, or (extraction) no text field or no piece as a document; API source sync before its first piece; version can't load or revise; load or extract running; load not ready; current version moved; upload bytes missing or different; upload into, change to or move involving a connector's set or document; no current load for a review; workspace full of documents; expired confirmation; monthly load budget spent; generation not waiting for answers or on another round; no AI provider; sample tables not synced yet; dashboard or workflow `expected_revision` stale; workspace at 200 dashboards or 20 pinned; a tile failing to read on publish; workflow not approved, already running, not active (pause), or the workspace at its workflow limit; workflows, public links or the sample not offered here | Read state, explain |
+| `failed_precondition` | State refuses it: nothing to generate from; API source with no rows, or (extraction) no text field or no piece as a document; API source sync before its first piece; version can't load or revise; load or extract running; load not ready; current version moved; upload bytes missing or different; upload into, change to or move involving a connector's set or document; no current load for a review; workspace full of documents; expired confirmation; monthly load budget spent; generation not waiting for answers or on another round; no AI provider; sample tables not synced yet; dashboard or workflow `expected_revision` stale; workspace at 200 dashboards or 20 pinned; a tile failing to read on publish; workflow not approved, already running, not active (pause), or the workspace at its workflow limit; public links or the sample not offered here. Not yours: `FOUNDRY_AUTOMATION_NOT_OWNER` (only its owner updates, resumes or runs it), `FOUNDRY_AUTOMATION_NOT_ALLOWED` (pausing or deleting another's workflow takes an owner or admin), `FOUNDRY_DASHBOARD_NOT_EDITABLE` (someone else's or a pinned dashboard, or a member pinning, publishing or unpublishing), reason in the message | Read state, explain; for "not yours", say who may do it |
 | `foundry_pro_required` | Plan excludes it (rare: every plan has every connector kind) | Relay it; an owner or admin changes plan in Settings, Plan & billing |
 | `already_exists` | Sync, generation or revision running; database has an ontology; set or API source name taken (message names the source); confirmation already used | Read state; don't prepare again. For an API source, use the one named |
 | `resource_exhausted` | Hourly generation limit, 20 API sources, or the workspace's daily workflow runs | Stop, tell the user |

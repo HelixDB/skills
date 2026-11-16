@@ -257,11 +257,13 @@ Read them here; create, change, run, pin, publish or delete them with helix-foun
   ontology management (users only).
 - Workflows, dashboards and AI settings are users-only (workspace read); service keys and source
   grantees see no workflows, and only pinned dashboards (no creating or changing them). Previewing a
-  tile also needs query read on its ontology. A host with workflows off refuses their reads
-  (`failed_precondition`).
+  tile also needs query read on its ontology. A host with workflows off doesn't list the workflow
+  tools or operations at all.
 - `helix_foundry_send_pieces`: users who manage some workspace's connectors (owners, admins; send as
   themselves) and send tokens (own source only). Never service keys or agent registrations.
-- Every denial looks like `not_found`.
+- `not_found` means the caller can't see it (every denial of access looks like that). Something
+  the caller sees but may not change (someone else's workflow or dashboard) is
+  `failed_precondition` with a reason (helix-foundry-actions-mcp, Errors).
 
 ## Errors
 
@@ -269,7 +271,7 @@ Read them here; create, change, run, pin, publish or delete them with helix-foun
 | --- | --- |
 | `not_found` | Missing or not visible |
 | `invalid_arguments` | Malformed or out-of-contract argument; fix it from the message and the read guide |
-| `failed_precondition` | State refuses it: no current load, load can't be read or asked, definition too large, monthly question budget spent, question already ended, API source full, paused or at its field limit, use case run already finished (or finished with another answer, or Foundry's own for a workflow), workflows not offered here |
+| `failed_precondition` | State refuses it: no current load, load can't be read or asked, definition too large, monthly question budget spent, question already ended, API source full, paused or at its field limit, use case run already finished (or finished with another answer, or Foundry's own for a workflow) |
 | `account_needs_sign_in` | A connector signed in at its provider needs signing in again: `helix_foundry_connect` with its kind and `connector_id` |
 | `resource_exhausted` | Too many or too large reads, hourly question limit, send rate or daily send cap, a use case run past its 1,000 recorded calls (start another) |
 | `backend_unavailable` | Retry shortly (a send: same `client_token`) |
