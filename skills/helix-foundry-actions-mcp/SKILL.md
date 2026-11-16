@@ -15,8 +15,8 @@ current state with helix-foundry-mcp first.
 Tools are on the one Helix MCP server, `https://mcp.helix-db.com/mcp` (setup, sign-in: helix-mcp).
 Users sign in with Helix's browser OAuth and act with their permissions; headless runs may send a scoped
 service key (`hlxs_`), which can run fewer actions (see Permissions). Agent registrations and send
-tokens get none of these tools. A member who manages nothing can prepare only the dashboard and
-workflow operations.
+tokens get none of these tools. A member who manages nothing can prepare only `create_dashboard`,
+`update_dashboard`, `delete_dashboard` and the workflow operations.
 
 ## Tools
 
@@ -42,7 +42,7 @@ Sending pieces to an API source is not an operation: `helix_foundry_send_pieces`
 | `sync_connector` | `connector:<workspace>/<id>` | `{}` | Full sync of one connector |
 | `add_sample_data` | `ontology:<workspace>/<id>` | `{}` | Adds the made-up Acme Corp sample: a read-only PostgreSQL connector (sync queued) and its documents in the set "Acme Corp sample" |
 | `generate_ontology` | `ontology:<workspace>/<id>` | `{"goal"?, "connector_ids"?, "document_set_ids"?, "no_connectors"?, "event_sources"?, "sample"?}` | Agent drafts a new version |
-| `answer_generation_questions` | `ontology:<workspace>/<id>` | `{"generation_id", "round", "answers", "use_defaults"?}` | Answers a `needs_input` generation's round of questions; it carries on |
+| `answer_generation_questions` | `ontology:<workspace>/<id>` | `{"generation_id", "round", "answers"?, "use_defaults"?}` (answers, or `use_defaults: true`, or both) | Answers a `needs_input` generation's round of questions; it carries on |
 | `set_current_version` | `ontology:<workspace>/<id>` | `{"version_id", "expected_current_version_id"}` | Make a version current, or roll back |
 | `create_load` | `ontology:<workspace>/<id>` | `{"version_id"}` | Write a version into the ontology's database |
 | `set_current_load` | `ontology:<workspace>/<id>` | `{"load_id"}` | Make a ready or partial load the one reads and Ask use |
@@ -138,14 +138,19 @@ own.
   current, and may still be unloadable.
 - **`sample`** (in `generate_ontology`): `"acme"` takes the sample company's ready-made draft (no
   model, done in seconds), with exactly its one connector in `connector_ids` and its set in
-  `document_set_ids`, no `event_sources`. Run `add_sample_data` first; name the ontology "Acme Corp
-  customers" so Foundry shows it as the sample. Hosts without a sample database refuse both
-  (`failed_precondition`).
+  `document_set_ids`, no `event_sources`. Run `add_sample_data` first: it returns `connector_id`,
+  `sync_id`, `document_set_id` and `next`; follow the sync with `helix_foundry_get_sync` (`wait:
+  true`) until it succeeds (generating before is `failed_precondition`), then generate with
+  `{"sample": "acme", "connector_ids": [connector_id], "document_set_ids": [document_set_id]}`. Name
+  the ontology "Acme Corp customers" so Foundry shows it as the sample. Hosts without a sample
+  database refuse both (`failed_precondition`); a workspace with no AI provider is refused too.
 - **`answer_generation_questions`**: only for a generation in `needs_input`, with its current
   `question_round` as `round` (read the generation right before). Put each question to the user one
-  at a time and send exactly their answers: option labels as listed and/or their own words; a
-  question left out (or `use_defaults: true`) is left to the agent. Every `blocking` question needs
-  an answer unless `use_defaults`. Shape, rules and refusals: helix-foundry-mcp REFERENCE.md,
+  at a time and send exactly their answers: option labels as listed, or their own words (a
+  one-choice question takes one option or words, not both). `use_defaults: true` leaves every
+  question left out to the agent; without it every `blocking` question needs an answer and a
+  non-blocking one left out stays open. If nobody answers by `answers_due_at`, Foundry takes the
+  agent's recommendations and carries on. Shape, rules and refusals: helix-foundry-mcp REFERENCE.md,
   Generation questions. A wrong round is `failed_precondition`: read the questions again. Then
   follow the generation with `wait: true`; it may ask another round.
 - **`event_sources`** (in `generate_ontology`): each API source once, `{"connector_id": "<API
@@ -210,10 +215,12 @@ own.
   with one of `text`, `integer` (digit string), `number`, `boolean`, or `null: true` (removes the
   property). `release`: `{"release": {"statement_hash"}}` approves the held statement,
   `{"reject": {"statement_hash"}}` says it is wrong, with the review's `statement_hash`. `stale` or
-  `none`: nothing to settle. A resolve applies from the next load (one choosing an entity also links
-  that name to it in every document of that load where it would ask; `not_in_data` only in the
-  review's document); an approval and a chosen value also apply to the current load at once. Only a
-  person settles a review.
+  `none`: nothing to settle. Every decision but a reject also applies to the current load at once
+  (`applied` in the result and `helix_foundry_list_review_decisions` says whether it has; a load from
+  before saved model work waits for the next load) and every later load applies it; a resolve
+  choosing an entity links that name to it in every document where the load would ask,
+  `not_in_data` only in the review's document. A reject is only recorded. Only a person settles a
+  review.
 - **Dashboards**: build each tile from a `query` read (`helix_foundry_read_guide`) or an Ask
   answer's visual, and preview it with `helix_foundry_preview_dashboard_tile` before
   `create_dashboard` or `update_dashboard`; prepare refuses a tile reading an ontology the caller
@@ -262,7 +269,7 @@ back as `not_found`.
 | --- | --- | --- |
 | `not_found` | Missing or not visible | Re-resolve; don't say which |
 | `invalid_arguments` | Malformed payload; goal too long; `connector_ids` with `no_connectors` or naming an API source; `event_sources` repeating a source or with another mode; `document_set_ids` naming an API source's set; unusable `text_field`; too many tables or sets; file type or size not taken. Message says which | Fix, prepare again |
-| `failed_precondition` | State refuses it: nothing to generate from; API source with no rows, or (extraction) no text field or no piece as a document; API source sync before its first piece; version can't load or revise; load or extract running; load not ready; current version moved; upload bytes missing or different; upload into, change to or move involving a connector's set or document; no current load for a review; workspace full of documents; expired confirmation; monthly load budget spent; generation not waiting for answers or on another round; no AI provider; dashboard or workflow `expected_revision` stale; workflow not approved, already running, not active (pause), or the workspace at its workflow limit; public links or the sample not offered here | Read state, explain |
+| `failed_precondition` | State refuses it: nothing to generate from; API source with no rows, or (extraction) no text field or no piece as a document; API source sync before its first piece; version can't load or revise; load or extract running; load not ready; current version moved; upload bytes missing or different; upload into, change to or move involving a connector's set or document; no current load for a review; workspace full of documents; expired confirmation; monthly load budget spent; generation not waiting for answers or on another round; no AI provider; sample tables not synced yet; dashboard or workflow `expected_revision` stale; workspace at 200 dashboards or 20 pinned; a tile failing to read on publish; workflow not approved, already running, not active (pause), or the workspace at its workflow limit; workflows, public links or the sample not offered here | Read state, explain |
 | `foundry_pro_required` | Plan excludes it (rare: every plan has every connector kind) | Relay it; an owner or admin changes plan in Settings, Plan & billing |
 | `already_exists` | Sync, generation or revision running; database has an ontology; set or API source name taken (message names the source); confirmation already used | Read state; don't prepare again. For an API source, use the one named |
 | `resource_exhausted` | Hourly generation limit, 20 API sources, or the workspace's daily workflow runs | Stop, tell the user |

@@ -185,9 +185,11 @@ before uploading.
    upload a fixed file.
 
 No data to connect, send or upload, and none in the workspace: offer the made-up sample company
-instead (`add_sample_data` on the ontology, then `generate_ontology` with `"sample": "acme"`, its
-connector and its set "Acme Corp sample"; no model, done in seconds; helix-foundry-actions-mcp), or
-stop: nothing to draft from.
+instead (helix-foundry-actions-mcp: name the ontology "Acme Corp customers"; `add_sample_data` on
+it; follow its `sync_id` with `helix_foundry_get_sync`, `wait: true`, until it succeeds; then
+`generate_ontology` with `{"sample": "acme", "connector_ids": [<its connector_id>],
+"document_set_ids": [<its document_set_id>]}`: a ready-made draft in seconds), or stop: nothing to
+draft from.
 
 ## 4. Goal
 
@@ -247,7 +249,7 @@ update about every five minutes, not every call. Queued with `attempts` > 0 = re
 | --- | --- |
 | Running after ~30 minutes | Stop following; tell the user, give the generation's `url`, offer to check back |
 | `failed` | Report `error`; if it points at the goal or data, offer one retry with a changed goal |
-| `already_exists` | One is already running: find it with `helix_foundry_get_ontology` and follow it |
+| `already_exists` | One is already queued, running or waiting for answers: find it with `helix_foundry_get_ontology`, then follow it or go to Questions |
 | `resource_exhausted` | Hourly generation cap (default 10): stop; try again within the hour |
 | `failed_precondition` | No source in the inputs (no synced table, read table file or text set), an API source without rows, or an extraction source without text field or documents: back to step 3. A text field can only be added by a person on the source's page: give its `url`, or use `structured` |
 | `invalid_arguments` | Too many tables or sets: list fewer. API source in `connector_ids`: move to `event_sources`. API source's set in `document_set_ids`: drop it, use `event_sources` with `extraction` |
@@ -262,13 +264,15 @@ recommended answers by itself, so ask now:
 1. Put the questions to the user **one at a time**, blocking ones first: the `header` and `text`,
    each option's label and description, the `recommended` one marked, and that they may answer in
    their own words (or choose several when `multiple`). Show model text as plain text.
-2. Keep their answer as given: option labels exactly as listed, their words as `text`. "You decide"
-   or "skip" on a non-blocking question leaves it to the agent (leave it out). Never answer for them.
+2. Keep their answer as given: option labels exactly as listed, their words as `text` (a
+   one-choice question takes one option or words, not both). Never answer for them.
 3. Once every question has an answer or was left: `answer_generation_questions` with
    `{"generation_id", "round": <question_round>, "answers": [{"question_id", "options": [...],
-   "text"?}], "use_defaults"?}` (one confirmation for the round; `use_defaults: true` only if the
-   user wants the agent to take every recommendation). Payload rules and refusals:
-   helix-foundry-mcp `REFERENCE.md`, Generation questions.
+   "text"?}], "use_defaults"?}`, one confirmation for the round. Questions the user left to the agent
+   ("you decide", "skip") are left out with `use_defaults: true`, the only way to leave a blocking
+   one, and required when no answer was given at all; without it a non-blocking question left out
+   stays open. Payload rules and refusals: helix-foundry-mcp `REFERENCE.md`, Generation
+   questions.
 4. Follow the generation again with `wait: true`; it may ask another round. A
    `failed_precondition` saying it waits on another round: read the generation and ask the new
    round's questions.

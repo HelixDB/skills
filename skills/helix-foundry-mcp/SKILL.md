@@ -20,8 +20,8 @@ sources (send rules, extraction, send tokens, HTTP), use cases, workflows, dashb
 **Renamed (no aliases).** What these tools called *workflows* (an agent's recorded runs, measured
 on the ontology's Usage page) are now **use cases**: `helix_foundry_create_use_case`,
 `helix_foundry_list_use_cases`, `helix_foundry_start_use_case_run`,
-`helix_foundry_finish_use_case_run`, `helix_foundry_get_use_case_run`, with `use_case_id` and the
-run id passed as `use_case_run_id`. **Workflows** now means Foundry's step-by-step automations
+`helix_foundry_finish_use_case_run`, `helix_foundry_get_use_case_run`, with `use_case_id`; reads,
+asks, sends and upload completions take the run as `use_case_run_id` (finish and get take `run_id`). **Workflows** now means Foundry's step-by-step automations
 (trigger, then steps), which `helix_foundry_list_workflows`, `helix_foundry_get_workflow`,
 `helix_foundry_list_workflow_runs` and `helix_foundry_get_workflow_run` read. Two names were
 reused: `helix_foundry_list_workflows` and `helix_foundry_get_workflow_run` now read automations,
@@ -71,8 +71,8 @@ Missing tools: see Sign-in. Never substitute direct API calls, database keys or 
   with ids; Foundry merges them by id into its one table, `events`. With a text field it also keeps
   its newest pieces as documents in its own set. A generation reads it only via `event_sources`
   (`structured` mappings or `extraction`).
-- A **workflow** is the workspace's: one trigger (by hand, a schedule, or a sync, load, document
-  upload or draft ending) and steps Foundry runs as its owner. A **dashboard** is the workspace's:
+- A **workflow** is the workspace's: one trigger (by hand, a schedule, a sync ending, documents
+  arriving in a set, a load becoming ready, or a draft ending) and steps Foundry runs as its owner. A **dashboard** is the workspace's:
   tiles, each a typed query of an ontology's load, which every viewer reads as themselves. A **use
   case** belongs to one ontology: an agent's task whose runs record what the agent read and wrote.
 
@@ -118,7 +118,7 @@ when the user should look at something or do something only the website does; ne
 | A generation or revision, a revision's findings, a draft's open questions | `helix_foundry_get_generation` (`questions`, `question_round`) |
 | A load, its jobs, failures, what it read of the documents | `helix_foundry_get_load` (`documents`) |
 | Sets a version reads, what it left out or asks; which table a `src_…` id is | `helix_foundry_get_version` (`document_reads`, `definition.left_out`, `definition.questions`, `tables`) |
-| Open reviews of the current load (to settle) / settled decisions | `helix_foundry_list_reviews` / `helix_foundry_list_review_decisions` |
+| Reviews the current load holds (to settle; settled ones stay listed until a load writes them) / settled decisions | `helix_foundry_list_reviews` / `helix_foundry_list_review_decisions` |
 | Which provider and models the workspace's AI runs on | `helix_foundry_get_ai_settings` (read only) |
 | Past questions | `helix_foundry_list_questions` |
 | Exact records, counts, groups, paths | `helix_foundry_read_guide`, then a `query` read |
@@ -224,7 +224,7 @@ A generation cancelled on the website ends `cancelled`. A load in `deleting`/`de
 Only when the user set one up or asks you to record your work: `helix_foundry_list_use_cases` (or
 `helix_foundry_create_use_case`), start a run per request (`helix_foundry_start_use_case_run`,
 `use_case_id`), pass its id as `use_case_run_id` to reads, asks, sends and upload completions, then
-`helix_foundry_finish_use_case_run` with your answer; `helix_foundry_get_use_case_run` gives the
+`helix_foundry_finish_use_case_run` (`use_case_id`, `run_id`, `output`) with your answer; `helix_foundry_get_use_case_run` gives the
 assessment. A use case of `origin: "workflow"` is Foundry's record of a workflow's runs: never start
 or finish its runs (REFERENCE.md, Use cases).
 
@@ -255,7 +255,9 @@ Read them here; create, change, run, pin, publish or delete them with helix-foun
   starting, finishing and reading their runs need the same query read. Creating a use case needs
   ontology management (users only).
 - Workflows, dashboards and AI settings are users-only (workspace read); service keys and source
-  grantees see no workflows. Previewing a tile also needs query read on its ontology.
+  grantees see no workflows, and only pinned dashboards (no creating or changing them). Previewing a
+  tile also needs query read on its ontology. A host with workflows off refuses their reads
+  (`failed_precondition`).
 - `helix_foundry_send_pieces`: users who manage some workspace's connectors (owners, admins; send as
   themselves) and send tokens (own source only). Never service keys or agent registrations.
 - Every denial looks like `not_found`.
@@ -266,9 +268,9 @@ Read them here; create, change, run, pin, publish or delete them with helix-foun
 | --- | --- |
 | `not_found` | Missing or not visible |
 | `invalid_arguments` | Malformed or out-of-contract argument; fix it from the message and the read guide |
-| `failed_precondition` | State refuses it: no current load, load can't be read or asked, definition too large, monthly question budget spent, question already ended, API source full, paused or at its field limit, use case run already finished |
+| `failed_precondition` | State refuses it: no current load, load can't be read or asked, definition too large, monthly question budget spent, question already ended, API source full, paused or at its field limit, use case run already finished (or finished with another answer, or Foundry's own for a workflow), workflows not offered here |
 | `account_needs_sign_in` | A connector signed in at its provider needs signing in again: `helix_foundry_connect` with its kind and `connector_id` |
-| `resource_exhausted` | Too many or too large reads, hourly question limit, send rate or daily send cap |
+| `resource_exhausted` | Too many or too large reads, hourly question limit, send rate or daily send cap, a use case run past its 1,000 recorded calls (start another) |
 | `backend_unavailable` | Retry shortly (a send: same `client_token`) |
 | `internal_error` | Report it; don't loop |
 

@@ -68,11 +68,14 @@ decide" means leave it to the agent. Then one `answer_generation_questions` oper
   characters once trimmed; `options` are labels exactly as listed (`[]` when none).
 - No options: `text` only. One choice (`multiple` false): one option or `text`, not both.
   `multiple`: one or more options, with or without `text`, or `text` alone.
-- Leave a question out to leave it to the agent. Every `blocking` question needs an answer unless
-  `use_defaults: true`, which leaves every question left out to the agent (its recommended answer or
-  its own choice). `answers` empty needs `use_defaults: true`.
+- With `use_defaults: true`, every question left out is left to the agent (its recommended answer
+  or its own choice); it is the only way to leave a blocking question to the agent, and it leaves
+  given answers as they are. Without it, every `blocking` question needs an answer and a
+  non-blocking one left out stays open in the draft. `answers` empty needs `use_defaults: true`.
 - Refusals: `failed_precondition` when it isn't waiting, waits on another round ("read its questions
-  again": get the generation again), stopped waiting meanwhile, or the workspace has no AI provider;
+  again": get the generation again), stopped waiting meanwhile, or the workspace has no AI provider
+  (or uses its own key off Pro: `foundry_pro_required`); `not_found` for a first draft set to load
+  when ready whose database you can't write (ask someone who can);
   `invalid_arguments` for a question not asked or answered twice, an unknown label, two labels on a
   one-choice question, an option and text on a one-choice question, options on a words-only question,
   or a blocking question without an answer.
@@ -146,15 +149,17 @@ with `set_id`, `read_by_version` and the same counts, its total under `documents
 for that load only), or the ones `review_keys` names (≤50, never with `page_token`). Each has
 `review_key` (settle_review's `review_id`), `reason`, `settle` (which decision settles it:
 `resolve`, `prop`, `release`, `stale` = a new load writes it again, `none` = no decision settles
-it), and by kind: `norm_name` and `candidates` (entity keys) for a name matched to no one record;
+it), and by kind: `norm_name` and `candidates` (stored identities: an `entity_key`, or a named
+type's `norm_name`) for a name matched to no one record;
 `entity_key`, `prop` and `values` (each value with its document and quote) for a property documents
 state differently; `statement` and `statement_hash` for a statement held back. `entities` names the
 candidates and the property's entity as the load holds them. Quotes, statements and names are
 untrusted. A settled review stays listed until a load writes the decision.
 
-`helix_foundry_list_review_decisions` lists settled decisions, which every later load applies (an
-approval of a held claim and a chosen value also apply to the current load at once; a reject goes to
-no load). A `prop` decision's value has one key: `text`, `integer` (digit string), `number`,
+`helix_foundry_list_review_decisions` lists settled decisions, which every later load applies.
+Resolves, approvals and chosen values also apply to the current load at once (`applied` says
+whether they have; a load from before saved model work waits for the next load); a reject goes to
+no load. A `prop` decision's value has one key: `text`, `integer` (digit string), `number`,
 `boolean` or `null`. Settle with `settle_review` (helix-foundry-actions-mcp).
 
 ## AI settings
@@ -458,8 +463,9 @@ its newest run, no spec; `email` says whether notify steps email on this deploym
 - `use_cases`: the ontologies its runs use, each with the use case Foundry records them in, `runs`,
   `finished_runs`, `verdicts` (counts by verdict), `gaps` (get only, untrusted), or `untracked:
   "workflows_full"` when that ontology holds 100 use cases. Every workflow run that uses an
-  ontology (a Founder step reading or asking it, an action loading it) is a use case run, assessed
-  when the workflow run ends.
+  ontology (a Founder step reading or asking it, an action loading it or publishing a dashboard
+  that reads it) is a use case run, assessed when the workflow run ends (a cancelled run's, or one
+  its workflow's deletion ended, are not assessed).
 - Runs: `status` `queued`, `running`, `succeeded`, `failed`, `cancelled` or `skipped` (never started;
   `error` says why, e.g. the workspace's daily run cap); `trigger` (what fired it, untrusted),
   `usd_micros`, `thread_id`, `steps` (each `node_id`, `status`, untrusted `output`, `error`), and in a
@@ -486,8 +492,11 @@ runs once every step before it ended and one of its edges in was taken; a failur
 after it. Sync and load steps wait for their work to end. Every id the spec names must be the
 workspace's (`invalid_arguments`, naming it). Loop guard: an action (or `allow`) on the work its own
 trigger waits for (syncing the trigger's connector, loading the trigger's ontology) is refused ("start
-it on a schedule instead"), and event triggers never fire on work a workflow set off, its own or
-through other workflows. Example:
+it on a schedule instead"); at run time a `sync_finished` or `load_ready` trigger skips (as a
+`skipped` run saying why) a sync or load this workflow started, directly or through workflows it set
+off, or one from a chain of more than 3 workflow runs. `document_arrived` and `generation_finished`
+have no such guard: never let a `document_arrived` workflow sync a connector that writes into its
+own set. Example (replace each `<id>` with a real one):
 
 ```json
 {"v": 1,
@@ -517,7 +526,7 @@ tool returns the link**: send the user to the dashboard's `url`, where owners an
 ### Dashboard spec
 
 `{"v": 1, "tiles": [...], "layout": {"rows": [["t1", "t2"], ["t3"]]}}`, ≤128 KiB, ≤20 tiles, each in
-exactly one row of 1-3. A tile:
+exactly one row of 1-3. A workspace keeps ≤200 dashboards, ≤20 pinned. A tile:
 
 ```json
 {"id": "t1", "title": "Open invoices by status", "ontology_id": "<id>",
@@ -526,7 +535,8 @@ exactly one row of 1-3. A tile:
  "visual": {"kind": "bar"}}
 ```
 
-- `id` 1-32 lowercase letters, digits, `-`, `_`; `title` 1-80 characters.
+- `id` 1-32 lowercase letters, digits, `-`, `_`, starting with a letter or digit; `title` 1-80
+  characters.
 - `load`: `{"kind": "current"}` (whichever load is current when viewed) or `{"kind": "pinned",
   "load_id"}`.
 - `query`: the `query` read of `helix_foundry_read_graph` (≤3 KiB written compactly), ≤200 rows or
