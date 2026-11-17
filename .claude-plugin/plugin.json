@@ -1,7 +1,7 @@
 {
   "name": "helixdb",
   "displayName": "HelixDB & Helix Foundry",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Company context and memory for agents: ask and read a business's Helix Foundry ontology, a typed knowledge graph whose every fact cites its source, and write HelixDB queries. Adds the Helix MCP and every HelixDB skill.",
   "author": {
     "name": "HelixDB",

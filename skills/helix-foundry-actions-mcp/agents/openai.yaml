@@ -1,7 +1,7 @@
 interface:
   display_name: "Helix Foundry Actions MCP"
   short_description: "Run confirmed Helix Foundry actions"
-  default_prompt: "Use $helix-foundry-actions-mcp for the exact Helix Foundry sync, generation, revision, document upload, version, load, new ontology or API source I asked for."
+  default_prompt: "Use $helix-foundry-actions-mcp for the exact Helix Foundry sync, generation, answer to a draft's questions, revision, document upload, version, load, new ontology, API source, dashboard or workflow change I asked for."
 
 dependencies:
   tools:

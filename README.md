@@ -18,8 +18,8 @@ These skills are for agents that need to:
 - execute authorized Helix Cloud queries through the same server's query tools
 - run confirmation-gated tenant and database-key mutations through the same server's admin tools
 - design and operate an agent memory system on Helix's hybrid graph + vector + full-text engine
-- read and ask Helix Foundry ontologies, send pieces of JSON to Foundry API sources, and run confirmation-gated Foundry syncs, generations, revisions, document uploads and loads
-- set up a Helix Foundry ontology end to end: connect data, send pieces to an API source or upload documents, write its goal, generate, review and load it
+- read and ask Helix Foundry ontologies, send pieces of JSON to Foundry API sources, record an agent's work as use case runs, and run confirmation-gated Foundry syncs, generations, revisions, document uploads, loads, dashboards and workflows
+- set up a Helix Foundry ontology end to end: connect data, send pieces to an API source or upload documents, write its goal, generate, answer the draft's questions, review and load it
 
 ## Status
 
@@ -114,18 +114,26 @@ setup and the non-interactive/agent path.
 
 ## Helix Foundry
 
-- `helix-foundry-mcp` reads ontologies, versions, loads and the graph, asks
-  Foundry's query agent (cited answers), sends JSON pieces to API sources, and
-  records an agent's reads, questions and sends as workflow runs
-  (`workflow_run_id`).
+- `helix-foundry-mcp` reads ontologies, versions, loads, reviews, workflows,
+  dashboards and the graph, asks Foundry's query agent (cited answers), previews
+  dashboard tiles, sends JSON pieces to API sources, and records an agent's reads,
+  questions and sends as use case runs (`use_case_run_id`; formerly workflow runs).
 - `helix-foundry-actions-mcp` runs requested changes (create an ontology or API
-  source, sync, generate or revise a draft, upload and organize documents, settle a
-  review, make a version or load current, create a load), each through a one-time
-  confirmation.
+  source, sync, generate or revise a draft and answer its questions, upload and
+  organize documents, settle a review, make a version or load current, create a
+  load, create and change dashboards and workflows), each through a one-time
+  confirmation. A workflow runs only after its owner approves it in Foundry.
 - `helix-foundry-onboarding` takes a workspace from nothing to a loaded ontology:
   ontology and database, connector links, API sources and pieces, document uploads
   (any mix), a goal written from what the agent knows of your work, then generate,
-  review and load, asking before each action.
+  answer the draft's questions, review and load, asking before each action.
+
+Renamed on the Foundry MCP, without aliases: the old "workflow" tracking tools are
+now use case tools (`helix_foundry_create_use_case`, `list_use_cases`,
+`start_use_case_run`, `finish_use_case_run`, `get_use_case_run`, param
+`use_case_run_id`), and the automation tools and operations now carry the workflow
+names (`helix_foundry_list_workflows`, `get_workflow`, `list_workflow_runs`,
+`get_workflow_run`; `create_workflow` … `run_workflow`, target `workflow:`).
 
 Credentialed connectors are added on the Foundry website from a link the MCP gives,
 so credentials never pass through an agent. An app or agent sending to an API source
@@ -206,26 +214,32 @@ surfaces.
 Explore Helix Foundry ontologies. Teaches agents to resolve the workspace and
 ontology; choose between the definition, sources, exact graph reads and Ask; build
 reads from the served read guide; keep Ask's `client_token` on retries; follow
-syncs, generations and loads; hand over Foundry links; send pieces to an API source
-with a fresh `client_token` per call, or show an app how to POST them to the
-source's `send_url` (curl, body, status handling) when one is returned; and report
-answers with citations. Field-level detail is in its `REFERENCE.md`.
+syncs, generations (and when one waits on the user's answers) and loads; hand over
+Foundry links; send pieces to an API source with a fresh `client_token` per call, or
+show an app how to POST them to the source's `send_url` (curl, body, status
+handling) when one is returned; record work as use case runs; read workflows,
+dashboards and reviews; and report answers with citations. Field-level detail,
+including the workflow and dashboard specs, is in its `REFERENCE.md`.
 
 ### `helix-foundry-actions-mcp`
 
 Only explicitly requested Foundry changes: create an ontology (existing or new
 database) or an API source (text field for extraction), sync a connector, generate
-or revise a draft (API sources via mappings or extraction), upload and organize
-documents, settle a review, make a version or load current, create a load. Teaches
+or revise a draft (API sources via mappings or extraction) and answer its questions,
+upload and organize documents, settle a review, make a version or load current,
+create a load, add the sample company, create, change, pin, publish or delete
+dashboards, and create, change, pause, resume, run or delete workflows. Teaches
 prepare-then-execute confirmation, no retries, the upload PUT and completion, what
-each action costs or replaces, and what stays on the website.
+each action costs or replaces, workflow approval in Foundry, and what stays on the
+website.
 
 ### `helix-foundry-onboarding`
 
 Only when a user asks to set up Foundry or build a workspace's ontology from
 scratch. Teaches the order (workspace, ontology and database, data, goal,
-generation, review, load), which mode fits each API source, how long to wait and
-when to give up, writing the goal from the user's work, and what to hand back: a
+generation, the draft's questions asked one at a time, review, load), which mode
+fits each API source, how long to wait and when to give up, writing the goal from
+the user's work, and what to hand back: a
 draft's open questions, what it left out and its unread sets, then what the load
 read, left unread, and the reviews and unmatched names it left. Payloads and
 confirmations come from the two skills above.
